@@ -1,10 +1,8 @@
-// Pod manager Lambda. Phase 7a: scaffolding only — every action returns
-// `{ ok: false, status: 'not-implemented' }`. Phase 7b implements the bodies.
-//
-// Sole holder of ECS/ALB/EFS/DDB write permissions. The GitHub Actions
-// PodOpsRole holds only `lambda:InvokeFunction` on this function (see ADR 0003).
+// Pod manager Lambda — entry point and dispatch.
+// Sole holder of ECS/ALB/EFS/DDB write permissions per ADR 0003.
 
 import { z } from 'zod';
+import { podDown, podList, podStatus, podUp } from './actions';
 
 const PodEventSchema = z.discriminatedUnion('action', [
   z.object({
@@ -54,24 +52,23 @@ export const handler = async (rawEvent: unknown): Promise<PodResult> => {
   }
 
   const event = parsed.data;
-
-  switch (event.action) {
-    case 'up':
-      return notImplemented('up', { podName: event.podName });
-    case 'down':
-      return notImplemented('down', { podName: event.podName });
-    case 'list':
-      return notImplemented('list', {});
-    case 'status':
-      return notImplemented('status', { podName: event.podName });
+  try {
+    switch (event.action) {
+      case 'up':
+        return await podUp(event);
+      case 'down':
+        return await podDown(event);
+      case 'list':
+        return await podList();
+      case 'status':
+        return await podStatus(event);
+    }
+  } catch (err) {
+    console.error('Unhandled error in pod-manager', err);
+    return {
+      ok: false,
+      status: 'error',
+      message: (err as Error).message ?? 'unknown error',
+    };
   }
 };
-
-function notImplemented(action: string, extras: Partial<PodResult>): PodResult {
-  return {
-    ok: false,
-    status: 'not-implemented',
-    message: `Action "${action}" is implemented in Phase 7b.`,
-    ...extras,
-  };
-}
