@@ -88,6 +88,8 @@ export class PodManagerStack extends Stack {
         BROWSER_REPO_NAME: 'cloud-dev-pods/vscode-browser',
         TUNNEL_REPO_NAME: 'cloud-dev-pods/vscode-tunnel',
         AWS_ACCOUNT_ID: config.aws.accountId,
+        OAUTH_ALLOWED_ORG: config.github.oauthAllowedOrg ?? '',
+        OAUTH_ALLOWED_USERS: config.github.oauthAllowedUsers ?? '',
       },
     });
 

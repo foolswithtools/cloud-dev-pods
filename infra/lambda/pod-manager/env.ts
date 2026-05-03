@@ -30,4 +30,6 @@ export const env = {
   tunnelRepoUri: req('TUNNEL_REPO_URI'),
   browserRepoName: req('BROWSER_REPO_NAME'),
   tunnelRepoName: req('TUNNEL_REPO_NAME'),
+  oauthAllowedOrg: process.env.OAUTH_ALLOWED_ORG ?? '',
+  oauthAllowedUsers: process.env.OAUTH_ALLOWED_USERS ?? '',
 };

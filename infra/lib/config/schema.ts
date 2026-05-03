@@ -12,7 +12,10 @@ export const ConfigSchema = z.object({
   github: z.object({
     org: z.string(),
     repo: z.string(),
+    // oauth2-proxy auth allowlists. Set at least one. If both empty,
+    // oauth2-proxy will accept any authenticated GitHub user (insecure).
     oauthAllowedOrg: z.string().optional(),
+    oauthAllowedUsers: z.string().optional(),  // comma-separated GitHub logins
   }),
   domain: z.object({
     strategy: z.enum(['byo', 'alb-default']).default('alb-default'),
