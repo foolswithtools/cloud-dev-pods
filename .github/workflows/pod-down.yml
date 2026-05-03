@@ -1,5 +1,7 @@
 name: pod-down
-# Phase 9: stop one pod via pod-manager Lambda. EFS access point retained by default.
+# Spin down one pod via pod-manager Lambda. EFS access point retained by
+# default (so subsequent `pod-up` with the same name reattaches the same
+# workspace) — pass keep_workspace=false to also delete it.
 
 on:
   workflow_dispatch:
@@ -8,6 +10,11 @@ on:
         description: "Pod name to stop."
         required: true
         type: string
+      keep_workspace:
+        description: "Retain the EFS access point (workspace files)."
+        required: false
+        default: true
+        type: boolean
 
 permissions: {}
 
@@ -18,7 +25,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - run: echo "Stopping pod in fork ${{ github.repository }}."
+      - run: echo "Stopping pod ${{ inputs.pod_name }} in fork ${{ github.repository }}."
 
   down:
     needs: guard
@@ -27,4 +34,49 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — invoke pod-manager Lambda 'down'."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_POD_OPS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Invoke pod-manager down
+        id: down
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          KEEP_FLAG=""
+          if [ "${{ inputs.keep_workspace }}" = "true" ]; then
+            KEEP_FLAG="--keep-workspace"
+          fi
+          # shellcheck disable=SC2086
+          RESULT=$(npx tsx scripts/pod-cli.ts down --pod "${{ inputs.pod_name }}" $KEEP_FLAG)
+          echo "$RESULT"
+          OK=$(echo "$RESULT" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "::error::pod-down failed: $(echo "$RESULT" | jq -r '.message // .status')"
+            exit 1
+          fi
+          MSG=$(echo "$RESULT" | jq -r '.message // empty')
+          echo "message=$MSG" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Pod \`${{ inputs.pod_name }}\` stopped"
+            echo ""
+            echo "${{ steps.down.outputs.message }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,5 +1,11 @@
 name: bootstrap-aws
-# Phase 9: one-time bootstrap of GitHub OIDC IdP + IAM roles in the user's AWS account.
+# One-time bootstrap of GitHub OIDC IdP + IAM roles + ECR repos in the user's
+# AWS account. Uses static AWS creds (entered as repo secrets temporarily). All
+# subsequent workflows authenticate via OIDC and never need long-lived keys.
+#
+# After this workflow succeeds, manually delete `AWS_BOOTSTRAP_ACCESS_KEY_ID`
+# and `AWS_BOOTSTRAP_SECRET_ACCESS_KEY` from repo secrets (GitHub doesn't allow
+# workflows to delete their own secrets).
 
 on:
   workflow_dispatch:
@@ -18,13 +24,87 @@ jobs:
     permissions:
       contents: read
     steps:
-      - run: echo "Running bootstrap in fork ${{ github.repository }}."
+      - run: |
+          echo "Bootstrapping in fork ${{ github.repository }} for account ${{ inputs.confirm_account_id }}."
 
   bootstrap:
     needs: guard
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — cdk deploy BootstrapStack with one-time admin AWS creds, then delete them."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials (static, one-time)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_BOOTSTRAP_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_BOOTSTRAP_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify account ID
+        run: |
+          set -euo pipefail
+          actual=$(aws sts get-caller-identity --query Account --output text)
+          if [ "$actual" != "${{ inputs.confirm_account_id }}" ]; then
+            echo "::error::Account mismatch: AWS sees $actual but confirm input was ${{ inputs.confirm_account_id }}"
+            exit 1
+          fi
+          echo "Verified account: $actual"
+
+      - name: cdk bootstrap (toolkit)
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          npx cdk bootstrap "aws://${{ inputs.confirm_account_id }}/${{ vars.AWS_REGION }}" \
+            --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
+
+      - name: cdk deploy BootstrapStack
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: npx cdk deploy CloudDevPods-Bootstrap --require-approval never
+
+      - name: Read role ARNs from SSM
+        id: roles
+        run: |
+          set -euo pipefail
+          DEPLOYER=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/deployer-role-arn --query Parameter.Value --output text)
+          PODOPS=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/pod-ops-role-arn --query Parameter.Value --output text)
+          {
+            echo "deployer=$DEPLOYER"
+            echo "podops=$PODOPS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Bootstrap complete"
+            echo ""
+            echo "Set these as repo Variables:"
+            echo ""
+            echo '```bash'
+            echo "gh variable set AWS_DEPLOYER_ROLE_ARN --body '${{ steps.roles.outputs.deployer }}'"
+            echo "gh variable set AWS_POD_OPS_ROLE_ARN --body '${{ steps.roles.outputs.podops }}'"
+            echo '```'
+            echo ""
+            echo "Then **delete the bootstrap secrets** (GitHub doesn't permit a workflow to delete its own secrets):"
+            echo ""
+            echo '```bash'
+            echo "gh secret delete AWS_BOOTSTRAP_ACCESS_KEY_ID"
+            echo "gh secret delete AWS_BOOTSTRAP_SECRET_ACCESS_KEY"
+            echo '```'
+            echo ""
+            echo "All subsequent workflows use OIDC against AWS_DEPLOYER_ROLE_ARN / AWS_POD_OPS_ROLE_ARN."
+          } >> "$GITHUB_STEP_SUMMARY"

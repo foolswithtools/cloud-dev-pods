@@ -1,5 +1,10 @@
 name: cluster-down
-# Phase 9: cdk destroy --all after typed confirmation. Pre-flight refuses if pods running unless force=true.
+# Tear down the cluster + cluster-supporting stacks. BootstrapStack (OIDC, IAM
+# roles, ECR repos) is intentionally NOT destroyed — keep them around so you
+# don't have to re-bootstrap if you spin the cluster back up later.
+#
+# Pre-flight: refuses to run if any pods are registered, unless `force=true`
+# (then mass-stops them first).
 
 on:
   workflow_dispatch:
@@ -9,7 +14,7 @@ on:
         required: true
         type: string
       force:
-        description: "Stop running pods before destroying."
+        description: "Stop any running pods before destroying."
         required: false
         default: false
         type: boolean
@@ -32,4 +37,74 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — pre-flight pod-list, then cdk destroy --all."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Pre-flight — list running pods
+        id: pods
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          RESULT=$(npx tsx scripts/pod-cli.ts list || true)
+          COUNT=$(echo "$RESULT" | jq -r '.pods | length // 0')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "$RESULT"
+
+      - name: Refuse if pods exist (without force)
+        if: steps.pods.outputs.count != '0' && inputs.force != true
+        run: |
+          echo "::error::${{ steps.pods.outputs.count }} pod(s) still registered. Re-run with force=true to mass-stop."
+          exit 1
+
+      - name: Mass-stop pods (force mode)
+        if: steps.pods.outputs.count != '0' && inputs.force == true
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          # Use jq directly on stored output
+          npx tsx scripts/pod-cli.ts list \
+            | jq -r '.pods[].podName' \
+            | while read -r p; do
+                echo "Stopping $p"
+                npx tsx scripts/pod-cli.ts down --pod "$p" --keep-workspace || true
+              done
+
+      - name: cdk destroy (everything except Bootstrap)
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          npx cdk destroy \
+            CloudDevPods-IdleReaper \
+            CloudDevPods-PodManager \
+            CloudDevPods-PodTaskFamily \
+            CloudDevPods-Cluster \
+            CloudDevPods-Network \
+            --force
+
+      - name: Summary
+        run: |
+          {
+            echo "## Cluster destroyed"
+            echo ""
+            echo "Bootstrap (OIDC + IAM roles + ECR repos) retained. Re-run \`cluster-up.yml\` to spin everything back up."
+            echo ""
+            echo "EFS workspaces are also retained (RemovalPolicy.RETAIN) — manual deletion via \`aws efs delete-file-system\` if you really want to nuke data."
+          } >> "$GITHUB_STEP_SUMMARY"
