@@ -37,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { minimatch } from 'minimatch';
 import { parse as parseToml } from 'smol-toml';
 
@@ -371,7 +372,18 @@ async function main(): Promise<void> {
   void resolve;  // unused import guard removed below
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`sync-upstream: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Only run main() when invoked as a CLI (not when imported by tests).
+function isInvokedAsCli(): boolean {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsCli()) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`sync-upstream: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}
