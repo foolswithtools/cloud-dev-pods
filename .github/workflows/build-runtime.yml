@@ -1,11 +1,16 @@
 name: build-runtime
-# Phase 5: build + scan + push runtime images (vscode-browser, vscode-tunnel) to user's ECR.
+# Phase 5: build, scan, and push the runtime images to the user's ECR.
+#
+# Push-by-SHA. ECR repos are configured IMMUTABLE in BootstrapStack so we
+# cannot move a `latest` tag. The pod-up workflow accepts an `image_tag`
+# input that defaults to the commit SHA of the latest successful build
+# (resolved via `aws ecr describe-images`).
 
 on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Which image to build"
+        description: "Which image to build."
         required: false
         default: "all"
         type: choice
@@ -14,6 +19,7 @@ on:
     branches: [main]
     paths:
       - "runtime/**"
+      - ".github/workflows/build-runtime.yml"
 
 permissions: {}
 
@@ -23,8 +29,18 @@ jobs:
     if: github.repository != 'foolswithtools/cloud-dev-pods'
     permissions:
       contents: read
+    outputs:
+      images: ${{ steps.pick.outputs.images }}
     steps:
-      - run: echo "Running in fork ${{ github.repository }}."
+      - id: pick
+        run: |
+          set -euo pipefail
+          choice="${{ inputs.image || 'all' }}"
+          if [ "$choice" = "all" ] || [ -z "$choice" ]; then
+            echo 'images=["vscode-browser","vscode-tunnel"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "images=[\"$choice\"]" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: guard
@@ -32,5 +48,64 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    strategy:
+      matrix:
+        image: ${{ fromJSON(needs.guard.outputs.images) }}
+      fail-fast: false
     steps:
-      - run: echo "Phase 5 — docker build + trivy scan + push to ECR via OIDC."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_POD_OPS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ECR login
+        env:
+          REGION: ${{ vars.AWS_REGION }}
+          ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          aws ecr get-login-password --region "$REGION" \
+            | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
+
+      - name: Build image
+        env:
+          REGION: ${{ vars.AWS_REGION }}
+          ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/cloud-dev-pods/${IMAGE}:${GITHUB_SHA}"
+          docker build \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            -t "$IMAGE_URI" \
+            "runtime/${IMAGE}"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Trivy image scan
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION=0.70.0
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar xz -C /tmp trivy
+          /tmp/trivy image \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "$IMAGE_URI"
+
+      - name: Push image
+        run: docker push "$IMAGE_URI"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Built and pushed"
+            echo ""
+            echo "- Image: \`${IMAGE_URI}\`"
+            echo "- Tag (immutable): \`${GITHUB_SHA}\`"
+            echo "- Trivy: clean (CRITICAL/HIGH, fixed-only)"
+          } >> "$GITHUB_STEP_SUMMARY"

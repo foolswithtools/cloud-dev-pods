@@ -32,7 +32,9 @@ gh variable list
 gh secret list --env prod
 ```
 
-Required Variables: `AWS_ROLE_ARN`, `AWS_REGION`, `AWS_ACCOUNT_ID`, `CLUSTER_NAME`, `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_ALLOWED_ORG`. Optional: `ROUTE53_HOSTED_ZONE_ID`, `ACM_CERT_ARN`.
+Required Variables: `AWS_DEPLOYER_ROLE_ARN`, `AWS_POD_OPS_ROLE_ARN`, `AWS_REGION`, `AWS_ACCOUNT_ID`, `CLUSTER_NAME`, `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_ALLOWED_ORG`. Optional: `ROUTE53_HOSTED_ZONE_ID`, `ACM_CERT_ARN`.
+
+The two roles are split by privilege per ADR 0003: `AWS_DEPLOYER_ROLE_ARN` is used by `bootstrap-aws.yml`, `cluster-up.yml`, and `cluster-down.yml` (broad CDK power). `AWS_POD_OPS_ROLE_ARN` is used by `build-runtime.yml`, `pod-up.yml`, `pod-down.yml`, and `pod-list.yml` (only `lambda:Invoke pod-manager` + ECR push + log read).
 
 Required Environment `prod` Secrets: `OAUTH_GITHUB_CLIENT_SECRET`, `OAUTH_COOKIE_SECRET`.
 

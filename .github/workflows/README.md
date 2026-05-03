@@ -4,7 +4,8 @@
 |---|---|---|---|
 | `ci-lint.yml` | `pull_request` | Upstream + forks | actionlint, markdownlint, eslint, shellcheck, link-check. |
 | `ci-test.yml` | `pull_request` | Upstream + forks | tsc, vitest, `cdk synth`, `cdk-nag`. |
-| `ci-security.yml` | `pull_request` + daily | Upstream + forks | gitleaks, trivy, osv-scanner. |
+| `ci-security.yml` | `pull_request` + daily | Upstream + forks | gitleaks, trivy fs, osv-scanner. |
+| `ci-runtime.yml` | `pull_request` on `runtime/**` | Upstream + forks | docker build + trivy image scan; never pushes. |
 | `release.yml` | push to `main` | Upstream only | release-please version + tag + changelog. |
 | `bootstrap-aws.yml` | `workflow_dispatch` | Forks only | One-time GitHub OIDC + IAM role setup in user's AWS account. |
 | `build-runtime.yml` | `workflow_dispatch` + on push to `runtime/**` | Forks only | Build + push runtime images to user's ECR. |
