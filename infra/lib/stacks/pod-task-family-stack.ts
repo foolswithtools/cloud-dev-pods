@@ -36,9 +36,14 @@ export class PodTaskFamilyStack extends Stack {
     super(scope, id, props);
     const { config, cluster } = props;
 
-    // Secrets pre-created out-of-band by `bootstrap-aws.yml` (their
-    // raw values come from the user's GitHub Environment secrets and are
-    // pushed during init-clone). Phase 7a references them by name.
+    // Secrets pre-created by BootstrapStack (Phase 9.5) with placeholder
+    // values; init-clone.ts (Phase 12) populates client-id/client-secret with
+    // the user's GitHub OAuth App credentials. cookie-secret is auto-generated.
+    const oauthClientId = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'OAuthClientIdRef',
+      '/cloud-dev-pods/oauth/client-id',
+    );
     const oauthClientSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'OAuthClientSecretRef',
@@ -72,6 +77,7 @@ export class PodTaskFamilyStack extends Stack {
     this.executionRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
     );
+    oauthClientId.grantRead(this.executionRole);
     oauthClientSecret.grantRead(this.executionRole);
     oauthCookieSecret.grantRead(this.executionRole);
 
