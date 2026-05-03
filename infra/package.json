@@ -17,7 +17,7 @@
     "cdk-nag": "^2.34.0",
     "constructs": "^10.4.0",
     "yaml": "^2.5.1",
-    "zod": "^3.23.0"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "aws-cdk": "^2.165.0",
