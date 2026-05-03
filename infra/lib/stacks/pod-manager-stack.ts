@@ -180,6 +180,14 @@ export class PodManagerStack extends Stack {
     );
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
+        actions: ['secretsmanager:DescribeSecret'],
+        resources: [
+          `arn:aws:secretsmanager:${config.aws.region}:${config.aws.accountId}:secret:/cloud-dev-pods/oauth/*`,
+        ],
+      }),
+    );
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
         actions: ['route53:ChangeResourceRecordSets', 'route53:GetChange'],
         resources: ['*'],
       }),
