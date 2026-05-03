@@ -6,6 +6,7 @@ FROM gitpod/openvscode-server:1.105.1
 USER root
 
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
       git curl ca-certificates build-essential python3 python3-pip \
  && rm -rf /var/lib/apt/lists/*
