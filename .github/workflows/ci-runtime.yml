@@ -1,0 +1,68 @@
+name: ci-runtime
+# Maintainer build verification: build the runtime images on PRs that touch
+# them and run Trivy against the actual built image (catches CVEs in
+# apt-get-installed packages that `trivy fs runtime/` would miss).
+# Never pushes anywhere — no AWS context required on the upstream repo.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "runtime/**"
+      - ".github/workflows/ci-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "runtime/**"
+      - ".github/workflows/ci-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [vscode-browser, vscode-tunnel]
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image (no push)
+        run: |
+          set -euo pipefail
+          docker build -t "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" "runtime/${{ matrix.image }}"
+
+      - name: Install trivy
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION=0.70.0
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar xz -C /tmp trivy
+
+      - name: Trivy image scan (OS packages only)
+        # `--pkg-types os` scopes to packages we install via apt-get (the only
+        # packages we can actually fix). Language-level deps bundled in the
+        # upstream image (e.g. handlebars/undici inside gitpod/openvscode-server)
+        # are scanned informationally in a separate step that doesn't block.
+        run: |
+          /tmp/trivy image \
+            --severity CRITICAL,HIGH \
+            --pkg-types os \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}"
+
+      - name: Trivy image scan (language deps, informational)
+        if: always()
+        run: |
+          /tmp/trivy image \
+            --severity CRITICAL,HIGH \
+            --pkg-types library \
+            --ignore-unfixed \
+            --exit-code 0 \
+            "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" \
+            > "$GITHUB_STEP_SUMMARY" 2>&1 || true
