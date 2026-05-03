@@ -37,3 +37,18 @@ If you need to fundamentally change `infra/lib/**`, you can:
 - `runtime/**` — overwriting these defeats the security/scanning posture.
 
 If you really need a custom runtime image, push it to your own ECR repo and point `--image_tag` at it.
+
+## How `sync-upstream.yml` works
+
+The `sync-upstream.yml` workflow runs weekly (and on demand). For each path that differs between the last-synced upstream SHA and current upstream:
+
+- `[tracked]` — overwrite from upstream (`git checkout upstream/main -- <path>`).
+- `[merged]` — three-way merge against your HEAD using `git merge-file --diff3`. If conflict markers are produced, the PR body lists the file under "Conflicted files (resolve before merging)".
+- `[user]` — left untouched.
+- Files deleted upstream that you haven't modified are removed; files you've modified are kept with a note.
+
+State is tracked in `.upstream-sync.state` (committed). Each successful sync updates it to the new upstream SHA so the next run starts from there.
+
+## Bootstrapping config
+
+Your fork's `config/config.yaml` is `[user]` — sync never touches it. You set its values once via `npm run init` (Phase 12, coming soon) or by hand. When upstream adds new config keys, the new fields fall back to schema defaults until you set them; `cdk synth` will warn loudly if a required key is missing.
