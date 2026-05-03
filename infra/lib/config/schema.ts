@@ -23,7 +23,7 @@ export const ConfigSchema = z.object({
     vpcCidr: z.string().default('10.0.0.0/16'),
     natGateways: z.union([z.literal(1), z.literal(2)]).default(1),
     useVpcEndpoints: z.boolean().default(false),
-  }).default({}),
+  }),
   pods: z.object({
     defaultCpu: z.number().int().default(1024),
     defaultMemory: z.number().int().default(2048),
