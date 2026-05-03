@@ -34,6 +34,10 @@ import {
   PutCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
+import {
+  DescribeSecretCommand,
+  SecretsManagerClient,
+} from '@aws-sdk/client-secrets-manager';
 
 import { env } from './env';
 import { priorityForPod } from './priority';
@@ -43,6 +47,20 @@ const ecr = new ECRClient({ region: env.region });
 const efs = new EFSClient({ region: env.region });
 const elbv2 = new ElasticLoadBalancingV2Client({ region: env.region });
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: env.region }));
+const secretsManager = new SecretsManagerClient({ region: env.region });
+
+// ECS task-def `secrets[].valueFrom` requires the FULL Secrets Manager ARN
+// (with AWS-generated 6-char suffix). Resolve once and cache per warm container.
+const secretArnCache = new Map<string, string>();
+
+export async function resolveSecretArn(secretName: string): Promise<string> {
+  const cached = secretArnCache.get(secretName);
+  if (cached) return cached;
+  const r = await secretsManager.send(new DescribeSecretCommand({ SecretId: secretName }));
+  if (!r.ARN) throw new Error(`DescribeSecret returned no ARN for ${secretName}`);
+  secretArnCache.set(secretName, r.ARN);
+  return r.ARN;
+}
 
 // ---- Registry (DynamoDB) ----
 
@@ -208,15 +226,15 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
       secrets: [
         {
           name: 'OAUTH2_PROXY_CLIENT_ID',
-          valueFrom: `arn:aws:secretsmanager:${env.region}:${env.accountId}:secret:/cloud-dev-pods/oauth/client-id`,
+          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/client-id'),
         },
         {
           name: 'OAUTH2_PROXY_CLIENT_SECRET',
-          valueFrom: `arn:aws:secretsmanager:${env.region}:${env.accountId}:secret:/cloud-dev-pods/oauth/client-secret`,
+          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/client-secret'),
         },
         {
           name: 'OAUTH2_PROXY_COOKIE_SECRET',
-          valueFrom: `arn:aws:secretsmanager:${env.region}:${env.accountId}:secret:/cloud-dev-pods/oauth/cookie-secret`,
+          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/cookie-secret'),
         },
       ],
       dependsOn: [{ containerName: 'vscode', condition: 'HEALTHY' }],
