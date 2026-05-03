@@ -39,7 +39,7 @@ const taskFamily = new PodTaskFamilyStack(app, `${prefix}-PodTaskFamily`, {
   env, config, cluster,
 });
 const podManager = new PodManagerStack(app, `${prefix}-PodManager`, {
-  env, config, cluster, taskFamily,
+  env, config, network, cluster, taskFamily,
 });
 
 // Phase 8 (stub): Idle reaper.

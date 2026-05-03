@@ -11,10 +11,12 @@ import * as path from 'path';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
 import type { ClusterStack } from './cluster-stack';
+import type { NetworkStack } from './network-stack';
 import type { PodTaskFamilyStack } from './pod-task-family-stack';
 
 export interface PodManagerStackProps extends StackProps {
   config: Config;
+  network: NetworkStack;
   cluster: ClusterStack;
   taskFamily: PodTaskFamilyStack;
 }
@@ -32,7 +34,7 @@ export class PodManagerStack extends Stack {
 
   constructor(scope: Construct, id: string, props: PodManagerStackProps) {
     super(scope, id, props);
-    const { config, cluster, taskFamily } = props;
+    const { config, network, cluster, taskFamily } = props;
 
     this.registry = new dynamodb.Table(this, 'Registry', {
       tableName: 'cloud-dev-pods-registry',
@@ -76,10 +78,15 @@ export class PodManagerStack extends Stack {
         TUNNEL_TASK_ROLE_ARN: taskFamily.tunnelTaskRole.roleArn,
         EXECUTION_ROLE_ARN: taskFamily.executionRole.roleArn,
         PODS_LOG_GROUP_NAME: cluster.podsLogGroup.logGroupName,
-        VPC_ID: cluster.cluster.vpc.vpcId,
+        VPC_ID: network.vpc.vpcId,
+        PRIVATE_SUBNET_IDS: network.vpc.privateSubnets.map((s) => s.subnetId).join(','),
+        TASKS_SECURITY_GROUP_ID: network.tasksSg.securityGroupId,
         BASE_DOMAIN: config.domain.baseDomain ?? '',
         DOMAIN_STRATEGY: config.domain.strategy,
-        OAUTH_GITHUB_CLIENT_ID: '',  // populated from Secrets Manager at runtime
+        BROWSER_REPO_URI: `${config.aws.accountId}.dkr.ecr.${config.aws.region}.amazonaws.com/cloud-dev-pods/vscode-browser`,
+        TUNNEL_REPO_URI: `${config.aws.accountId}.dkr.ecr.${config.aws.region}.amazonaws.com/cloud-dev-pods/vscode-tunnel`,
+        BROWSER_REPO_NAME: 'cloud-dev-pods/vscode-browser',
+        TUNNEL_REPO_NAME: 'cloud-dev-pods/vscode-tunnel',
         AWS_ACCOUNT_ID: config.aws.accountId,
       },
     });
