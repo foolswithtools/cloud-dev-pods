@@ -40,3 +40,29 @@ Phase 5+ will document how to publish your own runtime image and reference it vi
 ```bash
 aws logs tail /cloud-dev-pods/pods --follow --since 10m
 ```
+
+## Limits
+
+- **ALB listener rules: default 100 per listener.** With one rule per browser pod (host-based routing), this is the practical pod ceiling per cluster. Browser pods that fail with `PriorityInUse` after ~95 active pods are likely hitting it. Raise via Service Quotas (request `L-EAD7E5BC` → 1000) or shard pods across additional ALBs.
+- **EFS access points: 1000 per filesystem.** One per pod; the lifecycle is "create on first up, retain across down (default), delete on `pod-down --no-keep-workspace`". Watch out for accumulation if many pods are created/destroyed without `keepWorkspace=false`.
+- **POSIX UIDs: 10000–65000.** ~55k unique pods over the lifetime of a cluster. UIDs aren't recycled while the pod is in the registry; once `pod-down` removes the entry, the UID is free.
+- **Fargate task quotas: 1000 tasks per region per account.** Default. Rarely a concern.
+
+## Idle reaper behavior
+
+The idle reaper runs every 5 minutes (per cluster). For each browser pod:
+
+1. Reads `RequestCount` on the pod's ALB target group over the last `idleMinutes` (default 60). If sum is 0, marks the pod with `idleSince=<timestamp>` in DynamoDB and publishes a notification to the SNS topic `cloud-dev-pods-idle-warnings`.
+2. On the next reaper cycle, if the pod is still idle, invokes `pod-manager.down(podName, keepWorkspace: true)` — task stops, ALB rule + target group are removed, EFS workspace is retained.
+
+To opt out per-pod, run `pod-up` with `--idle 0`. To subscribe to idle warnings:
+
+```bash
+aws sns subscribe \
+  --topic-arn $(aws ssm get-parameter --name /cloud-dev-pods/dev/idle-reaper/topic-arn --query Parameter.Value --output text) \
+  --protocol email --notification-endpoint you@example.com
+```
+
+Tunnel-mode pods are NOT idle-reaped in v1 (no useful idle signal from the `code tunnel` agent). Stop them manually with `pod-down`.
+
+The reaper also handles **task-stopped cleanup**: if an ECS task transitions to STOPPED for any reason (crash, manual `aws ecs stop-task`, capacity reclaim), the reaper invokes `pod-manager.down` to remove the orphaned ALB rule + target group + DDB entry.
