@@ -1,11 +1,13 @@
 name: pod-up
-# Phase 9: spin up one pod via pod-manager Lambda. Surface URL + cost to step summary.
+# Spin up one pod via pod-manager Lambda.
+# Browser-mode: surfaces the URL.
+# Tunnel-mode: polls CW Logs for the device-code prompt and surfaces it.
 
 on:
   workflow_dispatch:
     inputs:
       pod_name:
-        description: "Pod name (DNS-safe, <= 30 chars)."
+        description: "Pod name (DNS-safe, lowercase, <= 30 chars)."
         required: true
         type: string
       mode:
@@ -29,6 +31,11 @@ on:
         required: false
         default: "60"
         type: string
+      image_tag:
+        description: "ECR image tag (defaults to latest pushed)."
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 
@@ -39,7 +46,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - run: echo "Spinning up pod in fork ${{ github.repository }}."
+      - run: echo "Spinning up pod ${{ inputs.pod_name }} in fork ${{ github.repository }}."
 
   up:
     needs: guard
@@ -48,4 +55,111 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — invoke pod-manager Lambda 'up'; poll CW Logs for tunnel device-code if tunnel mode."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_POD_OPS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Invoke pod-manager up
+        id: up
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          IMG_FLAG=""
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            IMG_FLAG="--image-tag ${{ inputs.image_tag }}"
+          fi
+          # shellcheck disable=SC2086
+          RESULT=$(npx tsx scripts/pod-cli.ts up \
+            --pod "${{ inputs.pod_name }}" \
+            --mode "${{ inputs.mode }}" \
+            --cpu "${{ inputs.cpu }}" \
+            --memory "${{ inputs.memory }}" \
+            --idle "${{ inputs.idle_minutes }}" \
+            $IMG_FLAG)
+          echo "$RESULT"
+          OK=$(echo "$RESULT" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "::error::pod-up failed: $(echo "$RESULT" | jq -r '.message // .status')"
+            exit 1
+          fi
+          URL=$(echo "$RESULT" | jq -r '.url // empty')
+          MSG=$(echo "$RESULT" | jq -r '.message // empty')
+          {
+            echo "url=$URL"
+            echo "message=$MSG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Poll CW Logs for tunnel device code (tunnel mode only)
+        if: inputs.mode == 'tunnel'
+        id: tunnel
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          # The pod's CW log group; project env defaults to "dev" — Phase 11 polish makes this configurable.
+          LOG_GROUP="/cloud-dev-pods/dev/pods"
+          POD="${{ inputs.pod_name }}"
+          RESULT=$(npx tsx scripts/tunnel-poll-logs.ts \
+            --log-group "$LOG_GROUP" \
+            --stream-prefix "tunnel/$POD/" \
+            --timeout 180 || true)
+          echo "$RESULT"
+          URL=$(echo "$RESULT" | jq -r '.url // empty')
+          CODE=$(echo "$RESULT" | jq -r '.code // empty')
+          {
+            echo "url=$URL"
+            echo "code=$CODE"
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$URL" ] && [ -n "$CODE" ]; then
+            echo "::notice title=Tunnel device code::Open $URL and enter code $CODE"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "## Pod \`${{ inputs.pod_name }}\` is up"
+            echo ""
+            echo "- Mode: \`${{ inputs.mode }}\`"
+            echo "- CPU: ${{ inputs.cpu }}, Memory: ${{ inputs.memory }} MB"
+            echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
+            if [ "${{ inputs.mode }}" = "browser" ]; then
+              echo "- URL: ${{ steps.up.outputs.url }}"
+              echo ""
+              echo "Open the URL and sign in with GitHub (org allowlist enforced by oauth2-proxy)."
+            else
+              if [ -n "${{ steps.tunnel.outputs.url }}" ]; then
+                echo ""
+                echo "### Tunnel authentication"
+                echo ""
+                echo "**Open:** ${{ steps.tunnel.outputs.url }}"
+                echo "**Code:** \`${{ steps.tunnel.outputs.code }}\`"
+                echo ""
+                echo "Sign in with the same GitHub account on your local VS Code Desktop. Then \`Remote Tunnels: Connect to Tunnel\` -> \`${{ inputs.pod_name }}\`."
+              else
+                echo ""
+                echo "Could not auto-detect device code yet — check CloudWatch Logs:"
+                echo ""
+                echo '```bash'
+                echo "aws logs tail /cloud-dev-pods/dev/pods --follow --since 5m"
+                echo '```'
+              fi
+            fi
+            echo ""
+            echo "Stop this pod: \`gh workflow run pod-down.yml -f pod_name=${{ inputs.pod_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

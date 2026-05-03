@@ -1,5 +1,6 @@
 name: cluster-up
-# Phase 9: cdk deploy --all (Network + Cluster + PodTaskFamily + PodManager + IdleReaper).
+# Provision the cluster + cluster-supporting stacks. Run after bootstrap-aws.
+# Uses OIDC against AWS_DEPLOYER_ROLE_ARN.
 
 on:
   workflow_dispatch:
@@ -22,4 +23,69 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — cdk deploy --all."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: cdk deploy (Network + Cluster + PodTaskFamily + PodManager + IdleReaper)
+        id: deploy
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          npx cdk deploy \
+            CloudDevPods-Network \
+            CloudDevPods-Cluster \
+            CloudDevPods-PodTaskFamily \
+            CloudDevPods-PodManager \
+            CloudDevPods-IdleReaper \
+            --require-approval never \
+            --concurrency 4
+
+      - name: Read cluster outputs from SSM
+        id: outputs
+        run: |
+          set -euo pipefail
+          ALB_DNS=$(aws ssm get-parameter --name /cloud-dev-pods/dev/cluster/alb-dns --query Parameter.Value --output text)
+          PROTO=$(aws ssm get-parameter --name /cloud-dev-pods/dev/cluster/listener-protocol --query Parameter.Value --output text)
+          POD_MGR=$(aws ssm get-parameter --name /cloud-dev-pods/dev/pod-manager/function-arn --query Parameter.Value --output text)
+          {
+            echo "alb_dns=$ALB_DNS"
+            echo "proto=$PROTO"
+            echo "pod_mgr=$POD_MGR"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Cluster up"
+            echo ""
+            echo "- ALB: \`${{ steps.outputs.outputs.alb_dns }}\` (\`${{ steps.outputs.outputs.proto }}\`)"
+            echo "- pod-manager: \`${{ steps.outputs.outputs.pod_mgr }}\`"
+            echo ""
+            echo "**Before pod-up**: ensure the three Secrets Manager secrets exist —"
+            echo "\`/cloud-dev-pods/oauth/client-id\`, \`/cloud-dev-pods/oauth/client-secret\`, \`/cloud-dev-pods/oauth/cookie-secret\`."
+            echo "If you ran \`npm run init\` they were created; otherwise:"
+            echo ""
+            echo '```bash'
+            echo "aws secretsmanager create-secret --name /cloud-dev-pods/oauth/client-id --secret-string '<github-oauth-app-client-id>'"
+            echo "aws secretsmanager create-secret --name /cloud-dev-pods/oauth/client-secret --secret-string '<github-oauth-app-client-secret>'"
+            echo "aws secretsmanager create-secret --name /cloud-dev-pods/oauth/cookie-secret --secret-string \"\$(openssl rand -base64 32)\""
+            echo '```'
+            echo ""
+            echo "Next: \`gh workflow run pod-up.yml -f pod_name=hello -f mode=browser\`."
+          } >> "$GITHUB_STEP_SUMMARY"

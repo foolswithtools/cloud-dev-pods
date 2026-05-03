@@ -1,5 +1,5 @@
 name: pod-list
-# Phase 9: list running pods + URLs + uptime + accumulated cost.
+# List all registered pods + URLs + uptime + live task status.
 
 on:
   workflow_dispatch:
@@ -22,4 +22,52 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 9 — invoke pod-manager Lambda 'list'; emit table to step summary."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.AWS_POD_OPS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Invoke pod-manager list
+        id: list
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          RESULT=$(npx tsx scripts/pod-cli.ts list)
+          echo "$RESULT"
+          OK=$(echo "$RESULT" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "::error::pod-list failed: $(echo "$RESULT" | jq -r '.message // .status')"
+            exit 1
+          fi
+          # Persist for the summary step.
+          echo "$RESULT" > pod-list.json
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          COUNT=$(jq -r '.pods | length' pod-list.json)
+          {
+            echo "## Pods (${COUNT})"
+            echo ""
+            if [ "$COUNT" = "0" ]; then
+              echo "_No pods registered. Run \`gh workflow run pod-up.yml\` to create one._"
+            else
+              echo "| Name | Mode | Status | URL / Tunnel | Owner | Created |"
+              echo "|---|---|---|---|---|---|"
+              jq -r '.pods[] | "| \(.podName) | \(.mode) | \(.taskStatus) | \(.url // .tunnelName // "-") | \(.owner // "-") | \(.createdAt) |"' pod-list.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
