@@ -4,7 +4,7 @@
 # Entrypoint binds 127.0.0.1:3000 with --without-connection-token; oauth2-proxy
 # sidecar (port 4180) handles auth and forwards to localhost:3000.
 
-FROM gitpod/openvscode-server:1.96.0
+FROM gitpod/openvscode-server:1.105.1
 
 USER root
 RUN apt-get update \
