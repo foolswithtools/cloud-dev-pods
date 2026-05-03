@@ -85,7 +85,10 @@ jobs:
             "runtime/${IMAGE}"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-      - name: Trivy image scan
+      - name: Trivy image scan (OS packages only)
+        # See ci-runtime.yml for rationale: language-level deps bundled in the
+        # upstream image are out of our control and surfaced informationally
+        # rather than blocking the build.
         run: |
           set -euo pipefail
           TRIVY_VERSION=0.70.0
@@ -93,6 +96,7 @@ jobs:
             | tar xz -C /tmp trivy
           /tmp/trivy image \
             --severity CRITICAL,HIGH \
+            --pkg-types os \
             --ignore-unfixed \
             --exit-code 1 \
             "$IMAGE_URI"
