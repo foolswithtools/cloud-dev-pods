@@ -201,8 +201,10 @@ export class BootstrapStack extends Stack {
     const oauthCookieSecret = new secretsmanager.Secret(this, 'OAuthCookieSecret', {
       secretName: '/cloud-dev-pods/oauth/cookie-secret',
       description: 'oauth2-proxy cookie encryption secret. Auto-generated; rotate via update-secret.',
+      // oauth2-proxy requires the cookie secret to be exactly 16, 24, or
+      // 32 BYTES (raw, not base64). Length 32 keeps it AES-256 strength.
       generateSecretString: {
-        passwordLength: 44,
+        passwordLength: 32,
         excludeCharacters: '/@" \\',
       },
       removalPolicy: RemovalPolicy.RETAIN,

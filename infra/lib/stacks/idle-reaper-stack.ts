@@ -65,6 +65,10 @@ export class IdleReaperStack extends Stack {
         POD_MANAGER_FN_NAME: podManager.fn.functionName,
         IDLE_TOPIC_ARN: this.idleTopic.topicArn,
         IDLE_MINUTES_DEFAULT: String(config.pods.idleMinutes ?? 60),
+        // Required for the AWS/ApplicationELB RequestCount metric query —
+        // CloudWatch stores it under (TargetGroup, LoadBalancer), so
+        // querying with TargetGroup alone returns no datapoints.
+        ALB_NAME_DIMENSION: cluster.alb.loadBalancerFullName,
       },
     });
 
