@@ -28,7 +28,7 @@ Run `gh workflow run cluster-down.yml` to zero out fixed cost.
 
 After step 7, you should see:
 
-```
+```text
 Pod `hello` is up
 URL: https://hello.<your-base-domain>
 Mode: browser

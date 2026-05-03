@@ -36,19 +36,19 @@ PRs must pass:
 
 ## Conventional Commit examples
 
-```
+```text
 feat(pod-up): add idle-shutdown override flag
 
 Closes #42
 ```
 
-```
+```text
 fix(cdk-nag): suppress AwsSolutions-EC23 with justification
 
 The default ALB SG allows :443 from 0.0.0.0/0 — that's the whole point.
 ```
 
-```
+```text
 feat(infra)!: switch from path-based to host-based ALB routing
 
 BREAKING CHANGE: existing users must re-deploy ClusterStack and update

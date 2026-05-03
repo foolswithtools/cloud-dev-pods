@@ -7,11 +7,13 @@ cloud-dev-pods supports two ways of getting your editor onto a pod.
 You access the pod via a browser at `https://<pod>.<base-domain>`. The ALB authenticates you via GitHub OAuth (org-allowlisted) before any traffic reaches the openvscode-server container.
 
 Pros:
+
 - Nothing to install locally beyond a browser.
 - Works on locked-down corporate laptops.
 - URL is shareable (with auth).
 
 Cons:
+
 - Browser-based VS Code is not 1:1 with VS Code Desktop (some extensions don't run).
 - Requires ALB + ACM cert + DNS to be set up.
 
@@ -20,11 +22,13 @@ Cons:
 You launch a pod with `mode=tunnel`. The pod runs `code tunnel` which dials out to Microsoft's tunnel broker. You connect from local VS Code Desktop via `Remote Tunnels: Connect to Tunnel`.
 
 Pros:
+
 - Full VS Code Desktop experience.
 - No ALB, no DNS, no ACM cert needed.
 - Works from any network with outbound HTTPS.
 
 Cons:
+
 - Authentication is via Microsoft's device-code flow (one-time per pod).
 - Can't share a tunnel with multiple users.
 

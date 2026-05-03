@@ -14,6 +14,7 @@ gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing cost
 ## Costs
 
 The biggest fixed costs are:
+
 - ALB (~$16/mo)
 - NAT Gateway (~$32/mo)
 - EFS storage ($0.30/GB-month)

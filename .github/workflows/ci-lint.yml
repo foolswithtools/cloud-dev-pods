@@ -1,9 +1,11 @@
 name: ci-lint
-# Phase 3: actionlint, markdownlint, eslint, shellcheck, lychee link-check.
+# Phase 3: actionlint, markdownlint, shellcheck, lychee link-check.
+# eslint and cdk-synth land in later phases when they have more code to validate.
 
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,5 +14,48 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - run: echo "Phase 3 — wire up actionlint, markdownlint, eslint, shellcheck, lychee."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: actionlint (validate workflow YAML)
+        uses: rhysd/actionlint@v1
+
+      - name: markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v17
+        with:
+          globs: |
+            **/*.md
+            !node_modules
+            !.cdk.staging
+            !cdk.out
+
+      - name: shellcheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+          scandir: "."
+          format: gcc
+
+      - name: lychee link-check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --max-retries 2
+            --timeout 20
+            --exclude '^https://github.com/.+/security/advisories/new'
+            --exclude '^https://github.com/settings/'
+            --exclude '^https://github.com/organizations/'
+            --exclude 'localhost'
+            --exclude '127\.0\.0\.1'
+            './**/*.md'
+          fail: true

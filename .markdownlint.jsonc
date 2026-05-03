@@ -1,0 +1,12 @@
+{
+  // Markdown rules for this repo. See https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "default": true,
+  "MD013": false,           // line length: docs have long URLs and command lines
+  "MD024": { "siblings_only": true },
+  "MD025": false,           // multiple H1s allowed
+  "MD026": false,           // trailing punctuation in heading: we use "Once authenticated, you can either:"
+  "MD033": false,           // inline HTML: harmless
+  "MD034": false,           // bare URLs: tolerated in technical docs
+  "MD041": false,           // first-line H1: PR/issue templates start with H2
+  "MD060": false            // table column style: cosmetic
+}

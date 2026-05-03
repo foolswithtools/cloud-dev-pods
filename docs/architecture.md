@@ -8,7 +8,7 @@ Two pod delivery modes are supported. Browser is the default; tunnel is opt-in p
 
 ### Browser mode (default)
 
-```
+```text
 Browser ──HTTPS──> ALB ──> oauth2-proxy (sidecar :4180)
                               │
                               ▼
@@ -22,7 +22,7 @@ Authentication is enforced by oauth2-proxy via a GitHub OAuth App. ALB enforces 
 
 ### Tunnel mode (opt-in)
 
-```
+```text
 Local VS Code Desktop ──> Microsoft VS Code Tunnel Service ──> ECS task running `code tunnel`
 ```
 

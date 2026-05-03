@@ -19,6 +19,7 @@ gh workflow run cluster-down.yml -f confirm=destroy
 This destroys: ALB, target groups, ECS cluster, EFS filesystem, NAT Gateway, VPC, log groups, Lambdas, DynamoDB registry.
 
 It does NOT destroy:
+
 - The `BootstrapStack` (OIDC provider, IAM roles, ECR repos) — these are cheap to keep.
 - Route53 hosted zone — you brought it; you keep it.
 - ACM cert — kept (free; no charge for unused certs).

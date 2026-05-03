@@ -1,9 +1,11 @@
 name: ci-security
-# Phase 3: gitleaks, trivy fs scan on runtime/, osv-scanner.
+# Phase 3: gitleaks (secret scanning), trivy fs (filesystem CVE scan against runtime/),
+# osv-scanner (OSV vulns against npm + lockfile).
 
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
   schedule:
     - cron: "0 12 * * *"
 
@@ -14,5 +16,34 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - run: echo "Phase 3 — wire up gitleaks, trivy, osv-scanner."
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gitleaks needs full history to scan all commits, not just the PR diff.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Public repos under orgs do not require GITLEAKS_LICENSE.
+          # https://github.com/gitleaks/gitleaks-action#-pricing
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+      - name: trivy filesystem (runtime/)
+        uses: aquasecurity/trivy-action@0.27.0
+        with:
+          scan-type: fs
+          scan-ref: runtime
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: osv-scanner (install + run)
+        # google/osv-scanner-action is a reusable workflow, not a step action,
+        # so we install the binary directly. This is Google's documented alternative.
+        run: |
+          set -euo pipefail
+          OSV_VERSION=1.9.1
+          curl -sSL "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" -o /tmp/osv-scanner
+          chmod +x /tmp/osv-scanner
+          /tmp/osv-scanner --recursive --skip-git --lockfile=package-lock.json .

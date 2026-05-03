@@ -1,9 +1,11 @@
 name: ci-test
-# Phase 3: tsc build, vitest unit tests, cdk synth, cdk-nag.
+# Phase 3: tsc build + vitest unit tests across all workspaces.
+# cdk-synth + cdk-nag are added in Phase 4 once the stacks have real bodies.
 
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,11 +14,20 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - run: echo "Phase 3 — wire up npm ci, tsc, vitest."
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  cdk-synth:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - run: echo "Phase 3 — wire up cdk synth + cdk-nag against config.example.yaml."
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript build
+        run: npx tsc -b infra scripts --noEmit
+
+      - name: Unit tests (vitest)
+        run: npm test -- --reporter=verbose
