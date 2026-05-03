@@ -26,6 +26,7 @@ const region = process.env.AWS_REGION ?? 'us-west-2';
 const tableName = required('REGISTRY_TABLE_NAME');
 const podManagerFnName = required('POD_MANAGER_FN_NAME');
 const snsTopicArn = required('IDLE_TOPIC_ARN');
+const albNameDimension = required('ALB_NAME_DIMENSION');
 const idleMinutesDefault = Number(process.env.IDLE_MINUTES_DEFAULT ?? '60');
 
 const cw = new CloudWatchClient({ region });
@@ -67,23 +68,29 @@ async function browserIdleSince(
   targetGroupArn: string,
   minutes: number,
 ): Promise<boolean> {
-  // CloudWatch's TargetGroup dimension wants the trailing
-  // "targetgroup/<name>/<id>" segment of the ARN, not the full ARN.
-  const tgDimension = targetGroupArn.split(':resource/')[1] ?? targetGroupArn.split(':loadbalancer/')[0];
-  const dimensionValue = targetGroupArn.split('targetgroup/')[1]
+  // AWS/ApplicationELB metrics are stored under the (TargetGroup, LoadBalancer)
+  // dimension pair. Querying with TargetGroup alone returns 0 datapoints,
+  // which would be incorrectly interpreted as "no traffic = idle".
+  const tgDimension = targetGroupArn.split('targetgroup/')[1]
     ? `targetgroup/${targetGroupArn.split('targetgroup/')[1]}`
     : targetGroupArn;
-  void tgDimension;
   const r = await cw.send(new GetMetricStatisticsCommand({
     Namespace: 'AWS/ApplicationELB',
     MetricName: 'RequestCount',
-    Dimensions: [{ Name: 'TargetGroup', Value: dimensionValue }],
+    Dimensions: [
+      { Name: 'TargetGroup', Value: tgDimension },
+      { Name: 'LoadBalancer', Value: albNameDimension },
+    ],
     StartTime: new Date(Date.now() - minutes * 60_000),
     EndTime: new Date(),
     Period: minutes * 60,
     Statistics: ['Sum'],
   }));
-  const sum = r.Datapoints?.[0]?.Sum ?? 0;
+  const datapoints = r.Datapoints ?? [];
+  // Brand-new target groups may have no metrics yet — treat as "active"
+  // (assume not idle) to avoid false positives during the warmup window.
+  if (datapoints.length === 0) return false;
+  const sum = datapoints[0]?.Sum ?? 0;
   return sum === 0;
 }
 
