@@ -30,13 +30,18 @@ jobs:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
       - name: trivy filesystem (runtime/)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: runtime
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          ignore-unfixed: true
+        # aquasecurity/trivy-action@v0.36.0 pulls in aquasecurity/setup-trivy
+        # which isn't in this repo's Actions allowlist. Install the binary
+        # directly instead, matching the actionlint and osv-scanner pattern.
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION=0.58.1
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar xz -C /tmp trivy
+          /tmp/trivy fs runtime \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed
 
       - name: osv-scanner (install + run)
         # google/osv-scanner-action is a reusable workflow, not a step action,

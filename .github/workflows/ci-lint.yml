@@ -51,6 +51,9 @@ jobs:
           severity: warning
           scandir: "."
           format: gcc
+          # Exclude vendored shell scripts. npm ci runs above for markdownlint,
+          # so node_modules is on disk and would otherwise be scanned.
+          ignore_paths: node_modules cdk.out dist
 
       - name: lychee link-check
         uses: lycheeverse/lychee-action@v2
