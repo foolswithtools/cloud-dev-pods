@@ -58,6 +58,8 @@ jobs:
       - name: lychee link-check
         uses: lycheeverse/lychee-action@v2
         with:
+          # Curate the inputs explicitly — `./**/*.md` would pull in node_modules
+          # (which is on disk because npm ci ran above for markdownlint).
           args: >-
             --no-progress
             --max-retries 2
@@ -67,5 +69,9 @@ jobs:
             --exclude '^https://github.com/organizations/'
             --exclude 'localhost'
             --exclude '127\.0\.0\.1'
-            './**/*.md'
+            './*.md'
+            './docs/**/*.md'
+            './.github/**/*.md'
+            './examples/**/*.md'
+            './config/**/*.md'
           fail: true
