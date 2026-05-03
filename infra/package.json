@@ -1,0 +1,25 @@
+{
+  "name": "@cloud-dev-pods/infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK app for cloud-dev-pods.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "test": "vitest run"
+  },
+  "bin": {
+    "cloud-dev-pods": "bin/app.ts"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.165.0",
+    "cdk-nag": "^2.34.0",
+    "constructs": "^10.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.165.0",
+    "ts-node": "^10.9.0"
+  }
+}

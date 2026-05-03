@@ -1,0 +1,33 @@
+import { z } from 'zod';
+
+export const ConfigSchema = z.object({
+  project: z.object({
+    name: z.string().default('cloud-dev-pods'),
+    env: z.enum(['dev', 'prod']).default('dev'),
+  }),
+  aws: z.object({
+    accountId: z.string().regex(/^\d{12}$/),
+    region: z.string().default('us-west-2'),
+  }),
+  github: z.object({
+    org: z.string(),
+    repo: z.string(),
+    oauthAllowedOrg: z.string().optional(),
+  }),
+  domain: z.object({
+    strategy: z.enum(['byo', 'alb-default']).default('alb-default'),
+    baseDomain: z.string().optional(),
+    hostedZoneId: z.string().optional(),
+  }),
+  pods: z.object({
+    defaultCpu: z.number().int().default(1024),
+    defaultMemory: z.number().int().default(2048),
+    spotPercentage: z.number().int().min(0).max(100).default(100),
+    idleMinutes: z.number().int().default(60),
+  }),
+  naming: z.object({
+    prefix: z.string().default('CloudDevPods'),
+  }),
+});
+
+export type Config = z.infer<typeof ConfigSchema>;

@@ -1,0 +1,17 @@
+name: release
+# Phase 13: release-please in manifest mode -> tag + changelog + GitHub Release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    if: github.repository == 'foolswithtools/cloud-dev-pods'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Phase 13 — wire up googleapis/release-please-action."

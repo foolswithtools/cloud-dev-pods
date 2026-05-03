@@ -1,0 +1,27 @@
+name: sync-upstream
+# Phase 10: open a PR with upstream upgrades using the [tracked]/[merged]/[user] taxonomy.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Syncing upstream into fork ${{ github.repository }}."
+
+  sync:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - run: echo "Phase 10 — run scripts/sync-upstream.ts; open PR via peter-evans/create-pull-request."

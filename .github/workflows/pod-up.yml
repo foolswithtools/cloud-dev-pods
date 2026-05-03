@@ -1,0 +1,51 @@
+name: pod-up
+# Phase 9: spin up one pod via pod-manager Lambda. Surface URL + cost to step summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod_name:
+        description: "Pod name (DNS-safe, <= 30 chars)."
+        required: true
+        type: string
+      mode:
+        description: "Delivery mode."
+        required: true
+        default: "browser"
+        type: choice
+        options: ["browser", "tunnel"]
+      cpu:
+        description: "Fargate CPU units (256/512/1024/2048/4096)."
+        required: false
+        default: "1024"
+        type: string
+      memory:
+        description: "Fargate memory MB."
+        required: false
+        default: "2048"
+        type: string
+      idle_minutes:
+        description: "Auto-stop after this many idle minutes (0 to disable)."
+        required: false
+        default: "60"
+        type: string
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Spinning up pod in fork ${{ github.repository }}."
+
+  up:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — invoke pod-manager Lambda 'up'; poll CW Logs for tunnel device-code if tunnel mode."

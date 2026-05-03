@@ -1,0 +1,66 @@
+# File taxonomy consumed by scripts/sync-upstream.ts.
+#
+# - tracked: always overwritten from upstream; conflicts impossible.
+# - merged:  three-way merge against upstream; conflicts surfaced in PR body.
+# - user:    never touched; reserved for downstream-local customization.
+#
+# When you add a new top-level file or directory, classify it here.
+# See docs/adr/0006-tracked-merged-user-sync-taxonomy.md for rationale.
+
+[tracked]
+paths = [
+  "infra/lib/**",
+  "infra/bin/**",
+  "infra/cdk.json",
+  "infra/tsconfig.json",
+  "runtime/**",
+  "scripts/**",
+  ".github/workflows/ci-*.yml",
+  ".github/workflows/release.yml",
+  ".github/actions/**",
+  "CLAUDE.md",
+  "README.md",
+  "LICENSE",
+  "SECURITY.md",
+  "CONTRIBUTING.md",
+  "CODE_OF_CONDUCT.md",
+  "docs/**",
+  "examples/**",
+  "pricing/**",
+  "tsconfig.base.json",
+  "commitlint.config.cjs",
+  ".editorconfig",
+  ".nvmrc",
+  ".upstream-sync.toml",
+]
+
+[merged]
+paths = [
+  ".github/workflows/*pod*.yml",
+  ".github/workflows/cluster-*.yml",
+  ".github/workflows/bootstrap-aws.yml",
+  ".github/workflows/sync-upstream.yml",
+  ".github/workflows/build-runtime.yml",
+  ".github/dependabot.yml",
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  ".github/ISSUE_TEMPLATE/**",
+  "package.json",
+  "package-lock.json",
+  ".gitignore",
+  "release-please-config.json",
+  ".release-please-manifest.json",
+]
+
+[user]
+paths = [
+  "infra/config.local.ts",
+  "infra/extensions.local.ts",
+  "config/config.yaml",
+  "cdk.context.json",
+  "*.local.*",
+  ".env",
+  ".env.*",
+  ".envrc",
+  ".github/CODEOWNERS",
+  ".upstream-sync.state.local",
+]

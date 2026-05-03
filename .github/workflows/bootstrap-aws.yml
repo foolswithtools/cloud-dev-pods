@@ -1,0 +1,30 @@
+name: bootstrap-aws
+# Phase 9: one-time bootstrap of GitHub OIDC IdP + IAM roles in the user's AWS account.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_account_id:
+        description: "Type your 12-digit AWS account ID to confirm."
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Running bootstrap in fork ${{ github.repository }}."
+
+  bootstrap:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — cdk deploy BootstrapStack with one-time admin AWS creds, then delete them."

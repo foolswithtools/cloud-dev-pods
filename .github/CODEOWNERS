@@ -1,0 +1,10 @@
+# See https://docs.github.com/articles/about-codeowners
+# Phase 14: switch the placeholder owner below to `@foolswithtools/maintainers`
+# once an org owner creates the maintainers team.
+
+* @clostaunau
+
+.github/        @clostaunau
+infra/          @clostaunau
+runtime/        @clostaunau
+CLAUDE.md       @clostaunau

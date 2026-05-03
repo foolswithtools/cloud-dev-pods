@@ -1,0 +1,10 @@
+{
+  "_comment": "Phase 9 (pod-up cost output). Per-hour prices in USD for Fargate vCPU + memory in supported regions. Refreshed by maintainers via a separate workflow; not pulled live from the AWS Pricing API to avoid IAM scope creep.",
+  "us-west-2": {
+    "fargate": { "vcpu_per_hour": 0.04048, "gb_per_hour": 0.004445 },
+    "fargate_spot": { "vcpu_per_hour": 0.012144, "gb_per_hour": 0.0013335 },
+    "alb": { "per_hour": 0.0225 },
+    "nat_gateway": { "per_hour": 0.045 },
+    "efs_standard_per_gb_month": 0.30
+  }
+}

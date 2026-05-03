@@ -1,0 +1,30 @@
+name: Setup help
+description: Stuck during initial setup or upstream sync? Ask here.
+labels: ["question", "setup"]
+body:
+  - type: textarea
+    id: where-stuck
+    attributes:
+      label: Where are you stuck?
+      description: Which step in `docs/quickstart.md` or which workflow run is failing?
+    validations:
+      required: true
+  - type: textarea
+    id: what-tried
+    attributes:
+      label: What have you tried?
+      description: Commands, config tweaks, doc sections you consulted.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        - `gh --version`
+        - `aws --version`
+        - `node --version`
+        - AWS region
+        - Domain strategy (BYO / ALB default)
+    validations:
+      required: true

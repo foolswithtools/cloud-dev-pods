@@ -1,0 +1,18 @@
+name: ci-security
+# Phase 3: gitleaks, trivy fs scan on runtime/, osv-scanner.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 12 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - run: echo "Phase 3 — wire up gitleaks, trivy, osv-scanner."

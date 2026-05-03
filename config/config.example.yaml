@@ -1,0 +1,35 @@
+# Phase 4: copy to config/config.yaml (gitignored) and customize.
+# Validated by infra/lib/config/schema.ts (Zod).
+# Local secrets (GitHub OAuth client secret, cookie secret) are injected via
+# AWS Secrets Manager, not this file.
+
+project:
+  name: cloud-dev-pods
+  env: dev
+
+aws:
+  accountId: "123456789012"
+  region: us-west-2
+
+github:
+  org: foolswithtools
+  repo: cloud-dev-pods
+  # GitHub org login that oauth2-proxy will allow into pod URLs.
+  # Leave empty to allow only the single GitHub user matching OAUTH2_PROXY_GITHUB_USER.
+  oauthAllowedOrg: foolswithtools
+
+domain:
+  # "byo": bring your own Route53 hosted zone (recommended).
+  # "alb-default": use ALB DNS + self-signed cert (non-prod).
+  strategy: byo
+  baseDomain: pods.example.com
+  hostedZoneId: ZXXXXXXXXXXXXX
+
+pods:
+  defaultCpu: 1024
+  defaultMemory: 2048
+  spotPercentage: 100
+  idleMinutes: 60
+
+naming:
+  prefix: CloudDevPods

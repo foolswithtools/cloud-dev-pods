@@ -1,0 +1,16 @@
+name: ci-lint
+# Phase 3: actionlint, markdownlint, eslint, shellcheck, lychee link-check.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - run: echo "Phase 3 — wire up actionlint, markdownlint, eslint, shellcheck, lychee."

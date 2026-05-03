@@ -1,0 +1,35 @@
+name: cluster-down
+# Phase 9: cdk destroy --all after typed confirmation. Pre-flight refuses if pods running unless force=true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm.'
+        required: true
+        type: string
+      force:
+        description: "Stop running pods before destroying."
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods' && inputs.confirm == 'destroy'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Tearing down cluster in fork ${{ github.repository }}."
+
+  destroy:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — pre-flight pod-list, then cdk destroy --all."

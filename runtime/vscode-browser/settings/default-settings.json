@@ -1,0 +1,6 @@
+{
+  "telemetry.telemetryLevel": "off",
+  "files.autoSave": "afterDelay",
+  "editor.formatOnSave": true,
+  "terminal.integrated.defaultProfile.linux": "bash"
+}

@@ -1,0 +1,28 @@
+name: smoke-test
+# Phase 15: end-to-end test if a sandbox AWS account is configured. Disabled by default.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    # Two conditions must be true:
+    # 1) we're on the upstream repo (this is a maintainer workflow), AND
+    # 2) the sandbox is explicitly enabled via repo variable SANDBOX_ENABLED=true.
+    if: github.repository == 'foolswithtools/cloud-dev-pods' && vars.SANDBOX_ENABLED == 'true'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Sandbox enabled; proceeding with end-to-end smoke test."
+
+  smoke:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 15 — bootstrap -> cluster-up -> pod-up -> pod-down -> cluster-down against sandbox account."

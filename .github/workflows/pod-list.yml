@@ -1,0 +1,25 @@
+name: pod-list
+# Phase 9: list running pods + URLs + uptime + accumulated cost.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Listing pods in fork ${{ github.repository }}."
+
+  list:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — invoke pod-manager Lambda 'list'; emit table to step summary."

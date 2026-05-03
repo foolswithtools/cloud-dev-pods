@@ -1,0 +1,36 @@
+name: build-runtime
+# Phase 5: build + scan + push runtime images (vscode-browser, vscode-tunnel) to user's ECR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Which image to build"
+        required: false
+        default: "all"
+        type: choice
+        options: ["all", "vscode-browser", "vscode-tunnel"]
+  push:
+    branches: [main]
+    paths:
+      - "runtime/**"
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Running in fork ${{ github.repository }}."
+
+  build:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 5 — docker build + trivy scan + push to ECR via OIDC."

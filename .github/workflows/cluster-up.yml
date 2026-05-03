@@ -1,0 +1,25 @@
+name: cluster-up
+# Phase 9: cdk deploy --all (Network + Cluster + PodTaskFamily + PodManager + IdleReaper).
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Provisioning cluster in fork ${{ github.repository }}."
+
+  deploy:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — cdk deploy --all."

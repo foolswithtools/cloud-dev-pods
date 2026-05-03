@@ -1,0 +1,30 @@
+name: pod-down
+# Phase 9: stop one pod via pod-manager Lambda. EFS access point retained by default.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod_name:
+        description: "Pod name to stop."
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.repository != 'foolswithtools/cloud-dev-pods'
+    permissions:
+      contents: read
+    steps:
+      - run: echo "Stopping pod in fork ${{ github.repository }}."
+
+  down:
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo "Phase 9 — invoke pod-manager Lambda 'down'."
