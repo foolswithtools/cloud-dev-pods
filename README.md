@@ -1,5 +1,9 @@
 # cloud-dev-pods
 
+[![ci-lint](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-lint.yml/badge.svg?branch=main)](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-lint.yml)
+[![ci-test](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-test.yml/badge.svg?branch=main)](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-test.yml)
+[![ci-security](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-security.yml/badge.svg?branch=main)](https://github.com/foolswithtools/cloud-dev-pods/actions/workflows/ci-security.yml)
+
 Provision ECS-based VS Code dev pods in your own AWS account.
 
 A template repo: clone or "Use this template" to your own GitHub account or org, run a few GitHub Actions workflows, and you have an on-demand fleet of containerized VS Code dev environments — each with its own URL, GitHub-OAuth-protected, with persistent EFS-backed storage. Tear it all down with one workflow when you're not using it; pay only for what's running.

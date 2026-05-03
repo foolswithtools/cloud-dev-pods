@@ -22,21 +22,29 @@ jobs:
           # gitleaks needs full history to scan all commits, not just the PR diff.
           fetch-depth: 0
 
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          # Public repos under orgs do not require GITLEAKS_LICENSE.
-          # https://github.com/gitleaks/gitleaks-action#-pricing
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      - name: gitleaks (binary)
+        # gitleaks-action now requires GITLEAKS_LICENSE for any org-owned repo
+        # regardless of public/private. Install the open-source CLI directly.
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar xz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --no-banner --redact --verbose --exit-code 1
 
       - name: trivy filesystem (runtime/)
-        uses: aquasecurity/trivy-action@0.27.0
-        with:
-          scan-type: fs
-          scan-ref: runtime
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          ignore-unfixed: true
+        # aquasecurity/trivy-action@v0.36.0 pulls in aquasecurity/setup-trivy
+        # which isn't in this repo's Actions allowlist. Install the binary
+        # directly instead, matching the actionlint and osv-scanner pattern.
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION=0.70.0
+          curl -sSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar xz -C /tmp trivy
+          /tmp/trivy fs runtime \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed
 
       - name: osv-scanner (install + run)
         # google/osv-scanner-action is a reusable workflow, not a step action,
@@ -46,4 +54,4 @@ jobs:
           OSV_VERSION=1.9.1
           curl -sSL "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" -o /tmp/osv-scanner
           chmod +x /tmp/osv-scanner
-          /tmp/osv-scanner --recursive --skip-git --lockfile=package-lock.json .
+          /tmp/osv-scanner --config=osv-scanner.toml --recursive --skip-git --lockfile=package-lock.json .

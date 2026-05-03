@@ -27,7 +27,14 @@ jobs:
         run: npm ci
 
       - name: actionlint (validate workflow YAML)
-        uses: rhysd/actionlint@v1
+        # The rhysd/actionlint repo doesn't publish a `v1` major-version alias;
+        # install the binary instead.
+        run: |
+          set -euo pipefail
+          AL_VERSION=1.7.12
+          curl -sSL "https://github.com/rhysd/actionlint/releases/download/v${AL_VERSION}/actionlint_${AL_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp actionlint
+          /tmp/actionlint -color
 
       - name: markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v17
@@ -44,10 +51,15 @@ jobs:
           severity: warning
           scandir: "."
           format: gcc
+          # Exclude vendored shell scripts. npm ci runs above for markdownlint,
+          # so node_modules is on disk and would otherwise be scanned.
+          ignore_paths: node_modules cdk.out dist
 
       - name: lychee link-check
         uses: lycheeverse/lychee-action@v2
         with:
+          # Curate the inputs explicitly — `./**/*.md` would pull in node_modules
+          # (which is on disk because npm ci ran above for markdownlint).
           args: >-
             --no-progress
             --max-retries 2
@@ -57,5 +69,9 @@ jobs:
             --exclude '^https://github.com/organizations/'
             --exclude 'localhost'
             --exclude '127\.0\.0\.1'
-            './**/*.md'
+            './*.md'
+            './docs/**/*.md'
+            './.github/**/*.md'
+            './examples/**/*.md'
+            './config/**/*.md'
           fail: true
