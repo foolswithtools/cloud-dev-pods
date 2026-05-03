@@ -199,6 +199,11 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         { name: 'OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER', value: 'true' },
         { name: 'OAUTH2_PROXY_COOKIE_SECURE', value: env.albListenerProtocol === 'HTTPS' ? 'true' : 'false' },
         { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' },
+        // Auth allowlists: org takes precedence if set; user list applies on
+        // top. If both empty, oauth2-proxy will accept any GitHub user (which
+        // is why we error out below if neither is configured).
+        ...(env.oauthAllowedOrg ? [{ name: 'OAUTH2_PROXY_GITHUB_ORG', value: env.oauthAllowedOrg }] : []),
+        ...(env.oauthAllowedUsers ? [{ name: 'OAUTH2_PROXY_GITHUB_USER', value: env.oauthAllowedUsers }] : []),
       ],
       secrets: [
         {
