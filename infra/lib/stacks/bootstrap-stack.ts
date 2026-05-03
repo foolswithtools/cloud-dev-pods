@@ -1,6 +1,7 @@
 import { RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { NagSuppressions } from 'cdk-nag';
 import type { Construct } from 'constructs';
@@ -182,7 +183,53 @@ export class BootstrapStack extends Stack {
       lifecycleRules: [{ maxImageCount: 10, description: 'Keep last 10 images' }],
     });
 
-    // 6. SSM outputs (avoid CFN cross-stack exports — see ADR 0006).
+    // 6. OAuth secrets, pre-created with placeholders.
+    // - client-id and client-secret: filled in by `init-clone.ts` (Phase 12) or
+    //   `aws secretsmanager update-secret` once the user creates a GitHub OAuth App.
+    // - cookie-secret: CDK auto-generates a 44-char random value; the user
+    //   never needs to view or rotate it (oauth2-proxy reads it at task start).
+    const oauthClientIdSecret = new secretsmanager.Secret(this, 'OAuthClientIdSecret', {
+      secretName: '/cloud-dev-pods/oauth/client-id',
+      description: 'GitHub OAuth App Client ID. Update via `aws secretsmanager update-secret`.',
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+    const oauthClientSecret = new secretsmanager.Secret(this, 'OAuthClientSecret', {
+      secretName: '/cloud-dev-pods/oauth/client-secret',
+      description: 'GitHub OAuth App Client Secret. Update via `aws secretsmanager update-secret`.',
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+    const oauthCookieSecret = new secretsmanager.Secret(this, 'OAuthCookieSecret', {
+      secretName: '/cloud-dev-pods/oauth/cookie-secret',
+      description: 'oauth2-proxy cookie encryption secret. Auto-generated; rotate via update-secret.',
+      generateSecretString: {
+        passwordLength: 44,
+        excludeCharacters: '/@" \\',
+      },
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    NagSuppressions.addResourceSuppressions(
+      [oauthClientIdSecret, oauthClientSecret],
+      [
+        {
+          id: 'AwsSolutions-SMG4',
+          reason:
+            'Automatic rotation does not apply: these are GitHub OAuth App credentials managed in github.com, not a database password AWS can rotate. Manual rotation via `aws secretsmanager update-secret` after rotating in GitHub.',
+        },
+      ],
+    );
+    NagSuppressions.addResourceSuppressions(
+      oauthCookieSecret,
+      [
+        {
+          id: 'AwsSolutions-SMG4',
+          reason:
+            'oauth2-proxy reads the cookie secret at task start to encrypt session cookies. Rotation invalidates active sessions; not appropriate for automatic schedule. Operators rotate manually if needed via `aws secretsmanager update-secret` followed by `pod-down` of all pods.',
+        },
+      ],
+    );
+
+    // 7. SSM outputs (avoid CFN cross-stack exports — see ADR 0006).
     new ssm.StringParameter(this, 'DeployerRoleArnParam', {
       parameterName: ssmParamPath(config, 'bootstrap/deployer-role-arn'),
       stringValue: this.deployerRole.roleArn,
@@ -200,7 +247,7 @@ export class BootstrapStack extends Stack {
       stringValue: this.tunnelRepo.repositoryUri,
     });
 
-    // 7. cdk-nag suppressions, each with a justification.
+    // 8. cdk-nag suppressions, each with a justification.
     NagSuppressions.addResourceSuppressions(
       this.deployerRole,
       [
