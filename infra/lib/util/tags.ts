@@ -1,4 +1,5 @@
-import { Tags, type IConstruct } from 'aws-cdk-lib';
+import { Tags } from 'aws-cdk-lib';
+import type { IConstruct } from 'constructs';
 import type { Config } from '../config/schema.js';
 
 export function applyProjectTags(scope: IConstruct, config: Config): void {
