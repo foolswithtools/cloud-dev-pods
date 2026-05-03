@@ -42,8 +42,8 @@ const podManager = new PodManagerStack(app, `${prefix}-PodManager`, {
   env, config, network, cluster, taskFamily,
 });
 
-// Phase 8 (stub): Idle reaper.
-new IdleReaperStack(app, `${prefix}-IdleReaper`, { env, config, podManager });
+// Phase 8: Idle reaper.
+new IdleReaperStack(app, `${prefix}-IdleReaper`, { env, config, cluster, podManager });
 
 applyProjectTags(app, config);
 Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));

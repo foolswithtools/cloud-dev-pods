@@ -13,11 +13,14 @@
     "cloud-dev-pods": "bin/app.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.670.0",
     "@aws-sdk/client-dynamodb": "^3.670.0",
     "@aws-sdk/client-ecr": "^3.670.0",
     "@aws-sdk/client-ecs": "^3.670.0",
     "@aws-sdk/client-efs": "^3.670.0",
     "@aws-sdk/client-elastic-load-balancing-v2": "^3.670.0",
+    "@aws-sdk/client-lambda": "^3.670.0",
+    "@aws-sdk/client-sns": "^3.670.0",
     "@aws-sdk/lib-dynamodb": "^3.670.0",
     "aws-cdk-lib": "^2.165.0",
     "cdk-nag": "^2.34.0",
