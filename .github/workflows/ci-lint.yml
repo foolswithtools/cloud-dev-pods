@@ -27,7 +27,14 @@ jobs:
         run: npm ci
 
       - name: actionlint (validate workflow YAML)
-        uses: rhysd/actionlint@v1
+        # The rhysd/actionlint repo doesn't publish a `v1` major-version alias;
+        # install the binary instead.
+        run: |
+          set -euo pipefail
+          AL_VERSION=1.7.12
+          curl -sSL "https://github.com/rhysd/actionlint/releases/download/v${AL_VERSION}/actionlint_${AL_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp actionlint
+          /tmp/actionlint -color
 
       - name: markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v17
