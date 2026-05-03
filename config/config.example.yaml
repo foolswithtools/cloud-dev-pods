@@ -21,9 +21,17 @@ github:
 domain:
   # "byo": bring your own Route53 hosted zone (recommended).
   # "alb-default": use ALB DNS + self-signed cert (non-prod).
-  strategy: byo
+  strategy: alb-default
   baseDomain: pods.example.com
-  hostedZoneId: ZXXXXXXXXXXXXX
+  hostedZoneId: ZEXAMPLEZONEID
+
+network:
+  vpcCidr: "10.0.0.0/16"
+  # 1 NAT (cheaper, single point of failure) or 2 NAT (HA, double cost).
+  natGateways: 1
+  # Set to true to add ECR / Secrets / Logs interface endpoints (saves NAT
+  # data-transfer charges; adds ~$22/mo per endpoint per AZ).
+  useVpcEndpoints: false
 
 pods:
   defaultCpu: 1024

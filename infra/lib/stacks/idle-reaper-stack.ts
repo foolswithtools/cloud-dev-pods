@@ -1,7 +1,7 @@
 import { Stack, type StackProps } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
-import type { Config } from '../config/schema.js';
-import type { PodManagerStack } from './pod-manager-stack.js';
+import type { Config } from '../config/schema';
+import type { PodManagerStack } from './pod-manager-stack';
 
 export interface IdleReaperStackProps extends StackProps {
   config: Config;

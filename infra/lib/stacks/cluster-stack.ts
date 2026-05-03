@@ -1,7 +1,7 @@
 import { Stack, type StackProps } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
-import type { Config } from '../config/schema.js';
-import type { NetworkStack } from './network-stack.js';
+import type { Config } from '../config/schema';
+import type { NetworkStack } from './network-stack';
 
 export interface ClusterStackProps extends StackProps {
   config: Config;

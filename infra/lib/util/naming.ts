@@ -1,4 +1,4 @@
-import type { Config } from '../config/schema.js';
+import type { Config } from '../config/schema';
 
 export function resourceName(config: Config, ...parts: string[]): string {
   return [config.naming.prefix, ...parts].join('-');
