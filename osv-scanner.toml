@@ -1,0 +1,23 @@
+# Ignored advisories for osv-scanner.
+# Each entry must be temporary, justified, and have an `ignoreUntil` date.
+# When the date passes the entry is enforced again, prompting a re-evaluation.
+# See https://google.github.io/osv-scanner/configuration/
+
+[[IgnoredVulns]]
+id = "GHSA-67mh-4wv8-2f99"
+ignoreUntil = 2026-12-31
+reason = """
+Dev-only: esbuild's bundled dev server allows any website to send requests and
+read responses. We never run `esbuild --serve`; esbuild is pulled in transitively
+through vitest -> vite for the unit-test build. Production runtime images do not
+contain esbuild. Tracked by Dependabot's "dev" group; expected to clear on the
+next vitest/vite bump.
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-4w7w-66w2-5vf9"
+ignoreUntil = 2026-12-31
+reason = """
+Dev-only: vite advisory rooted in the same esbuild dev-server issue. Vite is
+pulled in only via vitest. Same Dependabot group will clear it.
+"""
