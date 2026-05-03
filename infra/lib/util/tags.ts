@@ -1,6 +1,6 @@
 import { Tags } from 'aws-cdk-lib';
 import type { IConstruct } from 'constructs';
-import type { Config } from '../config/schema.js';
+import type { Config } from '../config/schema';
 
 export function applyProjectTags(scope: IConstruct, config: Config): void {
   Tags.of(scope).add('Project', config.project.name);

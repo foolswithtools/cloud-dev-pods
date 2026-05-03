@@ -1,9 +1,12 @@
 name: ci-test
-# Phase 3: tsc build + vitest unit tests across all workspaces.
-# cdk-synth + cdk-nag are added in Phase 4 once the stacks have real bodies.
+# Phase 3 + 4: tsc build + vitest unit tests + cdk synth + cdk-nag aspect.
+# cdk-nag emits findings as synth-time warnings; explicit suppressions live
+# in each stack with justification.
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -31,3 +34,31 @@ jobs:
 
       - name: Unit tests (vitest)
         run: npm test -- --reporter=verbose
+
+  cdk-synth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: cdk synth
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.example.yaml
+        run: npm run synth
+
+      - name: Upload synthesized templates
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-out
+          path: infra/cdk.out
+          retention-days: 7

@@ -1,8 +1,8 @@
 import { Stack, type StackProps } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
-import type { Config } from '../config/schema.js';
-import type { ClusterStack } from './cluster-stack.js';
-import type { PodTaskFamilyStack } from './pod-task-family-stack.js';
+import type { Config } from '../config/schema';
+import type { ClusterStack } from './cluster-stack';
+import type { PodTaskFamilyStack } from './pod-task-family-stack';
 
 export interface PodManagerStackProps extends StackProps {
   config: Config;
