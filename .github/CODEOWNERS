@@ -1,10 +1,20 @@
 # See https://docs.github.com/articles/about-codeowners
-# Phase 14: switch the placeholder owner below to `@foolswithtools/maintainers`
-# once an org owner creates the maintainers team.
+#
+# When the @foolswithtools/maintainers team exists (org-owner action — see
+# docs/maintainer-runbook.md), swap individual handles for the team. The
+# team is a single source of truth: adding/removing maintainers updates
+# review-required ownership without touching this file.
 
-* @clostaunau
+# Default owner for every file.
+*                    @clostaunau
 
-.github/        @clostaunau
-infra/          @clostaunau
-runtime/        @clostaunau
-CLAUDE.md       @clostaunau
+# Highest-stakes paths get the same review (kept explicit for clarity).
+/.github/            @clostaunau
+/infra/              @clostaunau
+/runtime/            @clostaunau
+/scripts/            @clostaunau
+
+# Documentation that's the contract with downstream forks and LLM agents.
+/CLAUDE.md           @clostaunau
+/docs/adr/           @clostaunau
+/.upstream-sync.toml @clostaunau

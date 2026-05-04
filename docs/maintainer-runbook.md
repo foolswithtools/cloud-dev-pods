@@ -4,11 +4,46 @@ For the foolswithtools maintainers.
 
 ## Re-applying repo settings
 
+The script idempotently asserts every `gh repo edit` flag, security toggle, Actions allowlist, workflow permissions, and (gated) branch + tag protection ruleset. Run as a repo admin (member of `foolswithtools` with admin role) after any drift, ownership transfer, or new GitHub toggle.
+
 ```bash
+# Defaults: applies everything except branch protection (gated; see below).
 scripts/maintainer/apply-repo-settings.sh
+
+# Activate branch + tag protection (do this once you're ready for PRs to require approval).
+APPLY_BRANCH_PROTECTION=yes scripts/maintainer/apply-repo-settings.sh
 ```
 
-Idempotent. Re-asserts every `gh repo edit` flag, security toggle, Actions allowlist, and (Phase 14) branch protection ruleset. Run after any upstream rename, ownership transfer, or when GitHub adds new toggles.
+### What the script enforces
+
+- `gh repo edit` flags: template flag on, discussions on, squash-merge only, delete branch on merge.
+- `security_and_analysis`: secret scanning + push protection + validity checks + non-provider patterns + Dependabot security updates, all enabled.
+- Private vulnerability reporting: enabled.
+- Code scanning default setup: configured with the extended query suite (skipped if GHAS isn't available).
+- Actions: selected allowlist only (the patterns in `scripts/maintainer/apply-repo-settings.sh`).
+- Workflow permissions: default `read`, `can_approve_pull_request_reviews: true` (release-please needs this).
+- Main branch ruleset (gated): 1 approving review + dismiss stale + CODEOWNERS + last-push approval + linear history + 4 required checks (`lint`, `build-and-test`, `cdk-synth`, `scan`) + no force pushes / deletions.
+- Tag ruleset (gated): `v*.*.*` tags can't be force-pushed or deleted.
+
+### Activation order
+
+1. Land Phase 14 PR (this).
+2. Run `scripts/maintainer/apply-repo-settings.sh` once **without** `APPLY_BRANCH_PROTECTION=yes` — re-asserts everything else.
+3. Wait until at least Phase 15 has merged so all the workflow status check names are stable.
+4. Then run `APPLY_BRANCH_PROTECTION=yes scripts/maintainer/apply-repo-settings.sh` to activate the rulesets.
+
+After step 4, every PR needs:
+
+- a passing `lint` + `build-and-test` + `cdk-synth` + `scan` check
+- one approval from a CODEOWNER (currently `@clostaunau`)
+- linear history (rebase or squash, no merge commits)
+
+### One-time org settings (org-owner only)
+
+A few settings can't be set at repo level. The org owner needs to:
+
+1. Create the `@foolswithtools/maintainers` team and add both maintainers. Then update `.github/CODEOWNERS` to use `@foolswithtools/maintainers` instead of individual handles.
+2. Enable "Allow GitHub Actions to create and approve pull requests" at <https://github.com/organizations/foolswithtools/settings/actions> (release-please needs this — see "Cutting a release" below).
 
 ## Cutting a release
 
