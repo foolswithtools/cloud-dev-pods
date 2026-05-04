@@ -13,7 +13,7 @@ which aws gh git npx                  # All present.
 
 If anything is missing:
 
-- `gh`: <https://cli.github.com/manual/installation>
+- `gh`: <https://github.com/cli/cli#installation>
 - `aws`: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
 - Node 20: install via [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm).
 
