@@ -1,5 +1,18 @@
 name: release
-# Phase 13: release-please in manifest mode -> tag + changelog + GitHub Release.
+# Phase 13: release-please in manifest mode.
+#
+# release-please reads Conventional Commits since the last tag and opens a
+# "chore(main): release vX.Y.Z" PR that bumps `package.json` + writes
+# `CHANGELOG.md`. Merging the release PR creates a git tag and a GitHub
+# Release with the changelog excerpt as the release notes.
+#
+# downstream-sync (Phase 10) consumes the version bumps for its
+# patch/minor/major categorization in sync-upstream PRs.
+#
+# Limitation: PRs opened by GITHUB_TOKEN don't trigger workflow runs (a
+# GitHub safety measure). The release PR's CI shows "expected" until you
+# `git commit --allow-empty` or `gh pr edit --add-label ci-rerun` on it.
+# A follow-up could swap to a PAT with `workflow` scope; not needed for v1.
 
 on:
   push:
@@ -11,7 +24,12 @@ permissions:
 
 jobs:
   release-please:
-    if: github.repository == 'foolswithtools/cloud-dev-pods'
     runs-on: ubuntu-latest
+    if: github.repository == 'foolswithtools/cloud-dev-pods'
     steps:
-      - run: echo "Phase 13 — wire up googleapis/release-please-action."
+      - name: Run release-please
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
