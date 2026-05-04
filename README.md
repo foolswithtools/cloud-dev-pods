@@ -64,9 +64,19 @@ Opens a PR with upstream upgrades. Local-only files (`infra/config.local.ts`, `i
 
 ## Status
 
-Beta. End-to-end validated against a real AWS account. All ten architecture phases (Bootstrap → Network → Cluster → PodTaskFamily → PodManager → IdleReaper IaC + runtime images + provisioning workflows + upstream-sync) are functional. Bug fixes from the first real-world smoke test are in main (see commit log for `9.5b`, `9.6`, `9.7`, `9.8` PRs).
+**Beta — all 15 implementation phases complete.** End-to-end validated against a real AWS account. The platform is ready for real use; v0.1.0 release is queued (pending one org-owner action — see [`docs/maintainer-runbook.md`](docs/maintainer-runbook.md)).
 
-Remaining work: governance (Phase 14), `init-clone.ts` interactive setup (Phase 12), release automation (Phase 13). None block real use.
+What's built:
+
+- Six functional CDK stacks (Bootstrap → Network → Cluster → PodTaskFamily → PodManager → IdleReaper)
+- Two runtime container images (browser + tunnel) with apt-upgrade for OS CVEs and Trivy scanning
+- Thirteen GitHub Actions workflows: maintainer CI (lint, test, security, runtime, release), provisioning (bootstrap, build-runtime, cluster-up/down, pod-up/down/list), upstream-sync, and a gated end-to-end smoke-test
+- Interactive `npm run init` (`scripts/init-clone.ts`) for first-time fork setup
+- Three-way upstream-sync algorithm (`scripts/sync-upstream.ts`) with `[tracked]/[merged]/[user]` taxonomy
+- Idempotent `scripts/maintainer/apply-repo-settings.sh` for governance + branch protection
+- Comprehensive docs (CLAUDE.md, quickstart, setup-cli, troubleshooting, architecture, ADRs ×6)
+
+Open polish items (none blocking): see `docs/maintainer-runbook.md` for the org-owner activation steps and the few remaining tightening tasks (DeployerRole inline policy, EFS access-point reuse on re-up, multi-pod OAuth design).
 
 ## License
 
