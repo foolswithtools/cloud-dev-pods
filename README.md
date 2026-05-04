@@ -64,7 +64,9 @@ Opens a PR with upstream upgrades. Local-only files (`infra/config.local.ts`, `i
 
 ## Status
 
-Pre-alpha. Skeleton committed; Phase 3+ implementation in progress. See [`docs/`](docs/) for the planned architecture; see actual code under `infra/`, `runtime/`, `scripts/`, `.github/workflows/` for what's wired up.
+Beta. End-to-end validated against a real AWS account. All ten architecture phases (Bootstrap → Network → Cluster → PodTaskFamily → PodManager → IdleReaper IaC + runtime images + provisioning workflows + upstream-sync) are functional. Bug fixes from the first real-world smoke test are in main (see commit log for `9.5b`, `9.6`, `9.7`, `9.8` PRs).
+
+Remaining work: governance (Phase 14), `init-clone.ts` interactive setup (Phase 12), release automation (Phase 13). None block real use.
 
 ## License
 
