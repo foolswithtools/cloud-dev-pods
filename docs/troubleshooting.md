@@ -117,6 +117,21 @@ To temporarily disable idle-reap on a specific pod (e.g., for long builds):
 gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=0
 ```
 
+## `cluster-up` fails with "log group already exists" or "Table already exists"
+
+**Cause:** an older deployment had `RemovalPolicy.RETAIN` on the VPC flow-logs CW log group (`/cloud-dev-pods/<env>/vpc-flow-logs`) or the DynamoDB `cloud-dev-pods-registry` table, so `cluster-down` left them behind. The next `cluster-up` then fails because CFN refuses to create a resource whose name is already taken.
+
+**Fix:** the policy is now `DESTROY` upstream, but a stack deployed before the fix still has RETAIN baked into its CloudFormation template — you have to either redeploy the stack on the fix once before tearing down, or delete the orphans manually:
+
+```bash
+aws logs delete-log-group --log-group-name /cloud-dev-pods/<env>/vpc-flow-logs
+aws dynamodb delete-table --table-name cloud-dev-pods-registry
+# Wait for the table to fully delete before re-running cluster-up:
+aws dynamodb wait table-not-exists --table-name cloud-dev-pods-registry
+```
+
+Then re-run `cluster-up.yml`.
+
 ## ALB rule limit exceeded (after ~95 browser pods)
 
 **Cause:** AWS ALB has a hard default of 100 listener rules. With one rule per browser pod (host-header routing), you've hit the cap.
