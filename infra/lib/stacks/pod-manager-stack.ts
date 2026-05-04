@@ -41,7 +41,10 @@ export class PodManagerStack extends Stack {
       partitionKey: { name: 'podName', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
-      removalPolicy: RemovalPolicy.RETAIN,
+      // DESTROY: cluster-down's pre-flight refuses to run while pods exist, so
+      // the table is empty by the time the stack tears down. Keeping it RETAIN
+      // would block re-creating the cluster (table name collides on cluster-up).
+      removalPolicy: RemovalPolicy.DESTROY,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 

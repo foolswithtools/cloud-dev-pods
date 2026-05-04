@@ -1,4 +1,4 @@
-import { Stack, type StackProps } from 'aws-cdk-lib';
+import { RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -30,9 +30,11 @@ export class NetworkStack extends Stack {
     const { config } = props;
 
     // Flow logs go to a dedicated CW log group; REJECT-only to keep volume low.
+    // DESTROY so cluster-down → cluster-up cycles don't fail on a stale group.
     const flowLogGroup = new logs.LogGroup(this, 'FlowLogs', {
       logGroupName: `/cloud-dev-pods/${config.project.env}/vpc-flow-logs`,
       retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     this.vpc = new ec2.Vpc(this, 'Vpc', {
