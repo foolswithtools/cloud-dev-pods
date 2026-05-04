@@ -1,28 +1,172 @@
 name: smoke-test
-# Phase 15: end-to-end test if a sandbox AWS account is configured. Disabled by default.
+# End-to-end test against a sandbox AWS account.
+#
+# Triple-gated: only runs on the upstream foolswithtools/cloud-dev-pods repo
+# AND with vars.SANDBOX_ENABLED == 'true' AND via manual workflow_dispatch.
+# Real AWS deploy + ~$0.50 per run; never fires automatically.
+#
+# Prereqs (out of band, set up once per sandbox AWS account):
+#   1. Bootstrap-aws.yml has run against the sandbox account, producing
+#      CloudDevPodsDeployerRole + CloudDevPodsPodOpsRole.
+#   2. Repo Variables: SANDBOX_ENABLED=true, SANDBOX_AWS_ACCOUNT_ID,
+#      SANDBOX_AWS_REGION, SANDBOX_AWS_DEPLOYER_ROLE_ARN,
+#      SANDBOX_AWS_POD_OPS_ROLE_ARN.
+#   3. Sandbox config committed at config/config.smoke.yaml (sandbox account,
+#      sandbox region, alb-default for tunnel-only mode).
+#   4. Trust policy on the sandbox roles allows this workflow's OIDC sub
+#      claim (`repo:foolswithtools/cloud-dev-pods:ref:refs/heads/main`
+#      and `:environment:smoke-sandbox`).
 
 on:
   workflow_dispatch:
+    inputs:
+      cleanup:
+        description: "Tear down the cluster after smoke test."
+        required: false
+        default: true
+        type: boolean
 
 permissions: {}
 
 jobs:
   guard:
     runs-on: ubuntu-latest
-    # Two conditions must be true:
-    # 1) we're on the upstream repo (this is a maintainer workflow), AND
-    # 2) the sandbox is explicitly enabled via repo variable SANDBOX_ENABLED=true.
     if: github.repository == 'foolswithtools/cloud-dev-pods' && vars.SANDBOX_ENABLED == 'true'
     permissions:
       contents: read
     steps:
-      - run: echo "Sandbox enabled; proceeding with end-to-end smoke test."
+      - run: |
+          echo "Sandbox account: ${{ vars.SANDBOX_AWS_ACCOUNT_ID }}"
+          echo "Sandbox region: ${{ vars.SANDBOX_AWS_REGION }}"
 
-  smoke:
+  cluster-up:
     needs: guard
     runs-on: ubuntu-latest
+    environment: smoke-sandbox
     permissions:
       id-token: write
       contents: read
     steps:
-      - run: echo "Phase 15 — bootstrap -> cluster-up -> pod-up -> pod-down -> cluster-down against sandbox account."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC (sandbox deployer)
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.SANDBOX_AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ vars.SANDBOX_AWS_REGION }}
+
+      - name: cdk deploy --all
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
+          CDK_DEFAULT_ACCOUNT: ${{ vars.SANDBOX_AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: |
+          npx cdk deploy --all --require-approval never --concurrency 4 \
+            --exclude CloudDevPods-Bootstrap
+
+  pod-cycle:
+    needs: cluster-up
+    runs-on: ubuntu-latest
+    environment: smoke-sandbox
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC (sandbox pod-ops)
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.SANDBOX_AWS_POD_OPS_ROLE_ARN }}
+          aws-region: ${{ vars.SANDBOX_AWS_REGION }}
+
+      - name: pod-up tunnel
+        env:
+          AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: |
+          set -euo pipefail
+          RESULT=$(npx tsx scripts/pod-cli.ts up --pod smoke-tunnel --mode tunnel --idle 0)
+          echo "$RESULT"
+          OK=$(echo "$RESULT" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "::error::pod-up failed"
+            exit 1
+          fi
+
+      - name: pod-list
+        env:
+          AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: npx tsx scripts/pod-cli.ts list
+
+      - name: pod-down (always, even on prior failure)
+        if: always()
+        env:
+          AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: |
+          set +e
+          npx tsx scripts/pod-cli.ts down --pod smoke-tunnel
+          # Don't fail the job on cleanup failure; it's best-effort.
+          exit 0
+
+  cluster-down:
+    needs: pod-cycle
+    if: always() && inputs.cleanup
+    runs-on: ubuntu-latest
+    environment: smoke-sandbox
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS via OIDC (sandbox deployer)
+        uses: ./.github/actions/aws-oidc
+        with:
+          role-to-assume: ${{ vars.SANDBOX_AWS_DEPLOYER_ROLE_ARN }}
+          aws-region: ${{ vars.SANDBOX_AWS_REGION }}
+
+      - name: cdk destroy (everything except Bootstrap)
+        working-directory: infra
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
+          CDK_DEFAULT_ACCOUNT: ${{ vars.SANDBOX_AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: |
+          npx cdk destroy \
+            CloudDevPods-IdleReaper \
+            CloudDevPods-PodManager \
+            CloudDevPods-PodTaskFamily \
+            CloudDevPods-Cluster \
+            CloudDevPods-Network \
+            --force

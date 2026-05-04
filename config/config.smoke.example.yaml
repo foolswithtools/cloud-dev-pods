@@ -1,0 +1,36 @@
+# Sandbox config for the smoke-test workflow.
+# Copy to config/config.smoke.yaml and fill in real sandbox account values
+# (the smoke-test workflow expects the file path config/config.smoke.yaml).
+#
+# Tunnel-only by default — keeps costs low and dodges the GitHub OAuth App
+# requirement of browser mode. If your sandbox has a domain, switch to byo.
+
+project:
+  name: cloud-dev-pods
+  env: smoke
+
+aws:
+  accountId: "<sandbox-account-id>"
+  region: us-west-2
+
+github:
+  org: foolswithtools
+  repo: cloud-dev-pods
+  oauthAllowedUsers: foolswithtools-bot   # or a real user; tunnel mode doesn't use this
+
+domain:
+  strategy: alb-default
+
+network:
+  vpcCidr: "10.50.0.0/16"
+  natGateways: 1
+  useVpcEndpoints: false
+
+pods:
+  defaultCpu: 1024
+  defaultMemory: 2048
+  spotPercentage: 100
+  idleMinutes: 0   # disable idle reaper for short-lived smoke runs
+
+naming:
+  prefix: CloudDevPods
