@@ -1,20 +1,19 @@
 # See https://docs.github.com/articles/about-codeowners
 #
-# When the @foolswithtools/maintainers team exists (org-owner action — see
-# docs/maintainer-runbook.md), swap individual handles for the team. The
-# team is a single source of truth: adding/removing maintainers updates
-# review-required ownership without touching this file.
+# Ownership lives on the @foolswithtools/maintainers team — to grant
+# review-required ownership to a new maintainer, add them to the team
+# (Org → Teams → maintainers) rather than editing this file.
 
 # Default owner for every file.
-*                    @clostaunau
+*                    @foolswithtools/maintainers
 
 # Highest-stakes paths get the same review (kept explicit for clarity).
-/.github/            @clostaunau
-/infra/              @clostaunau
-/runtime/            @clostaunau
-/scripts/            @clostaunau
+/.github/            @foolswithtools/maintainers
+/infra/              @foolswithtools/maintainers
+/runtime/            @foolswithtools/maintainers
+/scripts/            @foolswithtools/maintainers
 
 # Documentation that's the contract with downstream forks and LLM agents.
-/CLAUDE.md           @clostaunau
-/docs/adr/           @clostaunau
-/.upstream-sync.toml @clostaunau
+/CLAUDE.md           @foolswithtools/maintainers
+/docs/adr/           @foolswithtools/maintainers
+/.upstream-sync.toml @foolswithtools/maintainers
