@@ -46,6 +46,7 @@ jobs:
             !node_modules
             !.cdk.staging
             !cdk.out
+            !CHANGELOG.md
 
       - name: shellcheck
         uses: ludeeus/action-shellcheck@2.0.0
