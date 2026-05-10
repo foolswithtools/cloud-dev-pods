@@ -59,6 +59,7 @@ Opens a PR with upstream upgrades. Local-only files (`infra/config.local.ts`, `i
 - [`docs/quickstart.md`](docs/quickstart.md) — happy-path setup.
 - [`docs/prerequisites.md`](docs/prerequisites.md), [`docs/setup-cli.md`](docs/setup-cli.md), [`docs/setup-gui.md`](docs/setup-gui.md) — step-by-step.
 - [`docs/aws-permissions.md`](docs/aws-permissions.md) — IAM model.
+- [`docs/cost-controls.md`](docs/cost-controls.md) — idle cost breakdown + Budgets alarm template (read before first `cluster-up`).
 - [`docs/operating.md`](docs/operating.md), [`docs/teardown.md`](docs/teardown.md), [`docs/troubleshooting.md`](docs/troubleshooting.md) — day-2.
 - [`docs/architecture.md`](docs/architecture.md), [`docs/adr/`](docs/adr/) — how it works and why.
 

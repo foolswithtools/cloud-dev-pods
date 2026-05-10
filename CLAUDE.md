@@ -88,11 +88,34 @@ Three questions before the user runs anything:
 
 For a fresh fork generated from the template (`gh repo create <user>/<repo> --template foolswithtools/cloud-dev-pods --private`):
 
-### 3a. Edit and commit `config/config.yaml`
+### 3a. Run the interactive init
 
-The template's `.gitignore` excludes `config/config.yaml` upstream, but downstream forks **must commit it** so CI workflows can read it. Edit the file with the user's values (account, region, github org/repo, domain, allowlist) and commit it.
+```bash
+npm ci
+npm run init
+```
 
-### 3b. Set initial GitHub repo Variables
+`scripts/init-clone.ts` is the primary path. **Run it in the foreground** (don't background it — it's interactive and uses `@clack/prompts`). It will:
+
+- Auto-detect AWS account/region (`aws sts get-caller-identity`, `aws configure get region`).
+- Auto-detect GitHub owner/repo from `git remote get-url origin`.
+- List Route53 public hosted zones and let the user pick one (browser mode).
+- Prompt for domain strategy, OAuth allowlist, VPC CIDR, pod sizing, idle minutes.
+- Write `config/config.yaml`, `.envrc`, `.upstream-sync.state`, and an `infra/extensions.local.ts` stub.
+- Push `AWS_REGION`, `AWS_ACCOUNT_ID`, and `CLUSTER_NAME` as GitHub repo Variables (`gh variable set`).
+- Optionally create the `cloud-dev-pods-bootstrap` IAM user, attach `AdministratorAccess`, create an access key, and push it as repo Secrets via stdin (avoids GitHub-UI paste-mangling).
+
+When the script completes, `git add config/config.yaml && git commit -m 'chore: init config' && git push`. The fork's `.gitignore` excludes `config/config.yaml` upstream, but downstream forks **must commit it** so CI workflows can read it.
+
+If the user prefers GUI for any step, see [`docs/setup-gui.md`](docs/setup-gui.md). Skip to **3c** for the manual-CLI fallback.
+
+### 3b. Cost guardrail (do this before `cluster-up`)
+
+Idle cluster cost runs ~$50/month (NAT + ALB). Read [`docs/cost-controls.md`](docs/cost-controls.md) and set up an AWS Budgets alarm before bringing the cluster up — the doc has a copy-pasteable `aws budgets create-budget` template. Two minutes here saves debugging "why did I get a $60 AWS bill" later.
+
+### 3c. Manual fallback (if `npm run init` was skipped)
+
+Edit `config/config.yaml` by hand (start from `config/config.example.yaml`) with the user's values (account, region, github org/repo, domain, allowlist). Commit and push it. Then set initial Variables manually:
 
 ```bash
 gh variable set AWS_REGION --body "<region>"
@@ -100,7 +123,7 @@ gh variable set AWS_ACCOUNT_ID --body "<12-digit account id>"
 gh variable set CLUSTER_NAME --body "cloud-dev-pods"
 ```
 
-### 3c. Create the bootstrap IAM user (one-time, deleted after step 3e)
+Create the bootstrap IAM user manually (`init-clone` does this for you when run):
 
 ```bash
 aws iam create-user --user-name cloud-dev-pods-bootstrap
@@ -154,18 +177,41 @@ gh variable set AWS_DEPLOYER_ROLE_ARN --body "$DEPLOYER"
 gh variable set AWS_POD_OPS_ROLE_ARN --body "$PODOPS"
 ```
 
-Delete the bootstrap secrets and the IAM user (housekeeping):
+**Bootstrap IAM cleanup (mandatory).** The `cloud-dev-pods-bootstrap` IAM user has `AdministratorAccess` — it must not survive past first-run bootstrap. Verify it exists, then remove it:
 
 ```bash
+aws iam get-user --user-name cloud-dev-pods-bootstrap
+# If this returns the user (exit 0), proceed with cleanup. If it 404s
+# (NoSuchEntity), the user was already deleted — skip ahead.
+```
+
+Cleanup checklist (run in order; each step must succeed before the next):
+
+```bash
+# 1. Delete the GitHub repo Secrets (no longer needed; OIDC roles take over).
 gh secret delete AWS_BOOTSTRAP_ACCESS_KEY_ID
 gh secret delete AWS_BOOTSTRAP_SECRET_ACCESS_KEY
-aws iam list-access-keys --user-name cloud-dev-pods-bootstrap
-# For each AccessKeyId returned:
+
+# 2. Delete every access key on the IAM user.
+aws iam list-access-keys --user-name cloud-dev-pods-bootstrap \
+  --query 'AccessKeyMetadata[*].AccessKeyId' --output text
+# For each AccessKeyId returned (there may be 1 or 2):
 aws iam delete-access-key --user-name cloud-dev-pods-bootstrap --access-key-id <AKIA...>
+
+# 3. Detach the AdministratorAccess managed policy.
 aws iam detach-user-policy --user-name cloud-dev-pods-bootstrap \
   --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+
+# 4. Delete the user.
 aws iam delete-user --user-name cloud-dev-pods-bootstrap
+
+# 5. Verify it's gone.
+aws iam get-user --user-name cloud-dev-pods-bootstrap 2>&1 | grep -q NoSuchEntity \
+  && echo "OK: bootstrap user deleted" \
+  || echo "FAIL: bootstrap user still exists — re-check steps 2-4"
 ```
+
+If any step fails (e.g., `DeleteConflict: must delete access keys first`), back up to the failing prerequisite and rerun.
 
 ### 3f. Update oauth secrets (browser mode only)
 
@@ -245,6 +291,8 @@ Per running pod (1 vCPU / 2 GB Fargate Spot): ~$0.014/hour.
 If the user mentions they won't need pods for >1 day, suggest `cluster-down`. Re-running `cluster-up` later takes ~12 min.
 
 The idle reaper auto-stops browser pods after `idleMinutes` of zero ALB request count (default 60). Tunnel pods aren't idle-reaped.
+
+For an AWS Budgets alarm template (recommended before first `cluster-up`) and the full cost ceiling discussion, see [`docs/cost-controls.md`](docs/cost-controls.md).
 
 ## 8. Failure mode debugging
 

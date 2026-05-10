@@ -31,4 +31,31 @@ Permissions:
 
 The pod-manager Lambda's execution role holds the actual ECS/ALB/EFS write permissions — those are NOT in the GitHub OIDC role. A compromised GitHub Actions run can only invoke `pod-manager` with declared inputs (validated server-side), not arbitrary AWS APIs.
 
-(Phase 4 will paste the actual policy JSON here.)
+## Source of truth
+
+Both roles and the boundary are CDK-defined in [`infra/lib/stacks/bootstrap-stack.ts`](../infra/lib/stacks/bootstrap-stack.ts) — that's the canonical reference. The summary below describes what's there as of `main`; if it drifts from the source, the source wins.
+
+### `CloudDevPodsDeployerRole` policies
+
+- AWS managed `PowerUserAccess` (covers most CDK deploy needs across CloudFormation, EC2/VPC, ECS, ELBv2, ACM, Route53, CloudWatch Logs, Lambda, EventBridge, EFS, Secrets Manager, SSM Parameter Store, ECR, DynamoDB, SNS).
+- Inline `iam:*` on `*` (CDK creates and updates task roles, Lambda execution roles, etc.; `PowerUserAccess` excludes IAM by design).
+- Permissions boundary: `CloudDevPodsBoundary` (next section).
+
+### `CloudDevPodsPodOpsRole` inline policies
+
+Three statements, scoped to project resources:
+
+1. `lambda:InvokeFunction` on `arn:aws:lambda:<region>:<account>:function:pod-manager`.
+2. `ecr:GetAuthorizationToken` on `*` (AWS contract — this action does not accept a resource ARN), plus `ecr:BatchCheckLayerAvailability`, `ecr:CompleteLayerUpload`, `ecr:InitiateLayerUpload`, `ecr:PutImage`, `ecr:UploadLayerPart`, `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` on `arn:aws:ecr:<region>:<account>:repository/cloud-dev-pods/*`.
+3. `logs:FilterLogEvents`, `logs:GetLogEvents` on `arn:aws:logs:<region>:<account>:log-group:/cloud-dev-pods/*`.
+
+Notably absent: ECS, ELBv2, EFS, IAM. Those operations go through the `pod-manager` Lambda's execution role, not through this GitHub OIDC role.
+
+### `CloudDevPodsBoundary` (permissions boundary, both roles)
+
+Effect-allow on `*:*`, then explicit denies that contain blast radius:
+
+- Deny `iam:CreateUser`, `iam:CreateAccessKey`, `iam:DeleteUser`, `organizations:*`, `account:*`, `aws-portal:*`, `budgets:*` on `*`. (A compromised role can't create new IAM users, manipulate the AWS Organization, change account-level settings, or tamper with billing.)
+- Deny `iam:CreateRole`, `iam:DeleteRole`, `iam:UpdateRole`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy` on every resource **except** `arn:aws:iam::<account>:role/cloud-dev-pods/*`. (Role manipulation is locked to the project's IAM path.)
+
+The boundary applies even if a future PR loosens the role's own policies.
