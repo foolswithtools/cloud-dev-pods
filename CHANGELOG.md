@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.0...v0.2.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **eslint:** add flat config so npm run lint works ([#42](https://github.com/foolswithtools/cloud-dev-pods/issues/42)) ([6af0864](https://github.com/foolswithtools/cloud-dev-pods/commit/6af08646f414b65d83a26325d5cbb22ab58df04e))
+* **test:** explicit vitest config to skip compiled output ([#44](https://github.com/foolswithtools/cloud-dev-pods/issues/44)) ([5397cde](https://github.com/foolswithtools/cloud-dev-pods/commit/5397cde89823d7ee178a5905b258f0304976d740))
+
 ## [0.2.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.1.1...v0.2.0) (2026-05-10)
 
 
