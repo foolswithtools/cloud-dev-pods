@@ -9,7 +9,7 @@ gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 
 - **`foolswithtools/cloud-dev-pods`** → **maintainer mode**. This is the upstream template. The provisioning workflows (`bootstrap-aws.yml`, `cluster-up.yml`, `pod-up.yml`, etc.) are no-ops here — they're guarded by `if: github.repository != 'foolswithtools/cloud-dev-pods'` so nothing AWS-touching runs on upstream. Stop reading this file and switch to [`docs/maintainer-runbook.md`](docs/maintainer-runbook.md), which covers releases, repo-settings re-application, CODEOWNERS, and the maintainer CI surface. Do not run any provisioning workflow here.
-- **`*-smoke` (e.g., `clostaunau/cloud-dev-pods-smoke`)** → **smoke-fork mode**. This is a maintainer-owned fork used to validate releases against real AWS. Look for [`docs/smoke-fork.md`](docs/smoke-fork.md) — if it exists, follow it. If it doesn't, fall back to user mode below but flag to the maintainer that smoke-fork docs are missing. Smoke-fork sessions should be short-lived, end with `cluster-down`, and assume the cluster may already be up from a previous run.
+- **`*-smoke` (e.g., `clostaunau/cloud-dev-pods-smoke`)** → **smoke-fork mode**. This is a maintainer-owned fork used to validate releases against real AWS. Look for `docs/smoke-fork.md` (only present in smoke forks, not upstream) — if it exists, follow it. If it doesn't, fall back to user mode below but flag to the maintainer that smoke-fork docs are missing. Smoke-fork sessions should be short-lived, end with `cluster-down`, and assume the cluster may already be up from a previous run.
 - **anything else** (e.g., `<your-username>/cloud-dev-pods`) → **user mode**. Continue with the rest of this file.
 
 ### State-discovery probes (user mode only)
