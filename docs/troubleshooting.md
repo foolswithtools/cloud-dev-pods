@@ -206,3 +206,95 @@ If your customization should *never* be overwritten, consider refactoring it to 
 **Cause:** no `feat:` or `fix:` commits since the last release. release-please only triggers on those Conventional Commit prefixes.
 
 **Fix:** check `git log --oneline main` for at least one `feat(...):` or `fix(...):` since the last `chore(release):` commit. `chore:` and `docs:` don't trigger.
+
+## EFS filesystem retained across `cluster-down` (#29)
+
+**Cause:** the EFS filesystem in `ClusterStack` is configured `RemovalPolicy.RETAIN` (intentional — protects user `/workspace` data). `cluster-down` therefore leaves the filesystem (and its access points + mount targets) in the account, and the next `cluster-up` either reuses the orphan or fails on a name collision.
+
+**Fix:** if you genuinely want to discard the workspace data, delete the access points first, then mount targets, then the filesystem:
+
+```bash
+EFS=$(aws efs describe-file-systems --query "FileSystems[?Name=='cloud-dev-pods-dev'].FileSystemId" --output text)
+aws efs describe-access-points --file-system-id "$EFS" \
+  --query 'AccessPoints[].AccessPointId' --output text \
+  | xargs -n1 aws efs delete-access-point --access-point-id
+aws efs describe-mount-targets --file-system-id "$EFS" \
+  --query 'MountTargets[].MountTargetId' --output text \
+  | xargs -n1 aws efs delete-mount-target --mount-target-id
+aws efs delete-file-system --file-system-id "$EFS"
+```
+
+## No EFS access-point reuse on `pod-up` (#30)
+
+**Cause:** the pod-manager Lambda creates a fresh EFS access point on every `pod-up` rather than reusing the one matching `pod_name`. Repeated up/down cycles accumulate access points; eventually you hit the per-filesystem cap (~1000) or just clutter the console.
+
+**Fix:** until the Lambda is patched to reuse by tag, sweep stale access points between cycles:
+
+```bash
+EFS=$(aws ssm get-parameter --name /cloud-dev-pods/dev/cluster/efs-id \
+  --query Parameter.Value --output text)
+aws efs describe-access-points --file-system-id "$EFS" \
+  --query 'AccessPoints[?Tags[?Key==`pod-name` && Value==`<pod-name>`]].AccessPointId' \
+  --output text | xargs -n1 aws efs delete-access-point --access-point-id
+```
+
+Only run this when the matching pod is **not** running — deleting an in-use access point will hang ECS task shutdown.
+
+## Lambda task-definition revision drift
+
+**Cause:** every `cluster-up` (or pod-manager redeploy) registers a new revision of the `cloud-dev-pods` ECS task-definition family. Old revisions remain `ACTIVE` indefinitely, slowing console listings and complicating audit.
+
+**Fix:** deregister stale revisions, keeping the latest. The current task family `LATEST` is safe; older `ACTIVE` revisions can be deregistered without affecting running tasks (they keep their pinned definition).
+
+```bash
+aws ecs list-task-definitions --family-prefix cloud-dev-pods --status ACTIVE \
+  --sort DESC --query 'taskDefinitionArns[1:]' --output text \
+  | tr '\t' '\n' \
+  | xargs -n1 aws ecs deregister-task-definition --task-definition
+```
+
+## BootstrapStack stuck in `ROLLBACK_COMPLETE`
+
+**Cause:** the first `bootstrap-aws.yml` run failed partway (commonly: insufficient bootstrap-user perms, or a pre-existing role with the same name). CloudFormation marks the stack `ROLLBACK_COMPLETE`, which is a terminal state — subsequent `cdk deploy`s will fail with `Stack ... is in ROLLBACK_COMPLETE state and can not be updated`.
+
+**Fix:** delete the stack and retry. There's nothing to keep in a `ROLLBACK_COMPLETE` stack — it never finished provisioning.
+
+```bash
+aws cloudformation delete-stack --stack-name CloudDevPods-Bootstrap
+aws cloudformation wait stack-delete-complete --stack-name CloudDevPods-Bootstrap
+gh workflow run bootstrap-aws.yml -f confirm_account_id=<account>
+```
+
+If `delete-stack` hangs, check the CFN console for resources stuck `DELETE_FAILED` — usually an IAM role with attached policies that needs manual detachment.
+
+## ACM certificate validation timeout
+
+**Cause:** `cluster-up` requested an ACM cert with DNS validation, but the validation `CNAME` records weren't propagated to the public resolver in time (CFN waits ~30 min, then fails). Most often: Route53 zone is in a different account from the cert request, or the zone delegation NS records at the registrar still point at an old zone.
+
+**Fix:** check the cert's pending validation records and confirm DNS:
+
+```bash
+CERT=$(aws acm list-certificates --query "CertificateSummaryList[?DomainName=='<base-domain>'].CertificateArn" --output text)
+aws acm describe-certificate --certificate-arn "$CERT" \
+  --query 'Certificate.DomainValidationOptions[].ResourceRecord'
+# For each Name returned, verify it resolves:
+dig +short _<token>.<base-domain> CNAME
+```
+
+If `dig` returns nothing, the record isn't published. Add it to the correct zone (next entry covers the cross-account case) and rerun `cluster-up.yml`.
+
+## Route53 hosted zone in a different AWS account
+
+**Cause:** your apex domain's Route53 zone lives in a different AWS account from the one running cloud-dev-pods. ACM cross-account DNS validation works (you just publish the validation `CNAME` in the zone's account), but the ALB **alias** record needs the zone in the same account as the ALB — alias targets are account-scoped.
+
+**Fix:** delegate a subdomain (e.g., `pods.example.com`) into the cloud-dev-pods account and use that as `baseDomain` in `config/config.yaml`.
+
+```bash
+# In the cloud-dev-pods account:
+aws route53 create-hosted-zone --name pods.example.com --caller-reference "$(date +%s)"
+aws route53 get-hosted-zone --id <new-zone-id> --query 'DelegationSet.NameServers'
+
+# In the apex-domain account, add an NS record set for `pods` pointing at the
+# four nameservers above. Once the delegation propagates, ACM cert + ALB alias
+# both work without cross-account hops.
+```
