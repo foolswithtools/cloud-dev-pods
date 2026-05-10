@@ -1,6 +1,6 @@
 {
   "name": "cloud-dev-pods",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Provision ECS-based VS Code dev pods in your own AWS account.",
   "license": "Apache-2.0",
