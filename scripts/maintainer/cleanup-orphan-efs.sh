@@ -251,7 +251,8 @@ sweep_aps() {
         continue
       fi
 
-      local entries=(${POD_ALL_APS[$pod]})
+      local entries
+      read -ra entries <<< "${POD_ALL_APS[$pod]}"
       local count=${#entries[@]}
       if (( count <= 1 )); then
         ok "  pod=$pod single AP (${POD_NEWEST_AP[$pod]}) — no duplicates"
