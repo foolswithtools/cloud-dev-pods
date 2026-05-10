@@ -209,9 +209,16 @@ If your customization should *never* be overwritten, consider refactoring it to 
 
 ## EFS filesystem retained across `cluster-down` (#29)
 
-**Cause:** the EFS filesystem in `ClusterStack` is configured `RemovalPolicy.RETAIN` (intentional — protects user `/workspace` data). `cluster-down` therefore leaves the filesystem (and its access points + mount targets) in the account, and the next `cluster-up` either reuses the orphan or fails on a name collision.
+**Resolved by default in v0.2.0.** `ClusterStack` now provisions the EFS filesystem with `RemovalPolicy.DESTROY` (see [ADR 0007](adr/0007-efs-cluster-removal-policy.md)), so `cluster-down` tears it down with the cluster. To restore the v0.1.x retain behavior, set `efs.retainOnClusterDown: true` in `config/config.yaml` and re-deploy `cluster-up.yml` BEFORE running `cluster-down`.
 
-**Fix:** if you genuinely want to discard the workspace data, delete the access points first, then mount targets, then the filesystem:
+**Legacy fix (forks still on v0.1.x or with an EFS already orphaned):** use the maintainer cleanup script —
+
+```bash
+scripts/maintainer/cleanup-orphan-efs.sh --mode efs           # dry-run
+scripts/maintainer/cleanup-orphan-efs.sh --mode efs --apply
+```
+
+Or manually, if the filesystem really is orphaned (no live `CloudDevPods-Cluster` stack):
 
 ```bash
 EFS=$(aws efs describe-file-systems --query "FileSystems[?Name=='cloud-dev-pods-dev'].FileSystemId" --output text)
@@ -226,19 +233,24 @@ aws efs delete-file-system --file-system-id "$EFS"
 
 ## No EFS access-point reuse on `pod-up` (#30)
 
-**Cause:** the pod-manager Lambda creates a fresh EFS access point on every `pod-up` rather than reusing the one matching `pod_name`. Repeated up/down cycles accumulate access points; eventually you hit the per-filesystem cap (~1000) or just clutter the console.
+**Resolved by default in v0.2.0.** The pod-manager Lambda now looks up an existing per-pod access point by `Pod` tag on every `pod-up` and reuses its `accessPointId` + `PosixUser.Uid`, only allocating + creating when no AP exists. The AP itself is the canonical source-of-truth for the pod's UID; the DDB `posixUid` field is a cache while the pod is registered. See [ADR 0004](adr/0004-efs-per-pod-access-point.md) (Reuse semantics) for details.
 
-**Fix:** until the Lambda is patched to reuse by tag, sweep stale access points between cycles:
+**Legacy fix (forks on v0.1.x with accumulated orphan APs):** run the maintainer cleanup script. It groups APs by `Pod` tag, keeps the newest per pod-name, and deletes the rest. APs whose pod-name is in the live registry are skipped automatically:
+
+```bash
+scripts/maintainer/cleanup-orphan-efs.sh --mode aps           # dry-run
+scripts/maintainer/cleanup-orphan-efs.sh --mode aps --apply
+```
+
+Manual single-pod sweep (only when the pod is **not** running — deleting an in-use AP will hang ECS task shutdown):
 
 ```bash
 EFS=$(aws ssm get-parameter --name /cloud-dev-pods/dev/cluster/efs-id \
   --query Parameter.Value --output text)
 aws efs describe-access-points --file-system-id "$EFS" \
-  --query 'AccessPoints[?Tags[?Key==`pod-name` && Value==`<pod-name>`]].AccessPointId' \
+  --query 'AccessPoints[?Tags[?Key==`Pod` && Value==`<pod-name>`]].AccessPointId' \
   --output text | xargs -n1 aws efs delete-access-point --access-point-id
 ```
-
-Only run this when the matching pod is **not** running — deleting an in-use access point will hang ECS task shutdown.
 
 ## Lambda task-definition revision drift
 

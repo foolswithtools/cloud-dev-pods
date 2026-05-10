@@ -41,6 +41,24 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Pre-flight orphan EFS check
+        # Non-blocking: surfaces orphan EFS filesystems left over from a
+        # v0.1.x deployment (RemovalPolicy.RETAIN). v0.2.0 defaults to
+        # DESTROY (see ADR 0007), so any project-tagged EFS without a
+        # live CloudDevPods-Cluster stack is a leak from the previous
+        # version. Use scripts/maintainer/cleanup-orphan-efs.sh to clean
+        # them up. NEVER fails the workflow.
+        run: |
+          set -uo pipefail
+          ORPHAN_COUNT=$(aws efs describe-file-systems \
+            --query "FileSystems[?Tags[?Key=='Project' && Value=='cloud-dev-pods']] | length(@)" \
+            --output text 2>/dev/null || echo 0)
+          if [[ "$ORPHAN_COUNT" =~ ^[0-9]+$ ]] && (( ORPHAN_COUNT > 0 )); then
+            if ! aws cloudformation describe-stacks --stack-name CloudDevPods-Cluster >/dev/null 2>&1; then
+              echo "::warning::Found $ORPHAN_COUNT orphan EFS filesystem(s) tagged Project=cloud-dev-pods with no live CloudDevPods-Cluster stack. These are likely left over from a v0.1.x deployment that used RemovalPolicy.RETAIN. Run scripts/maintainer/cleanup-orphan-efs.sh --mode efs --apply to clean them up. See ADR 0007 + docs/teardown.md."
+            fi
+          fi
+
       - name: cdk deploy (Network + Cluster + PodTaskFamily + PodManager + IdleReaper)
         id: deploy
         working-directory: infra

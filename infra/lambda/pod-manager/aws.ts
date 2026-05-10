@@ -13,8 +13,10 @@ import {
   StopTaskCommand,
 } from '@aws-sdk/client-ecs';
 import {
+  type AccessPointDescription,
   CreateAccessPointCommand,
   DeleteAccessPointCommand,
+  DescribeAccessPointsCommand,
   EFSClient,
 } from '@aws-sdk/client-efs';
 import {
@@ -163,6 +165,83 @@ export async function createAccessPoint(podName: string, uid: number): Promise<s
 
 export async function deleteAccessPoint(apId: string): Promise<void> {
   await efs.send(new DeleteAccessPointCommand({ AccessPointId: apId }));
+}
+
+/**
+ * Look up an existing per-pod EFS access point by `Pod` tag.
+ *
+ * Behavior (see ADR 0004 "Reuse semantics" and ADR 0007):
+ *   - Filters EFS access points to this cluster's filesystem only.
+ *   - Matches by `Tags[].Key === 'Pod' && .Value === podName` in memory
+ *     (DescribeAccessPoints does not support tag filters server-side).
+ *   - Returns the newest available AP (by `CreationTime`).
+ *   - If multiple match, fires `DeleteAccessPoint` on the older ones
+ *     (best-effort, errors logged not thrown — duplicates are recoverable
+ *     state, not a failure mode for `pod-up`).
+ *
+ * Returns `undefined` if there is no usable AP for `podName`.
+ */
+export async function findExistingAccessPoint(
+  podName: string,
+): Promise<{ accessPointId: string; posixUid: number } | undefined> {
+  const all: AccessPointDescription[] = [];
+  let nextToken: string | undefined;
+  do {
+    const r = await efs.send(new DescribeAccessPointsCommand({
+      FileSystemId: env.efsFsId,
+      NextToken: nextToken,
+    }));
+    if (r.AccessPoints) all.push(...r.AccessPoints);
+    nextToken = r.NextToken;
+  } while (nextToken);
+
+  // CreationTime: the EFS API returns it in the wire response, but the
+  // typed `AccessPointDescription` model omits it. Read it via `unknown`
+  // cast and fall back to AccessPointId lexical ordering (AWS-allocated
+  // `fsap-...` ids are roughly monotonic, and there's nothing better in
+  // the typed schema). Either signal converges on "newest" in practice.
+  const creationTime = (ap: AccessPointDescription): number => {
+    const ct = (ap as unknown as { CreationTime?: Date | string }).CreationTime;
+    if (ct instanceof Date) return ct.getTime();
+    if (typeof ct === 'string') return new Date(ct).getTime();
+    return 0;
+  };
+
+  const matching = all
+    .filter((ap) => ap.LifeCycleState === 'available')
+    .filter((ap) => (ap.Tags ?? []).some((t) => t.Key === 'Pod' && t.Value === podName))
+    .filter((ap) => ap.AccessPointId && ap.PosixUser?.Uid !== undefined)
+    .sort((a, b) => {
+      const diff = creationTime(b) - creationTime(a);
+      if (diff !== 0) return diff;
+      // Tie-break on AccessPointId (lexical desc; rough monotonic fallback).
+      return (b.AccessPointId ?? '').localeCompare(a.AccessPointId ?? '');
+    });
+
+  if (matching.length === 0) return undefined;
+
+  const newest = matching[0]!;
+  const older = matching.slice(1);
+
+  // Best-effort self-heal: prune duplicates left over from prior versions
+  // that created a fresh AP every `pod-up`. Fire-and-forget; do NOT throw —
+  // we still return the newest AP so the caller's `pod-up` can proceed.
+  for (const stale of older) {
+    if (!stale.AccessPointId) continue;
+    try {
+      await efs.send(new DeleteAccessPointCommand({ AccessPointId: stale.AccessPointId }));
+      console.log(`findExistingAccessPoint: deleted duplicate AP ${stale.AccessPointId} for pod ${podName}`);
+    } catch (err) {
+      console.warn(
+        `findExistingAccessPoint: failed to delete duplicate AP ${stale.AccessPointId} for pod ${podName}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  return {
+    accessPointId: newest.AccessPointId!,
+    posixUid: Number(newest.PosixUser!.Uid),
+  };
 }
 
 // ---- ECS ----

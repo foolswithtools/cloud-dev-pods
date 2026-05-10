@@ -41,3 +41,13 @@ pods:
 
 naming:
   prefix: CloudDevPods
+
+efs:
+  # When true, the EFS filesystem in ClusterStack is provisioned with
+  # RemovalPolicy.RETAIN, so `cluster-down` leaves it (and any /workspace
+  # data) behind. Default false sets RemovalPolicy.DESTROY — the filesystem
+  # is destroyed with the cluster, avoiding orphan filesystems and the
+  # name-collision footgun on the next `cluster-up`. Flip to `true` only if
+  # this template is hosting data you genuinely cannot afford to lose on an
+  # explicit `cluster-down`. See ADR 0007.
+  retainOnClusterDown: false
