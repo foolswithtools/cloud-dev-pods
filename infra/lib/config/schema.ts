@@ -36,6 +36,15 @@ export const ConfigSchema = z.object({
   naming: z.object({
     prefix: z.string().default('CloudDevPods'),
   }),
+  efs: z
+    .object({
+      // When true, ClusterStack keeps RemovalPolicy.RETAIN on the EFS
+      // filesystem so `cluster-down` leaves it (and any /workspace data)
+      // behind. Default `false` flips the policy to DESTROY so the
+      // filesystem disappears with the cluster — see ADR 0007.
+      retainOnClusterDown: z.boolean().optional().default(false),
+    })
+    .optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

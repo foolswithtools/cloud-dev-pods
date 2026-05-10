@@ -106,5 +106,7 @@ jobs:
             echo ""
             echo "Bootstrap (OIDC + IAM roles + ECR repos) retained. Re-run \`cluster-up.yml\` to spin everything back up."
             echo ""
-            echo "EFS workspaces are also retained (RemovalPolicy.RETAIN) — manual deletion via \`aws efs delete-file-system\` if you really want to nuke data."
+            echo "EFS filesystem was destroyed alongside the cluster (RemovalPolicy.DESTROY is the v0.2.0 default — see ADR 0007). Any \`/workspace\` data is gone."
+            echo ""
+            echo "If you want the v0.1.x retain-on-cluster-down behavior, set \`efs.retainOnClusterDown: true\` in your \`config/config.yaml\` and re-deploy via \`cluster-up.yml\` BEFORE running \`cluster-down\`."
           } >> "$GITHUB_STEP_SUMMARY"

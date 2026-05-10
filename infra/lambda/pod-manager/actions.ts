@@ -11,6 +11,7 @@ import {
   deleteListenerRule,
   deregisterAndDeleteTargetGroup,
   describeTasks,
+  findExistingAccessPoint,
   registerTarget,
   registerTaskDef,
   registryDelete,
@@ -60,8 +61,27 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
   }
   const imageUri = `${repoUri}:${resolvedTag}`;
 
-  const uid = await allocatePosixUid();
-  const accessPointId = await createAccessPoint(podName, uid);
+  // Reuse the existing per-pod access point if one is still around from a
+  // prior `pod-up` (see ADR 0004 "Reuse semantics" + ADR 0007). The AP
+  // itself is canonical for the POSIX UID; DDB `posixUid` is only a cache
+  // while the pod is registered. If we find a hit we MUST NOT delete it on
+  // rollback — `createdNewAp` gates the rollback path below.
+  let uid: number;
+  let accessPointId: string;
+  let createdNewAp: boolean;
+  const found = await findExistingAccessPoint(podName);
+  if (found) {
+    uid = found.posixUid;
+    accessPointId = found.accessPointId;
+    createdNewAp = false;
+    console.log(
+      `pod-up: reusing existing access point ${accessPointId} (uid ${uid}) for pod ${podName}`,
+    );
+  } else {
+    uid = await allocatePosixUid();
+    accessPointId = await createAccessPoint(podName, uid);
+    createdNewAp = true;
+  }
 
   let taskDefArn: string;
   let targetGroupArn: string | undefined;
@@ -125,12 +145,15 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
         : `Tunnel pod started; check CloudWatch Logs (/aws/lambda/pod-manager + /cloud-dev-pods/<env>/pods) for the device-code URL.`,
     };
   } catch (err) {
-    // Best-effort rollback.
+    // Best-effort rollback. NB: only delete the access point if we created
+    // it in this invocation. Reusing a persistent AP and then deleting it
+    // on rollback would erase a user's `/workspace` data — exactly the
+    // scenario ADR 0007 is fighting.
     console.error('pod-up failed; attempting rollback', err);
     if (taskArn) await stopTask(taskArn, 'pod-up rollback');
     if (ruleArn) await deleteListenerRule(ruleArn);
     if (targetGroupArn) await deregisterAndDeleteTargetGroup({ targetGroupArn });
-    if (accessPointId) await deleteAccessPoint(accessPointId);
+    if (createdNewAp && accessPointId) await deleteAccessPoint(accessPointId);
     return {
       ok: false,
       status: 'error',

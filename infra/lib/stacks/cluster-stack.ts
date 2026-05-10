@@ -50,6 +50,13 @@ export class ClusterStack extends Stack {
 
     // EFS filesystem. Per-pod access points (see ADR 0004) live in the
     // pod-manager Lambda, not here.
+    //
+    // RemovalPolicy is flag-driven (see ADR 0007). Default DESTROY: an
+    // explicit `cluster-down` tears the filesystem down with the cluster,
+    // avoiding orphan filesystems and the name-collision footgun on the
+    // next `cluster-up`. Flip `efs.retainOnClusterDown: true` in the
+    // config to restore the v0.1.x RETAIN behavior for forks hosting
+    // data they truly cannot afford to lose on an explicit teardown.
     this.fileSystem = new efs.FileSystem(this, 'EfsFs', {
       vpc: network.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -58,7 +65,9 @@ export class ClusterStack extends Stack {
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_30_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       throughputMode: efs.ThroughputMode.BURSTING,
-      removalPolicy: RemovalPolicy.RETAIN,
+      removalPolicy: config.efs?.retainOnClusterDown
+        ? RemovalPolicy.RETAIN
+        : RemovalPolicy.DESTROY,
     });
 
     // ALB (internet-facing). Per-pod target groups + listener rules added at runtime.
