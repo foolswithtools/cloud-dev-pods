@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.1.1...v0.2.0) (2026-05-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* ClusterStack EFS now defaults to RemovalPolicy.DESTROY. Set `efs.retainOnClusterDown: true` in config to preserve prior behavior. Pod-manager Lambda now reuses the existing per-pod EFS access point on repeat pod-up, restoring workspace persistence across down/up cycles.
+
+### Features
+
+* efs RemovalPolicy DESTROY default and per-pod AP reuse ([#39](https://github.com/foolswithtools/cloud-dev-pods/issues/39)) ([9ce5370](https://github.com/foolswithtools/cloud-dev-pods/commit/9ce53705be881b2992b634a881979f71b90278cc))
+
 ## [0.1.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.1.0...v0.1.1) (2026-05-10)
 
 
