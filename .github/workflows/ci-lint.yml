@@ -70,6 +70,7 @@ jobs:
             --exclude '^https://github.com/.+/security/advisories/new'
             --exclude '^https://github.com/settings/'
             --exclude '^https://github.com/organizations/'
+            --exclude '^https://github.com/.+/compare/'
             --exclude 'localhost'
             --exclude '127\.0\.0\.1'
             './*.md'
