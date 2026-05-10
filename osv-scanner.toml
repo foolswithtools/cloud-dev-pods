@@ -21,3 +21,28 @@ reason = """
 Dev-only: vite advisory rooted in the same esbuild dev-server issue. Vite is
 pulled in only via vitest. Same Dependabot group will clear it.
 """
+
+[[IgnoredVulns]]
+id = "GHSA-q3j6-qgpj-74h6"
+ignoreUntil = 2026-08-31
+reason = """
+fast-uri@3.1.0 path-traversal advisory. Reachable only via the copy that
+aws-cdk-lib bundles inside its own node_modules (aws-cdk-lib -> table -> ajv
+-> fast-uri); npm `overrides` cannot reach into a bundled tarball, and the
+latest aws-cdk-lib (2.253.x) still ships the vulnerable 3.1.0. The bundled
+ajv is used at synth time for CDK schema validation against trusted local
+inputs (cdk.json / asset manifests) authored by the operator -- no
+attacker-controlled URI is ever passed to fast-uri. Re-evaluate on the next
+aws-cdk-lib release that re-bundles fast-uri >= 3.1.2.
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-v39h-62p7-jpjc"
+ignoreUntil = 2026-08-31
+reason = """
+fast-uri@3.1.0 host-confusion advisory. Same reachability story as
+GHSA-q3j6-qgpj-74h6: the only copy left at 3.1.0 is the one bundled inside
+aws-cdk-lib's tarball, which npm overrides cannot reach. Path is synth-time
+schema validation over locally authored, trusted inputs. Re-evaluate when
+aws-cdk-lib re-bundles fast-uri >= 3.1.2.
+"""
