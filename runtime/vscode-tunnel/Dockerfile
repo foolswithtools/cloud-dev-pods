@@ -14,6 +14,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -ms /bin/bash vscode \
+ && echo 'vscode ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
+ && chmod 0440 /etc/sudoers.d/vscode \
  && mkdir -p /opt/vscode-cli \
  && curl -fSL 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' \
       -o /tmp/vscode_cli.tar.gz \
