@@ -1,6 +1,6 @@
 name: ci-lint
-# Phase 3: actionlint, markdownlint, shellcheck, lychee link-check.
-# eslint and cdk-synth land in later phases when they have more code to validate.
+# Phase 3: actionlint, eslint, markdownlint, shellcheck, lychee link-check.
+# cdk-synth runs in ci-test.yml.
 
 on:
   pull_request:
@@ -27,6 +27,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: eslint
+        run: npm run lint
 
       - name: actionlint (validate workflow YAML)
         # The rhysd/actionlint repo doesn't publish a `v1` major-version alias;
