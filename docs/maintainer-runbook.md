@@ -142,3 +142,14 @@ A release PR has been sitting for days/weeks, `main` has moved, and you're not s
 5. **Bot's commits are wrong?** Don't amend or force-push to the release-please branch. Its commits are deterministically regenerated from Conventional Commits + manifest state. The right fix is upstream of release-please: either (a) fix the offending Conventional Commit on `main` with a follow-up `fix:` commit, or (b) close the release PR — release-please will reopen a fresh one on the next push to `main`.
 
 Rule of thumb: never treat a release-please PR as a normal feature branch. It's bot-owned, regenerable state — your job is to merge it or to fix the inputs that produce it.
+
+## Time-bombed entries (calendar reminders)
+
+Some maintenance items have a hard-coded date attached and will start failing CI or affecting users when that date passes. Track them here so they're discoverable from one place.
+
+| Date | Item | Action |
+|---|---|---|
+| 2026-08-31 | `osv-scanner.toml` ignores `GHSA-q3j6-qgpj-74h6` and `GHSA-v39h-62p7-jpjc` (fast-uri@3.1.0 bundled inside aws-cdk-lib) — `scan` will fail every PR after expiry. | Bump aws-cdk-lib if it now bundles fast-uri ≥ 3.1.2 and remove the two ignores; otherwise extend the date or escalate. See pinned issue #45 for the full action plan. |
+| 2026-12-31 | `osv-scanner.toml` ignores `GHSA-67mh-4wv8-2f99` (esbuild) and `GHSA-4w7w-66w2-5vf9` (vite). Dev-only, scoped to vitest's transitive vite/esbuild. | Re-evaluate after the next vitest/vite bump (Dependabot's `dev` group). Remove the ignores once the lockfile resolves to a fixed version. |
+
+When you add a new time-bombed entry — a suppression with `ignoreUntil`, a hard-coded date in code, a deferred upstream issue, an ALB/Service Quotas raise that auto-expires — add a row here AND, for high-impact items, file a pinned issue with full context. The table is a quick scan; the issue is the action plan.
