@@ -31,7 +31,7 @@ PRs must pass:
 
 - `lint` — actionlint, markdownlint, eslint, shellcheck, link-check.
 - `build-and-test` — tsc, vitest.
-- `cdk-synth` — cdk synth + cdk-nag.
+- `cdk-synth` — cdk synth + cdk-nag. New `cdk-nag` suppressions need explicit justification; see [Known CI quirks](docs/maintainer-runbook.md#known-ci-quirks) in the maintainer runbook.
 - `scan` — gitleaks, trivy, osv-scanner.
 
 ## Conventional Commit examples
