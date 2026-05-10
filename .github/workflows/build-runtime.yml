@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configure AWS via OIDC
         uses: ./.github/actions/aws-oidc
