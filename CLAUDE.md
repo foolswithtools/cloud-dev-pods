@@ -1,6 +1,39 @@
 # CLAUDE.md
 
-You are Claude Code, running inside a fork of `foolswithtools/cloud-dev-pods`. Your job is to help the user provision and operate their cloud-dev-pods platform — bootstrap AWS, spin up pods, spin them down, and tear down the cluster — using `gh` and `aws` CLIs that the user has authenticated.
+## Cold-session orientation
+
+Before reading anything else, figure out which of three repos this session is running in. The mode determines what the rest of this file means.
+
+```bash
+gh repo view --json nameWithOwner -q .nameWithOwner
+```
+
+- **`foolswithtools/cloud-dev-pods`** → **maintainer mode**. This is the upstream template. The provisioning workflows (`bootstrap-aws.yml`, `cluster-up.yml`, `pod-up.yml`, etc.) are no-ops here — they're guarded by `if: github.repository != 'foolswithtools/cloud-dev-pods'` so nothing AWS-touching runs on upstream. Stop reading this file and switch to [`docs/maintainer-runbook.md`](docs/maintainer-runbook.md), which covers releases, repo-settings re-application, CODEOWNERS, and the maintainer CI surface. Do not run any provisioning workflow here.
+- **`*-smoke` (e.g., `clostaunau/cloud-dev-pods-smoke`)** → **smoke-fork mode**. This is a maintainer-owned fork used to validate releases against real AWS. Look for [`docs/smoke-fork.md`](docs/smoke-fork.md) — if it exists, follow it. If it doesn't, fall back to user mode below but flag to the maintainer that smoke-fork docs are missing. Smoke-fork sessions should be short-lived, end with `cluster-down`, and assume the cluster may already be up from a previous run.
+- **anything else** (e.g., `<your-username>/cloud-dev-pods`) → **user mode**. Continue with the rest of this file.
+
+### State-discovery probes (user mode only)
+
+A re-entering session must not blunder by re-running bootstrap on a half-built or already-built environment. Before suggesting any provisioning workflow, probe the current state:
+
+```bash
+# Cluster up? (listener-arn SSM param is written by cluster-up.yml.)
+aws ssm get-parameter --name /cloud-dev-pods/dev/cluster/listener-arn 2>/dev/null \
+  && echo "cluster=UP" || echo "cluster=DOWN"
+
+# Bootstrap user still around? (should be deleted after first bootstrap-aws.yml run.)
+aws iam get-user --user-name cloud-dev-pods-bootstrap 2>/dev/null \
+  && echo "bootstrap-user=LEFTOVER (delete per step 3e)" || echo "bootstrap-user=clean"
+
+# Live pods? (run later, once you know the cluster is up.)
+gh workflow run pod-list.yml && gh run watch
+```
+
+Decision matrix: cluster `DOWN` + no role ARN variables → first-run setup (section 3). Cluster `UP` → day-2 (section 4). Bootstrap user `LEFTOVER` after a successful `bootstrap-aws.yml` → housekeeping cleanup (step 3e). **Never re-run `bootstrap-aws.yml` against a healthy cluster** without confirming with the user; it's idempotent but the bootstrap-credential dance is a footgun.
+
+---
+
+You are Claude Code, running inside a fork of `foolswithtools/cloud-dev-pods` (or, in maintainer mode, the upstream itself; or, in smoke-fork mode, a maintainer's release-validation fork). In **user mode** — the rest of this file — your job is to help the user provision and operate their cloud-dev-pods platform: bootstrap AWS, spin up pods, spin them down, tear down the cluster, using `gh` and `aws` CLIs that the user has authenticated.
 
 This file is **the contract**. Follow it. The order of sections matters.
 
@@ -22,7 +55,7 @@ gh auth status                           # must be authenticated
 aws sts get-caller-identity              # must return their AWS account
 aws configure list                       # confirm region matches config/config.yaml
 node --version                           # >= 20
-git remote -v                            # origin must NOT be foolswithtools/cloud-dev-pods
+git remote -v                            # user mode only: origin must NOT be foolswithtools/cloud-dev-pods (see Cold-session orientation above for maintainer/smoke-fork modes)
 test -f config/config.yaml               # MUST exist + be COMMITTED (not gitignored)
 ```
 
