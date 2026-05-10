@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.1...v0.2.2) (2026-05-10)
+
+
+### Bug Fixes
+
+* **runtime:** grant tunnel vscode user passwordless sudo ([#48](https://github.com/foolswithtools/cloud-dev-pods/issues/48)) ([2795982](https://github.com/foolswithtools/cloud-dev-pods/commit/27959827c87da7dde02cd999cb44c18d5e047f34)), closes [#47](https://github.com/foolswithtools/cloud-dev-pods/issues/47)
+
 ## [0.2.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.0...v0.2.1) (2026-05-10)
 
 
