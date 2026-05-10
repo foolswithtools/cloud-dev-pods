@@ -47,6 +47,17 @@
 
 set -euo pipefail
 
+# This script uses associative arrays (`declare -A`) for AP grouping,
+# which require bash 4+. macOS ships bash 3.2.57 by default — install
+# a newer one with `brew install bash` and re-run via the brew bash
+# (`/opt/homebrew/bin/bash` on Apple Silicon, `/usr/local/bin/bash` on
+# Intel). Linux distros from the last 15 years all ship bash >=4.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "error: this script requires bash 4+ (you have ${BASH_VERSION})." >&2
+  echo "       on macOS: 'brew install bash' then re-run with that bash." >&2
+  exit 1
+fi
+
 MODE="all"
 APPLY="no"
 PROJECT_TAG="${PROJECT_TAG:-cloud-dev-pods}"
