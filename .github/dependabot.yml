@@ -12,7 +12,9 @@ updates:
           - "*"
 
   - package-ecosystem: npm
-    directory: /
+    directories:
+      - "/"
+      - "/infra"
     schedule:
       interval: weekly
     groups:
@@ -21,8 +23,24 @@ updates:
           - "aws-cdk*"
           - "@aws-cdk/*"
           - "constructs"
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+      # esbuild is pre-1.0; every minor is breaking. Keep it isolated
+      # so it gets human review and a smoke test before merge.
+      dev-zero-x:
+        patterns:
+          - "esbuild"
+        update-types:
+          - "minor"
+          - "major"
       dev:
         dependency-type: development
+        exclude-patterns:
+          - "esbuild"
+          - "aws-cdk*"
+          - "@aws-cdk/*"
+          - "constructs"
 
   - package-ecosystem: docker
     directory: /runtime/vscode-browser
@@ -33,3 +51,9 @@ updates:
     directory: /runtime/vscode-tunnel
     schedule:
       interval: weekly
+    # Stay on Ubuntu LTS. 26.04 is an interim release (9-month support);
+    # let Dependabot propose the next LTS only.
+    ignore:
+      - dependency-name: "ubuntu"
+        update-types:
+          - "version-update:semver-major"
