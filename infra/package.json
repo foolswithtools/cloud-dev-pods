@@ -30,7 +30,7 @@
     "zod": "^4.4.2"
   },
   "devDependencies": {
-    "aws-cdk": "^2.165.0",
+    "aws-cdk": "^2.1122.0",
     "ts-node": "^10.9.0"
   }
 }
