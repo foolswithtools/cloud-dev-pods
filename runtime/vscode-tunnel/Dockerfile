@@ -1,7 +1,7 @@
 # Tunnel-mode pod runtime: VS Code CLI dialing out to Microsoft's tunnel broker.
 # No inbound port; auth via device-code flow surfaced through CloudWatch Logs.
 
-FROM ubuntu:24.04
+FROM ubuntu:24.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
