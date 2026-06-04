@@ -174,6 +174,7 @@ Some maintenance items have a hard-coded date attached and will start failing CI
 | Date | Item | Action |
 |---|---|---|
 | 2026-08-31 | `osv-scanner.toml` ignores `GHSA-q3j6-qgpj-74h6` and `GHSA-v39h-62p7-jpjc` (fast-uri@3.1.0 bundled inside aws-cdk-lib) — `scan` will fail every PR after expiry. | Bump aws-cdk-lib if it now bundles fast-uri ≥ 3.1.2 and remove the two ignores; otherwise extend the date or escalate. See pinned issue #45 for the full action plan. |
+| 2026-08-31 | `osv-scanner.toml` ignores `GHSA-jxxr-4gwj-5jf2` (brace-expansion@5.0.5 ReDoS, bundled inside aws-cdk-lib — `inBundle`, overrides can't reach; aws-cdk-lib 2.257.0 still ships it). `scan` fails every PR after expiry. | Bump aws-cdk-lib if it now bundles brace-expansion ≥ 5.0.6 and remove the ignore; otherwise extend the date or escalate. Same bundled-dep class as the fast-uri row above. |
 | 2026-12-31 | `osv-scanner.toml` ignores `GHSA-67mh-4wv8-2f99` (esbuild) and `GHSA-4w7w-66w2-5vf9` (vite). Dev-only, scoped to vitest's transitive vite/esbuild. | Re-evaluate after the next vitest/vite bump (Dependabot's `dev` group). Remove the ignores once the lockfile resolves to a fixed version. |
 
 When you add a new time-bombed entry — a suppression with `ignoreUntil`, a hard-coded date in code, a deferred upstream issue, an ALB/Service Quotas raise that auto-expires — add a row here AND, for high-impact items, file a pinned issue with full context. The table is a quick scan; the issue is the action plan.
