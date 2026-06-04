@@ -46,3 +46,19 @@ aws-cdk-lib's tarball, which npm overrides cannot reach. Path is synth-time
 schema validation over locally authored, trusted inputs. Re-evaluate when
 aws-cdk-lib re-bundles fast-uri >= 3.1.2.
 """
+
+[[IgnoredVulns]]
+id = "GHSA-jxxr-4gwj-5jf2"
+ignoreUntil = 2026-08-31
+reason = """
+brace-expansion ReDoS (affected range >= 5.0.0, < 5.0.6). The only copy left in
+the vulnerable range is the one bundled inside aws-cdk-lib's tarball
+(node_modules/aws-cdk-lib/node_modules/brace-expansion@5.0.5, inBundle=true);
+the top-level brace-expansion already resolves to the fixed 5.0.6 and npm
+overrides cannot reach into a bundled tarball. aws-cdk-lib 2.257.0 (the latest
+release as of this entry) still bundles 5.0.5. brace-expansion is used at synth
+time for minimatch-style path globbing over locally authored, trusted inputs
+(cdk.json / asset globs) -- no attacker-controlled pattern is ever passed to it.
+Re-evaluate on the next aws-cdk-lib release that re-bundles brace-expansion
+>= 5.0.6.
+"""
