@@ -74,6 +74,7 @@ jobs:
             --exclude '^https://github.com/settings/'
             --exclude '^https://github.com/organizations/'
             --exclude '^https://github.com/.+/compare/'
+            --exclude '^https://docs\.aws\.amazon\.com/'
             --exclude 'localhost'
             --exclude '127\.0\.0\.1'
             './*.md'
