@@ -24,7 +24,7 @@
     "@aws-sdk/client-sns": "^3.1061.0",
     "@aws-sdk/lib-dynamodb": "^3.1061.0",
     "aws-cdk-lib": "^2.257.0",
-    "cdk-nag": "^2.34.0",
+    "cdk-nag": "^3.0.1",
     "constructs": "^10.4.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.2"
