@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.3...v0.3.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** forks that call NagSuppressions in infra/extensions.local.ts must switch to acknowledgeNag() from infra/lib/util/nag.ts (or Validations.of(x).acknowledge) and list granular findings in appliesTo.
+
+### Bug Fixes
+
+* **runtime:** pin tunnel image back to Ubuntu 24.04 LTS ([#112](https://github.com/foolswithtools/cloud-dev-pods/issues/112)) ([0e49860](https://github.com/foolswithtools/cloud-dev-pods/commit/0e498602d41fd8a712c1599c0a01cf79b16c4081))
+
+
+### Miscellaneous Chores
+
+* **deps:** migrate to cdk-nag v3 ([#113](https://github.com/foolswithtools/cloud-dev-pods/issues/113)) ([88b15a1](https://github.com/foolswithtools/cloud-dev-pods/commit/88b15a1da7d5bdf9dc8f6d97026f2e400abec7e1))
+
 ## [0.2.3](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.2...v0.2.3) (2026-10-18)
 
 
