@@ -148,13 +148,13 @@ Then re-run `cluster-up.yml`.
 
 **Fix:** in VS Code Desktop, sign out of Remote Tunnels (`Cmd-Shift-P` → "Remote Tunnels: Sign out") and sign in with the same account you used in the device-code flow.
 
-## Reset a tunnel pod's saved login
+## Tunnel pod asks for a new device code after a restart
 
-**When:** you want a tunnel pod to sign in as a different GitHub/Microsoft account, or you want to revoke the login it saved.
+**Expected behavior, not a bug.** Every tunnel `pod-up` starts a new Fargate task, and the VS Code CLI's login doesn't carry over to it, so `pod-up` prints a new device code each time. Your `/workspace` files are kept.
 
-**Cause:** tunnel pods keep the VS Code CLI login in `/workspace/.vscode-cli` on the pod's EFS workspace, so it survives `pod-down` / `pod-up` of the same pod name.
+**Why it isn't persisted:** the CLI encrypts its saved token with a key tied to the machine, so a new task can't read a token written by the old one. The only setting that makes it survive (`VSCODE_CLI_DISABLE_KEYCHAIN_ENCRYPT`) leaves a plaintext tunnel token on the EFS workspace. See #68 for the smoke results and #120 for the Secrets Manager follow-up.
 
-**Fix:** from a terminal in the pod, run `/opt/vscode-cli/code tunnel unregister` (frees the tunnel slot) and `/opt/vscode-cli/code tunnel user logout`, then `pod-down` and `pod-up` the pod. The next `pod-up` prints a new device code. If the CLI commands fail, `rm -rf /workspace/.vscode-cli` before `pod-down` has the same effect on the saved login. To revoke the token itself, also sign out of Remote Tunnels in VS Code Desktop and remove the authorization from your GitHub account's authorized OAuth apps.
+**Fix:** enter the new code from the `pod-up` summary. Your GitHub account can hold at most 10 tunnels. If repeated restarts leave stale entries, remove them in VS Code Desktop's Remote Explorer → Tunnels (right-click → Unregister).
 
 ## EFS mount target not in same AZ as task
 

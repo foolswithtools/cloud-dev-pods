@@ -29,7 +29,7 @@ Pros:
 
 Cons:
 
-- Authentication is via the GitHub/Microsoft device-code flow, once per pod name. The CLI's login is saved in `/workspace/.vscode-cli` on the pod's EFS workspace, so a `pod-down` / `pod-up` of the same name reconnects without a new code. Anyone who can read that workspace can use the token to reach the tunnel; see [troubleshooting](troubleshooting.md#reset-a-tunnel-pods-saved-login) to remove it.
+- Authentication is via the GitHub device-code flow on **every `pod-up`**, including a `pod-down` / `pod-up` of the same pod name. The CLI's login can't be carried to a new task without storing a plaintext token on EFS, so it isn't persisted (see #68; persisting it via Secrets Manager is tracked in #120).
 - Can't share a tunnel with multiple users.
 
 ## When to use which
