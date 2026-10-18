@@ -7,7 +7,7 @@ Detailed CLI-only walkthrough. For the same steps in compact form, see [`quickst
 ```bash
 gh auth status                        # Logged in to github.com? Yes.
 aws sts get-caller-identity           # AWS account + role/user.
-node --version                        # >= 20.
+node --version                        # >= 22.12 (24 recommended).
 which aws gh git npx                  # All present.
 ```
 
@@ -15,7 +15,7 @@ If anything is missing:
 
 - `gh`: <https://github.com/cli/cli#installation>
 - `aws`: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
-- Node 20: install via [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm).
+- Node 24 (22.12+ works): install via [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm).
 
 ## Generate your fork
 

@@ -7,7 +7,7 @@ End-to-end happy path for getting a working pod in under 30 minutes. This is the
 - AWS account you own or admin (us-west-2 region recommended; any region works).
 - (Browser mode only) A domain registered in Route53 with a public hosted zone — see `docs/prerequisites.md`.
 - `gh` and `aws` CLIs installed and authenticated.
-- Node 20+.
+- Node 22.12+ (24 recommended; CI uses `.nvmrc`).
 
 ## 1. Generate your fork from the template
 

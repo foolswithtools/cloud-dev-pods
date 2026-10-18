@@ -54,7 +54,7 @@ Run these in order. Stop and ask the user to fix any that fail.
 gh auth status                           # must be authenticated
 aws sts get-caller-identity              # must return their AWS account
 aws configure list                       # confirm region matches config/config.yaml
-node --version                           # >= 20
+node --version                           # >= 22.12 (CI uses .nvmrc: 24)
 git remote -v                            # user mode only: origin must NOT be foolswithtools/cloud-dev-pods (see Cold-session orientation above for maintainer/smoke-fork modes)
 test -f config/config.yaml               # MUST exist + be COMMITTED (not gitignored)
 ```
