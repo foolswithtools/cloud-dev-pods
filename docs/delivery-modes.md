@@ -29,7 +29,7 @@ Pros:
 
 Cons:
 
-- Authentication is via Microsoft's device-code flow (one-time per pod).
+- Authentication is via the GitHub device-code flow on **every `pod-up`**, including a `pod-down` / `pod-up` of the same pod name. The CLI's login can't be carried to a new task without storing a plaintext token on EFS, so it isn't persisted (see #68; persisting it via Secrets Manager is tracked in #120).
 - Can't share a tunnel with multiple users.
 
 ## When to use which

@@ -148,6 +148,14 @@ Then re-run `cluster-up.yml`.
 
 **Fix:** in VS Code Desktop, sign out of Remote Tunnels (`Cmd-Shift-P` → "Remote Tunnels: Sign out") and sign in with the same account you used in the device-code flow.
 
+## Tunnel pod asks for a new device code after a restart
+
+**Expected behavior, not a bug.** Every tunnel `pod-up` starts a new Fargate task, and the VS Code CLI's login doesn't carry over to it, so `pod-up` prints a new device code each time. Your `/workspace` files are kept.
+
+**Why it isn't persisted:** the CLI encrypts its saved token with a key tied to the machine, so a new task can't read a token written by the old one. The only setting that makes it survive (`VSCODE_CLI_DISABLE_KEYCHAIN_ENCRYPT`) leaves a plaintext tunnel token on the EFS workspace. See #68 for the smoke results and #120 for the Secrets Manager follow-up.
+
+**Fix:** enter the new code from the `pod-up` summary. Your GitHub account can hold at most 10 tunnels. If repeated restarts leave stale entries, remove them in VS Code Desktop's Remote Explorer → Tunnels (right-click → Unregister).
+
 ## EFS mount target not in same AZ as task
 
 **Cause:** the task got placed in an AZ where EFS has no mount target. Should be impossible since `ClusterStack` creates mount targets in all private subnets, but possible if you customized the network in `infra/extensions.local.ts` and added subnets without mount targets.
