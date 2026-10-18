@@ -154,7 +154,7 @@ Then re-run `cluster-up.yml`.
 
 **Cause:** tunnel pods keep the VS Code CLI login in `/workspace/.vscode-cli` on the pod's EFS workspace, so it survives `pod-down` / `pod-up` of the same pod name.
 
-**Fix:** from a terminal in the pod, run `rm -rf /workspace/.vscode-cli`, then `pod-down` and `pod-up` the pod. The next `pod-up` prints a new device code. To revoke the token itself, also sign out of Remote Tunnels in VS Code Desktop and remove the authorization from your GitHub account's authorized OAuth apps.
+**Fix:** from a terminal in the pod, run `/opt/vscode-cli/code tunnel unregister` (frees the tunnel slot) and `/opt/vscode-cli/code tunnel user logout`, then `pod-down` and `pod-up` the pod. The next `pod-up` prints a new device code. If the CLI commands fail, `rm -rf /workspace/.vscode-cli` before `pod-down` has the same effect on the saved login. To revoke the token itself, also sign out of Remote Tunnels in VS Code Desktop and remove the authorization from your GitHub account's authorized OAuth apps.
 
 ## EFS mount target not in same AZ as task
 
