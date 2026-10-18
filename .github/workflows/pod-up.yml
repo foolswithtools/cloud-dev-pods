@@ -122,9 +122,11 @@ jobs:
           echo "$RESULT"
           URL=$(echo "$RESULT" | jq -r '.url // empty')
           CODE=$(echo "$RESULT" | jq -r '.code // empty')
+          TUNNEL_URL=$(echo "$RESULT" | jq -r '.tunnelUrl // empty')
           {
             echo "url=$URL"
             echo "code=$CODE"
+            echo "tunnel_url=$TUNNEL_URL"
           } >> "$GITHUB_OUTPUT"
           if [ -n "$URL" ] && [ -n "$CODE" ]; then
             echo "::notice title=Tunnel device code::Open $URL and enter code $CODE"
@@ -151,6 +153,13 @@ jobs:
                 echo "**Code:** \`${{ steps.tunnel.outputs.code }}\`"
                 echo ""
                 echo "Sign in with the same GitHub account on your local VS Code Desktop. Then \`Remote Tunnels: Connect to Tunnel\` -> \`${{ inputs.pod_name }}\`."
+              elif [ -n "${{ steps.tunnel.outputs.tunnel_url }}" ]; then
+                echo ""
+                echo "### Tunnel connected"
+                echo ""
+                echo "Reused the login saved on this pod's workspace, so no device code was needed."
+                echo ""
+                echo "**Open:** ${{ steps.tunnel.outputs.tunnel_url }} or \`Remote Tunnels: Connect to Tunnel\` -> \`${{ inputs.pod_name }}\` in VS Code Desktop."
               else
                 echo ""
                 echo "Could not auto-detect device code yet — check CloudWatch Logs:"

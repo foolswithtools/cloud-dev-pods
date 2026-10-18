@@ -3,11 +3,15 @@
  * Poll CloudWatch Logs for the VS Code tunnel device-code prompt and emit
  * the URL + code as JSON on stdout. Used by pod-up.yml's tunnel-mode path.
  *
+ * If the pod reuses a login persisted on its EFS workspace (#68), the CLI
+ * skips the prompt and goes straight to printing the tunnel link; that is
+ * emitted as `{"tunnelUrl": ...}` so the caller doesn't wait out the timeout.
+ *
  * Usage:
  *   tsx scripts/tunnel-poll-logs.ts --log-group <group> --stream-prefix <prefix> [--timeout 180]
  *
  * Exit codes:
- *   0 — success (URL + code found, OR timeout reached without finding; emits empty JSON in the timeout case so callers can decide).
+ *   0 — success (URL + code found, tunnel already connected, OR timeout reached without finding; emits empty JSON in the timeout case so callers can decide).
  *   1 — invocation error (bad args, AWS API failure).
  */
 
@@ -51,6 +55,10 @@ interface DeviceCode {
 const URL_RE = /(https:\/\/(?:github\.com\/login\/device|microsoft\.com\/devicelogin)\b)/;
 const CODE_RE = /\bcode\s+([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})?)/;
 
+// Printed once the tunnel is connected, e.g.
+//   "Open this link in your browser https://vscode.dev/tunnel/<name>/workspace"
+const TUNNEL_URL_RE = /(https:\/\/vscode\.dev\/tunnel\/\S+)/;
+
 function extractDeviceCode(message: string): DeviceCode | undefined {
   const url = URL_RE.exec(message)?.[1];
   const code = CODE_RE.exec(message)?.[1];
@@ -71,13 +79,19 @@ async function main(): Promise<void> {
       const r = await client.send(new FilterLogEventsCommand({
         logGroupName: args.logGroup,
         logStreamNamePrefix: args.streamPrefix,
-        filterPattern: '?"github.com/login/device" ?"microsoft.com/devicelogin"',
+        filterPattern: '?"github.com/login/device" ?"microsoft.com/devicelogin" ?"vscode.dev/tunnel/"',
         startTime,
       }));
       for (const event of r.events ?? []) {
-        const found = extractDeviceCode(event.message ?? '');
+        const message = event.message ?? '';
+        const found = extractDeviceCode(message);
         if (found) {
           process.stdout.write(JSON.stringify(found) + '\n');
+          return;
+        }
+        const tunnelUrl = TUNNEL_URL_RE.exec(message)?.[1];
+        if (tunnelUrl) {
+          process.stdout.write(JSON.stringify({ tunnelUrl }) + '\n');
           return;
         }
       }

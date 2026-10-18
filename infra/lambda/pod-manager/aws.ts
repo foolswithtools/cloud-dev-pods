@@ -256,6 +256,9 @@ export interface TaskDefArgs {
   mode: 'browser' | 'tunnel';
 }
 
+/** VS Code CLI state dir for tunnel pods; under the EFS `/workspace` mount. */
+export const TUNNEL_CLI_DATA_DIR = '/workspace/.vscode-cli';
+
 export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
   const taskRoleArn = args.mode === 'browser' ? env.browserTaskRoleArn : env.tunnelTaskRoleArn;
 
@@ -325,7 +328,15 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
       essential: true,
       mountPoints: [{ sourceVolume: 'workspace', containerPath: '/workspace', readOnly: false }],
       logConfiguration: logConfig(`tunnel/${args.podName}/vscode-tunnel`),
-      environment: [{ name: 'POD_NAME', value: args.podName }],
+      environment: [
+        { name: 'POD_NAME', value: args.podName },
+        // Keep the CLI's login token on the per-pod EFS workspace so a
+        // pod-down/pod-up of the same name reconnects without a new
+        // device-code flow (#68). The image has no keyring daemon, so the
+        // token has to live in a file.
+        { name: 'VSCODE_CLI_DATA_DIR', value: TUNNEL_CLI_DATA_DIR },
+        { name: 'VSCODE_CLI_USE_FILE_KEYCHAIN', value: '1' },
+      ],
     });
   }
 

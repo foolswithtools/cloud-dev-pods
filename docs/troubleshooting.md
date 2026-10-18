@@ -148,6 +148,14 @@ Then re-run `cluster-up.yml`.
 
 **Fix:** in VS Code Desktop, sign out of Remote Tunnels (`Cmd-Shift-P` → "Remote Tunnels: Sign out") and sign in with the same account you used in the device-code flow.
 
+## Reset a tunnel pod's saved login
+
+**When:** you want a tunnel pod to sign in as a different GitHub/Microsoft account, or you want to revoke the login it saved.
+
+**Cause:** tunnel pods keep the VS Code CLI login in `/workspace/.vscode-cli` on the pod's EFS workspace, so it survives `pod-down` / `pod-up` of the same pod name.
+
+**Fix:** from a terminal in the pod, run `rm -rf /workspace/.vscode-cli`, then `pod-down` and `pod-up` the pod. The next `pod-up` prints a new device code. To revoke the token itself, also sign out of Remote Tunnels in VS Code Desktop and remove the authorization from your GitHub account's authorized OAuth apps.
+
 ## EFS mount target not in same AZ as task
 
 **Cause:** the task got placed in an AZ where EFS has no mount target. Should be impossible since `ClusterStack` creates mount targets in all private subnets, but possible if you customized the network in `infra/extensions.local.ts` and added subnets without mount targets.
