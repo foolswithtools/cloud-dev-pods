@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.2...v0.2.3) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** clear osv-scanner backlog and drop expired suppressions ([#97](https://github.com/foolswithtools/cloud-dev-pods/issues/97)) ([b15ef56](https://github.com/foolswithtools/cloud-dev-pods/commit/b15ef567aa7f5f39e570d5c9d7cc836fff7acd77)), closes [#45](https://github.com/foolswithtools/cloud-dev-pods/issues/45)
+* **runtime:** move tunnel image to Ubuntu 24.04 LTS ([#100](https://github.com/foolswithtools/cloud-dev-pods/issues/100)) ([c8211d9](https://github.com/foolswithtools/cloud-dev-pods/commit/c8211d907cc210281f44842e329f60cc67bb96ad))
+
 ## [0.2.2](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.1...v0.2.2) (2026-05-10)
 
 
