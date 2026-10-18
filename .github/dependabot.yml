@@ -72,8 +72,7 @@ updates:
     # exact tags because Dependabot's docker updater doesn't match `25.x`-style
     # wildcards against tags like `25.10` (it logged `25.x` as ignored and
     # still opened 24.04 -> 25.10, #115). Extend the list before 2030.
-    # Even-year LTS majors (26.04, 28.04) still come through as upgrade PRs;
-    # 26.04 was closed in #51, so that upgrade has to be done by hand.
+    # Even-year LTS majors (28.04, 30.04) still come through as upgrade PRs.
     ignore:
       - dependency-name: "ubuntu"
         update-types:
