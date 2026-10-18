@@ -46,9 +46,9 @@ jobs:
         with:
           globs: |
             **/*.md
-            !node_modules
-            !.cdk.staging
-            !cdk.out
+            !**/node_modules
+            !**/.cdk.staging
+            !**/cdk.out
             !CHANGELOG.md
 
       - name: shellcheck
