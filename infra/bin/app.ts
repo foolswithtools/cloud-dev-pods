@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { Aspects } from 'aws-cdk-lib';
+import { Validations } from 'aws-cdk-lib';
 import { AwsSolutionsChecks } from 'cdk-nag';
 import { loadConfig } from '../lib/config/config';
 import { BootstrapStack } from '../lib/stacks/bootstrap-stack';
@@ -46,4 +46,9 @@ const podManager = new PodManagerStack(app, `${prefix}-PodManager`, {
 new IdleReaperStack(app, `${prefix}-IdleReaper`, { env, config, cluster, podManager });
 
 applyProjectTags(app, config);
-Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
+// cdk-nag v3: a policy-validation plugin; unacknowledged findings fail synth.
+// writeSuppressionsToCloudFormation keeps the v2-style `cdk_nag` metadata
+// (rule IDs + reasons) in the templates as an audit trail.
+Validations.of(app).addPlugins(
+  new AwsSolutionsChecks(app, { verbose: true, writeSuppressionsToCloudFormation: true }),
+);

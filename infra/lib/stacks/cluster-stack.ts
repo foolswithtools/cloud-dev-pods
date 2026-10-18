@@ -8,7 +8,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag } from '../util/nag';
 import type { Construct } from 'constructs';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
@@ -181,7 +181,7 @@ export class ClusterStack extends Stack {
     });
 
     // cdk-nag suppressions.
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.alb,
       [
         {
@@ -190,9 +190,8 @@ export class ClusterStack extends Stack {
             'ALB access logs are intentionally off in v1 to avoid forcing every downstream user to provision an S3 bucket. Phase 6+ polish: opt-in flag in config.alb.accessLogs.',
         },
       ],
-      true,
     );
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.fileSystem,
       [
         {
@@ -201,7 +200,6 @@ export class ClusterStack extends Stack {
             'EFS uses an AWS-managed KMS key. CMK is appropriate for regulated environments; opt-in is a Phase 6+ polish item.',
         },
       ],
-      true,
     );
   }
 }

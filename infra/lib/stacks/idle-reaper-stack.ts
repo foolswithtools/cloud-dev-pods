@@ -7,7 +7,7 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag, nagImportRef } from '../util/nag';
 import type { Construct } from 'constructs';
 import * as path from 'path';
 import type { Config } from '../config/schema';
@@ -112,7 +112,7 @@ export class IdleReaperStack extends Stack {
       stringValue: this.idleTopic.topicArn,
     });
 
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.fn,
       [
         {
@@ -121,7 +121,7 @@ export class IdleReaperStack extends Stack {
             'cloudwatch:GetMetricStatistics requires Resource: * per AWS API contract. lambda:InvokeFunction on `<pod-manager>:*` covers function versions/aliases — CDK\'s default grantInvoke pattern.',
           appliesTo: [
             'Resource::*',
-            'Resource::<PodManagerFn2B3E342D.Arn>:*',
+            `Resource::${nagImportRef(podManager, 'ExportsOutputFnGetAttPodManagerFn2B3E342DArn9F5BC0B2')}:*`,
           ],
         },
         {
@@ -133,9 +133,8 @@ export class IdleReaperStack extends Stack {
           ],
         },
       ],
-      true,
     );
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.idleTopic,
       [
         {
@@ -144,7 +143,6 @@ export class IdleReaperStack extends Stack {
             'SSE-KMS is not required for idle-warning notifications; messages contain only pod names + owner usernames (no secrets). Customer-managed KMS is a Phase 8+ polish item if regulated environments need it.',
         },
       ],
-      true,
     );
   }
 }

@@ -5,7 +5,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag, nagImportRef } from '../util/nag';
 import type { Construct } from 'constructs';
 import * as path from 'path';
 import type { Config } from '../config/schema';
@@ -222,13 +222,27 @@ export class PodManagerStack extends Stack {
       stringValue: this.registry.tableName,
     });
 
-    NagSuppressions.addResourceSuppressions(
+    const arnPrefix = (service: string): string =>
+      `arn:aws:${service}:${config.aws.region}:${config.aws.accountId}`;
+    acknowledgeNag(
       this.fn,
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
             'pod-manager is the sole holder of ECS/ALB/EFS write rights (ADR 0003). Wildcard resources on ECS/ELBv2/EFS APIs are required because resource ARNs are determined at runtime per pod-up. Bounded by `iam:PassRole` Condition (ECS service only) and ECR scoped to `cloud-dev-pods/*`.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason:
+            'Project-scoped prefixes: ECR repos (cloud-dev-pods/*), SSM params (/cloud-dev-pods/*), OAuth secrets (/cloud-dev-pods/oauth/*, Secrets Manager appends a random ARN suffix), and per-pod log streams in the pods log group.',
+          appliesTo: [
+            `Resource::${arnPrefix('ecr')}:repository/cloud-dev-pods/*`,
+            `Resource::${arnPrefix('ssm')}:parameter/cloud-dev-pods/*`,
+            `Resource::${arnPrefix('secretsmanager')}:secret:/cloud-dev-pods/oauth/*`,
+            `Resource::${arnPrefix('logs')}:log-group:${nagImportRef(cluster, 'ExportsOutputRefPodsLogGroup17520DC50F223430')}:*`,
+          ],
         },
         {
           id: 'AwsSolutions-IAM4',
@@ -239,7 +253,6 @@ export class PodManagerStack extends Stack {
           ],
         },
       ],
-      true,
     );
   }
 }

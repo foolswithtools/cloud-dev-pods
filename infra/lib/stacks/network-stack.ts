@@ -2,7 +2,7 @@ import { RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag } from '../util/nag';
 import type { Construct } from 'constructs';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
@@ -110,7 +110,7 @@ export class NetworkStack extends Stack {
       stringValue: this.efsSg.securityGroupId,
     });
 
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.albSg,
       [
         {
@@ -119,7 +119,6 @@ export class NetworkStack extends Stack {
             'ALB is internet-facing by design; pod URLs must be reachable. Auth is enforced at oauth2-proxy on the task side, not at the SG.',
         },
       ],
-      true,
     );
   }
 }
