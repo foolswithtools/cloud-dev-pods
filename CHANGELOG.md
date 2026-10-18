@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.3.0...v0.3.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** ignore interim Ubuntu tags by exact version ([#121](https://github.com/foolswithtools/cloud-dev-pods/issues/121)) ([1a40c2b](https://github.com/foolswithtools/cloud-dev-pods/commit/1a40c2ba318c6f610dacb5d5989e4a4f916c0f45))
+
 ## [0.3.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.2.3...v0.3.0) (2026-10-18)
 
 
