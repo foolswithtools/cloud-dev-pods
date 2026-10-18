@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.3.1...v0.4.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** tunnel pods now ship Node 22 (was 18), Python 3.14 (was 3.12) and git 2.53 (was 2.43) from the Ubuntu 26.04 archive. npm stays 9.2.0. Workspace code pinned to the old interpreters may need updating. Run build-runtime after syncing to pick up the image.
+
+### Features
+
+* **runtime:** move tunnel image to Ubuntu 26.04 LTS ([#126](https://github.com/foolswithtools/cloud-dev-pods/issues/126)) ([b766d68](https://github.com/foolswithtools/cloud-dev-pods/commit/b766d682a40b67ba6c413149c398987a0d606dbc))
+
 ## [0.3.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.3.0...v0.3.1) (2026-10-18)
 
 
