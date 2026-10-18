@@ -56,16 +56,25 @@ updates:
     directory: /runtime/vscode-tunnel
     schedule:
       interval: weekly
-    # Stay on Ubuntu LTS (even-year YY.04). Dependabot sees YY.10 as a
-    # semver-minor bump and odd-year YY.04 as a semver-major bump; both are
-    # interim releases (9-month support), so ignore them. Even-year majors
-    # (26.04, 28.04) still come through as LTS upgrade PRs.
+    # Stay on Ubuntu LTS (even-year YY.04). Every YY.10 and odd-year YY.04 is
+    # an interim release (9-month support), so ignore them. They're listed as
+    # exact tags because Dependabot's docker updater doesn't match `25.x`-style
+    # wildcards against tags like `25.10` (it logged `25.x` as ignored and
+    # still opened 24.04 -> 25.10, #115). Extend the list before 2030.
+    # Even-year LTS majors (26.04, 28.04) still come through as upgrade PRs;
+    # 26.04 was closed in #51, so that upgrade has to be done by hand.
     ignore:
       - dependency-name: "ubuntu"
         update-types:
           - "version-update:semver-minor"
       - dependency-name: "ubuntu"
         versions:
-          - "25.x"
-          - "27.x"
-          - "29.x"
+          - "24.10"
+          - "25.04"
+          - "25.10"
+          - "26.10"
+          - "27.04"
+          - "27.10"
+          - "28.10"
+          - "29.04"
+          - "29.10"
