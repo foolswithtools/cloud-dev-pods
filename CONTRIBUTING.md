@@ -18,7 +18,7 @@ Thanks for considering a contribution.
 ## Local dev
 
 ```bash
-node --version  # >= 20
+node --version  # >= 22.12 (CI uses .nvmrc: 24)
 npm ci
 npm run lint
 npm run test
