@@ -4,7 +4,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag, nagImportRef } from '../util/nag';
 import type { Construct } from 'constructs';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
@@ -110,16 +110,19 @@ export class PodTaskFamilyStack extends Stack {
     });
     // Per-pod log streams need a wildcard suffix; the pod name is part of
     // the stream path. Bounded to this log group + mode-specific prefix.
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       [this.browserTaskRole, this.tunnelTaskRole],
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
             'Per-pod CloudWatch log streams are wildcarded by pod name. Bounded to the cluster pods log group and the mode-specific stream prefix (browser/* or tunnel/*).',
+          appliesTo: ['browser', 'tunnel'].map(
+            (modeName) =>
+              `Resource::arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${nagImportRef(cluster, 'ExportsOutputRefPodsLogGroup17520DC50F223430')}:log-stream:${modeName}/*`,
+          ),
         },
       ],
-      true,
     );
 
     // EFS volume reference, attached to both task families. Per-pod access
@@ -258,7 +261,7 @@ export class PodTaskFamilyStack extends Stack {
       stringValue: this.executionRole.roleArn,
     });
 
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.executionRole,
       [
         {
@@ -280,14 +283,13 @@ export class PodTaskFamilyStack extends Stack {
           ],
         },
       ],
-      true,
     );
 
     // ECS2 (env vars on oauth2-proxy): the env keys here are *public configuration*
     // (provider name, listen address, upstream URL). Actual credentials use the
     // `secrets:` block that pulls from Secrets Manager. Suppress with that
     // justification at the task definition level.
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.browserTaskDef,
       [
         {
@@ -296,7 +298,6 @@ export class PodTaskFamilyStack extends Stack {
             'Plaintext env vars on the oauth2-proxy container are non-sensitive configuration (provider, addresses, allowed org). Sensitive creds (client secret, cookie secret) use the `secrets:` block backed by AWS Secrets Manager.',
         },
       ],
-      true,
     );
   }
 }

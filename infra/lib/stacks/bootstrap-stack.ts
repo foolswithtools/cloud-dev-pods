@@ -3,7 +3,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { NagSuppressions } from 'cdk-nag';
+import { acknowledgeNag } from '../util/nag';
 import type { Construct } from 'constructs';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
@@ -210,7 +210,7 @@ export class BootstrapStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       [oauthClientIdSecret, oauthClientSecret],
       [
         {
@@ -220,7 +220,7 @@ export class BootstrapStack extends Stack {
         },
       ],
     );
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       oauthCookieSecret,
       [
         {
@@ -250,43 +250,55 @@ export class BootstrapStack extends Stack {
     });
 
     // 8. cdk-nag suppressions, each with a justification.
-    NagSuppressions.addResourceSuppressions(
+    const arnPrefix = (service: string): string =>
+      `arn:aws:${service}:${config.aws.region}:${config.aws.accountId}`;
+    acknowledgeNag(
       this.deployerRole,
       [
         {
           id: 'AwsSolutions-IAM4',
           reason:
             'PowerUserAccess is intentional for CDK deploy. Bounded by CloudDevPodsBoundary which restricts IAM to /cloud-dev-pods/ paths and denies user/account-level actions.',
+          appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/PowerUserAccess'],
         },
         {
           id: 'AwsSolutions-IAM5',
           reason:
             'iam:* on * is required so CDK can create/update task roles, lambda execution roles, etc. Bounded by CloudDevPodsBoundary.',
+          appliesTo: ['Action::iam:*', 'Resource::*'],
         },
       ],
-      true,
     );
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.podOpsRole,
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
             'ecr:GetAuthorizationToken requires Resource: *; this is an AWS API contract limitation, not a policy gap.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason:
+            'Image push/pull is scoped to the project repositories (cloud-dev-pods/*), and log reads to the project log groups (/cloud-dev-pods/*), whose names are created per pod at runtime.',
+          appliesTo: [
+            `Resource::${arnPrefix('ecr')}:repository/cloud-dev-pods/*`,
+            `Resource::${arnPrefix('logs')}:log-group:/cloud-dev-pods/*`,
+          ],
         },
       ],
-      true,
     );
-    NagSuppressions.addResourceSuppressions(
+    acknowledgeNag(
       this.boundary,
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
             'A permissions boundary by design uses Allow `*` on `*`; the actual restriction comes from the explicit deny statements on user/account/IAM-path actions.',
+          appliesTo: ['Action::*', 'Resource::*'],
         },
       ],
-      true,
     );
   }
 }

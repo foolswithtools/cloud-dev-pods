@@ -1,7 +1,7 @@
 name: ci-test
-# Phase 3 + 4: tsc build + vitest unit tests + cdk synth + cdk-nag aspect.
-# cdk-nag emits findings as synth-time warnings; explicit suppressions live
-# in each stack with justification.
+# Phase 3 + 4: tsc build + vitest unit tests + cdk synth + cdk-nag.
+# cdk-nag v3 runs as a CDK policy-validation plugin; unacknowledged findings
+# fail synth. Acknowledgments live in each stack with justification.
 
 on:
   pull_request:
