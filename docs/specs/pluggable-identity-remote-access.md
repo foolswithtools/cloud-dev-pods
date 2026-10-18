@@ -79,36 +79,43 @@ Waves map to milestones `Wave 1` … `Wave 4` and `Later`.
 ### Wave 1: foundations
 
 <a id="f1"></a>
+
 #### F1. Provider-neutral `auth:` config + ADR 0008
 
 Add `auth.browser.{provider, issuerUrl, allowedEmailDomains, allowedGroups, allowedUsers, allowedOrg, ownerOnly}` (provider default `github`) and `auth.tunnel.provider` (default `github`). Map `github.oauthAllowedOrg/Users` into `auth.browser.allowedOrg/allowedUsers` with a synth-time deprecation warning. Plumb through the pod-manager stack env and Lambda env. ADR 0008 amends ADR 0002. Only the `github` provider is wired at runtime in this item.
 
 <a id="f2"></a>
+
 #### F2. Provider-neutral fail-fast guard
 
 Replace the GitHub-specific guard at `actions.ts:42` with a function that refuses browser `pod-up` unless the active provider has at least one restriction (org, users, groups, email domains, or tenant). `EMAIL_DOMAINS=*` with nothing else must be refused for every provider.
 
 <a id="f3"></a>
+
 #### F3. Single oauth2-proxy sidecar builder + upgrade to ≥ v7.8
 
 One function produces the sidecar's container definition (env, secrets, health, logging) for both the Lambda task-def path and the CDK task family. Upgrade the image to a digest-pinned release ≥ v7.8.0.
 
 <a id="f4"></a>
+
 #### F4. Per-pod owner authorization (opt-in)
 
 `pod-up` accepts an `owner` identity (email or IdP login). The registry stores it. With `auth.browser.ownerOnly: true`: GitHub pods get `GITHUB_USER=<owner>[,admins]`; OIDC/Entra pods get an init container that writes `--authenticated-emails-file` into a shared ephemeral volume. `auth.browser.adminUsers` grants break-glass access.
 
 <a id="b4"></a>
+
 #### B4. Document the Microsoft tunnel data path and limits
 
 Update `docs/delivery-modes.md` with the relay path, encryption scope, `devtunnels.ms` caveat, service limits, no-SLA status, and egress domains.
 
 <a id="a3-spike"></a>
+
 #### A3-spike. WorkOS Connect as an oauth2-proxy OIDC provider
 
 Answer: ID token `email`/`email_verified` presence; wildcard redirect URIs for Connect apps; `org_id` usefulness for restriction; oauth2-proxy issuer verification. Output a go/no-go and adjust A3.
 
 <a id="c1-spike"></a>
+
 #### C1-spike. Remote-SSH to a Fargate task over ECS Exec port forwarding
 
 Answer: does `AWS-StartPortForwardingSession` to an `ecs:<cluster>_<task>_<runtime>` target carry a VS Code Remote-SSH session end to end; latency; whether IAM can scope `ecs:ExecuteCommand`/`ssm:StartSession` by the task's `Owner` tag. Output a go/no-go.
@@ -116,36 +123,43 @@ Answer: does `AWS-StartPortForwardingSession` to an `ecs:<cluster>_<task>_<runti
 ### Wave 2: providers and tunnel account choice
 
 <a id="a2"></a>
+
 #### A2. Microsoft Entra ID browser provider
 
 `auth.browser.provider: entra-id` with tenant ID, `allowedTenants`, `allowedGroups`, optional `User.Read` scope. Setup doc covers app registration, client secret, and "assignment required". Until A5 lands, each pod callback must be registered manually (≤ 256).
 
 <a id="a3"></a>
+
 #### A3. WorkOS browser provider
 
 `auth.browser.provider: oidc` profile for WorkOS (issuer = AuthKit domain). Setup doc for the Connect application. Wildcard callback if the spike confirms it.
 
 <a id="a4"></a>
+
 #### A4. Generic OIDC recipes
 
 Documented, schema-validated example configs for Okta, Auth0, Google Workspace, and Keycloak on the A3 code path.
 
 <a id="b1"></a>
+
 #### B1. Tunnel account provider choice
 
 `auth.tunnel.provider: github|microsoft` plus an optional per-pod override on `pod-up`. The tunnel entrypoint runs `code tunnel user login --provider <p>` before `code tunnel`. Note Entra Conditional Access may block device-code flow.
 
 <a id="b3"></a>
+
 #### B3. Tunnel slot hygiene
 
 The tunnel entrypoint traps `SIGTERM` and runs `code tunnel unregister` within the ECS stop timeout. `pod-up` warns when an owner already has 10 or more registered tunnel pods.
 
 <a id="f5"></a>
+
 #### F5. `npm run init` provider selection
 
 The init wizard prompts for browser provider (and issuer/tenant), tunnel provider, and `ownerOnly`, and writes a schema-valid `auth:` block.
 
 <a id="f6"></a>
+
 #### F6. Deployment decision guide
 
 New `docs/choosing-auth-and-access.md` mapping IdP × delivery style × remote-access backend, plus updates to CLAUDE.md §2 and rule 6, `setup-*.md`, and `delivery-modes.md`. Extended as Waves 3 and 4 land.
@@ -153,11 +167,13 @@ New `docs/choosing-auth-and-access.md` mapping IdP × delivery style × remote-a
 ### Wave 3
 
 <a id="a5"></a>
+
 #### A5. Central auth host (single callback URL)
 
 Optional `auth.browser.centralAuthHost: true`: an always-on oauth2-proxy ECS service behind `auth.<baseDomain>`; pod sidecars use `--redirect-url=https://auth.<base>/oauth2/callback`, `--cookie-domain=.<base>`, `--whitelist-domain=.<base>`. Requires F4 (with a shared cookie, per-pod checks are mandatory when enabled). ADR 0009. Adds roughly $3-9/month.
 
 <a id="b2"></a>
+
 #### B2. Persist tunnel login (existing issue #120)
 
 Extend #120 to cover both GitHub and Microsoft tokens; depends on B1.
@@ -165,33 +181,39 @@ Extend #120 to cover both GitHub and Microsoft tokens; depends on B1.
 ### Wave 4
 
 <a id="c0"></a>
+
 #### C0. SSH pod mode (shared base) + ADR 0010
 
 New `mode: ssh` with `remote.backend: ssm|cloudflare|tailscale`. Runtime image runs non-root `sshd` on 2222 (key/cert only). The entrypoint selects the backend. `pod-up` prints an SSH config snippet; `scripts/pod-connect.ts` generates it. ADR covers the security scope of shell access.
 
 <a id="c1"></a>
+
 #### C1. AWS Session Manager backend
 
 Per-mode `enableExecuteCommand`, `ssmmessages:*` on the task role, SSM VPC endpoints when `useVpcEndpoints`, IAM policy scoped by `Owner` tag, IAM Identity Center federation doc.
 
 <a id="c2"></a>
+
 #### C2. Cloudflare Tunnel + Access backend
 
-`cloudflared` in the pod; pod-manager creates/deletes a per-pod hostname and Access application via the Cloudflare API (token in Secrets Manager); clients use `cloudflared access ssh` as `ProxyCommand`.
+`cloudflared` in the pod; pod-manager creates/deletes a per-pod hostname and Access application via the Cloudflare API (token in Secrets Manager, created by the user with `aws secretsmanager create-secret` so bootstrap does not change); clients use `cloudflared access ssh` as `ProxyCommand`.
 
 ### Later
 
 <a id="c3"></a>
+
 #### C3. Tailscale backend
 
 Userspace-networking `tailscaled`, ephemeral tagged auth key in Secrets Manager, ACLs tying pods to owners.
 
 <a id="c4"></a>
+
 #### C4. opkssh identity layer
 
 `sshd` accepts OIDC-bound keys so the IdP also governs SSH login; complements C1.
 
 <a id="a9"></a>
+
 #### A9. ALB-less browser mode via Cloudflare Tunnel + Access
 
 Optional cluster shape without ALB/ACM (saves ~$16/month); domain must be on Cloudflare. Reuses C2 plumbing.
