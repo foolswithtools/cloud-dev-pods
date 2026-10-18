@@ -56,9 +56,16 @@ updates:
     directory: /runtime/vscode-tunnel
     schedule:
       interval: weekly
-    # Stay on Ubuntu LTS. 26.04 is an interim release (9-month support);
-    # let Dependabot propose the next LTS only.
+    # Stay on Ubuntu LTS (even-year YY.04). Dependabot sees YY.10 as a
+    # semver-minor bump and odd-year YY.04 as a semver-major bump; both are
+    # interim releases (9-month support), so ignore them. Even-year majors
+    # (26.04, 28.04) still come through as LTS upgrade PRs.
     ignore:
       - dependency-name: "ubuntu"
         update-types:
-          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "ubuntu"
+        versions:
+          - "25.x"
+          - "27.x"
+          - "29.x"
