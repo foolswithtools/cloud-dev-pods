@@ -19,7 +19,7 @@ Before running `gh workflow run bootstrap-aws.yml`, ensure you have:
 ```bash
 gh auth status                      # GitHub CLI authenticated
 aws sts get-caller-identity         # AWS CLI authenticated to the target account
-node --version                      # >= 20
+node --version                      # >= 22.12 (CI uses .nvmrc: 24)
 ```
 
 ## Once authenticated, you can either:

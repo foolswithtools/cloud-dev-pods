@@ -10,7 +10,7 @@
     "url": "https://github.com/foolswithtools/cloud-dev-pods.git"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "workspaces": [
     "infra",
@@ -25,14 +25,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.9.1",
+    "@types/node": "^22.20.5",
     "esbuild": "^0.28.1",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "fast-uri": "^3.1.8",

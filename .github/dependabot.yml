@@ -46,6 +46,17 @@ updates:
           - "aws-cdk*"
           - "@aws-cdk/*"
           - "constructs"
+    ignore:
+      # @types/node tracks the oldest supported Node (engines.node), not the
+      # newest. Bump its major by hand together with engines and .nvmrc.
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
+      # typescript-eslint only supports typescript <6.1.0 (#116). Remove
+      # this once typescript-eslint supports TypeScript 7.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: docker
     directory: /runtime/vscode-browser
