@@ -36,6 +36,12 @@ on:
         required: false
         default: ""
         type: string
+      tunnel_provider:
+        description: "Tunnel mode: account type for the tunnel login (config = auth.tunnel.provider)."
+        required: false
+        default: "config"
+        type: choice
+        options: ["config", "github", "microsoft"]
 
 permissions: {}
 
@@ -84,6 +90,10 @@ jobs:
           if [ -n "${{ inputs.image_tag }}" ]; then
             IMG_FLAG="--image-tag ${{ inputs.image_tag }}"
           fi
+          PROVIDER_FLAG=""
+          if [ "${{ inputs.mode }}" = "tunnel" ] && [ "${{ inputs.tunnel_provider }}" != "config" ]; then
+            PROVIDER_FLAG="--tunnel-provider ${{ inputs.tunnel_provider }}"
+          fi
           # shellcheck disable=SC2086
           RESULT=$(npx tsx scripts/pod-cli.ts up \
             --pod "${{ inputs.pod_name }}" \
@@ -91,7 +101,7 @@ jobs:
             --cpu "${{ inputs.cpu }}" \
             --memory "${{ inputs.memory }}" \
             --idle "${{ inputs.idle_minutes }}" \
-            $IMG_FLAG)
+            $IMG_FLAG $PROVIDER_FLAG)
           echo "$RESULT"
           OK=$(echo "$RESULT" | jq -r '.ok')
           if [ "$OK" != "true" ]; then
@@ -100,9 +110,14 @@ jobs:
           fi
           URL=$(echo "$RESULT" | jq -r '.url // empty')
           MSG=$(echo "$RESULT" | jq -r '.message // empty')
+          case "$(echo "$RESULT" | jq -r '.tunnelProvider // empty')" in
+            microsoft) ACCOUNT="Microsoft (personal or Entra work/school)" ;;
+            *) ACCOUNT="GitHub" ;;
+          esac
           {
             echo "url=$URL"
             echo "message=$MSG"
+            echo "account=$ACCOUNT"
           } >> "$GITHUB_OUTPUT"
 
       - name: Poll CW Logs for tunnel device code (tunnel mode only)
@@ -150,7 +165,7 @@ jobs:
                 echo "**Open:** ${{ steps.tunnel.outputs.url }}"
                 echo "**Code:** \`${{ steps.tunnel.outputs.code }}\`"
                 echo ""
-                echo "Sign in with the same GitHub account on your local VS Code Desktop. Then \`Remote Tunnels: Connect to Tunnel\` -> \`${{ inputs.pod_name }}\`."
+                echo "Sign in with your ${{ steps.up.outputs.account }} account, and use the same account on your local VS Code Desktop. Then \`Remote Tunnels: Connect to Tunnel\` -> \`${{ inputs.pod_name }}\`."
               else
                 echo ""
                 echo "Could not auto-detect device code yet — check CloudWatch Logs:"

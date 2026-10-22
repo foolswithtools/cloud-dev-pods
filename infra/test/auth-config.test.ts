@@ -129,10 +129,15 @@ describe('auth config resolution', () => {
     ).toThrow();
   });
 
-  it('rejection: tunnel provider microsoft fails validation in this slice', () => {
+  it('accepts tunnel provider microsoft (wired by #140)', () => {
+    const { config } = resolveConfig(baseConfig({ auth: { tunnel: { provider: 'microsoft' } } }));
+    expect(config.auth.tunnel.provider).toBe('microsoft');
+  });
+
+  it('rejection: an unknown tunnel provider fails validation', () => {
     expect(() =>
-      resolveConfig(baseConfig({ auth: { tunnel: { provider: 'microsoft' } } })),
-    ).toThrow(/#129/);
+      resolveConfig(baseConfig({ auth: { tunnel: { provider: 'okta' } } })),
+    ).toThrow();
   });
 });
 

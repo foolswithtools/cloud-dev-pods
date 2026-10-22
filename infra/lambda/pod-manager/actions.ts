@@ -58,6 +58,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     };
   }
   const imageUri = `${repoUri}:${resolvedTag}`;
+  const tunnelProvider = mode === 'tunnel' ? (e.tunnelProvider ?? env.auth.tunnel.provider) : undefined;
 
   // Reuse the existing per-pod access point if one is still around from a
   // prior `pod-up` (see ADR 0004 "Reuse semantics" + ADR 0007). The AP
@@ -97,6 +98,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       cpu: String(cpu),
       memory: String(memory),
       mode,
+      tunnelProvider,
     });
 
     if (mode === 'browser') {
@@ -138,6 +140,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       podName,
       url,
       tunnelName: mode === 'tunnel' ? podName : undefined,
+      tunnelProvider,
       message: mode === 'browser'
         ? `Pod is up at ${url}.`
         : `Tunnel pod started; check CloudWatch Logs (/aws/lambda/pod-manager + /cloud-dev-pods/<env>/pods) for the device-code URL.`,

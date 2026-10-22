@@ -7,7 +7,7 @@
  * pretty-prints the response.
  *
  * Usage:
- *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>]
+ *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>] [--tunnel-provider github|microsoft]
  *   tsx scripts/pod-cli.ts down --pod <name> [--keep-workspace]
  *   tsx scripts/pod-cli.ts list
  *   tsx scripts/pod-cli.ts status --pod <name>
@@ -63,6 +63,7 @@ function buildEvent(action: string, flags: Map<string, string | true>): Record<s
         imageTag: getStr('image-tag'),
         idleMinutes: getNum('idle'),
         owner: getStr('owner') ?? process.env.GITHUB_ACTOR,
+        tunnelProvider: getStr('tunnel-provider'),
       };
     case 'down':
       return {

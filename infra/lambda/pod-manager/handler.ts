@@ -14,6 +14,8 @@ const PodEventSchema = z.discriminatedUnion('action', [
     imageTag: z.string().optional(),
     idleMinutes: z.number().int().optional(),
     owner: z.string().optional(),
+    // Per-pod override of auth.tunnel.provider; ignored for browser pods.
+    tunnelProvider: z.enum(['github', 'microsoft']).optional(),
   }),
   z.object({
     action: z.literal('down'),
@@ -35,6 +37,7 @@ export interface PodResult {
   message?: string;
   url?: string;
   tunnelName?: string;
+  tunnelProvider?: 'github' | 'microsoft';
   podName?: string;
   pods?: Array<Record<string, unknown>>;
 }
