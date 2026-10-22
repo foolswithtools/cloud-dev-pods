@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { authLambdaEnvironment } from '../lib/config/auth-env';
 import { resolveConfig } from '../lib/config/schema';
 
 // Minimal valid config: every required top-level block present, auth omitted.
@@ -114,5 +115,124 @@ describe('auth config resolution', () => {
     expect(() =>
       resolveConfig(baseConfig({ auth: { tunnel: { provider: 'microsoft' } } })),
     ).toThrow(/#129/);
+  });
+});
+
+describe('PodManager Lambda auth environment', () => {
+  it('a legacy-only config yields the resolved auth.browser values', () => {
+    const { config } = resolveConfig(
+      baseConfig({ github: { oauthAllowedOrg: 'acme', oauthAllowedUsers: 'alice, bob' } }),
+    );
+    expect(authLambdaEnvironment(config)).toEqual({
+      OAUTH_ALLOWED_ORG: 'acme',
+      OAUTH_ALLOWED_USERS: 'alice,bob',
+      AUTH_BROWSER_PROVIDER: 'github',
+      AUTH_BROWSER_ISSUER_URL: '',
+      AUTH_BROWSER_ALLOWED_ORG: 'acme',
+      AUTH_BROWSER_ALLOWED_USERS: '["alice","bob"]',
+      AUTH_BROWSER_ALLOWED_GROUPS: '[]',
+      AUTH_BROWSER_ALLOWED_EMAIL_DOMAINS: '[]',
+      AUTH_BROWSER_ALLOWED_TENANTS: '[]',
+      AUTH_BROWSER_OWNER_ONLY: 'false',
+      AUTH_BROWSER_ADMIN_USERS: '[]',
+      AUTH_TUNNEL_PROVIDER: 'github',
+    });
+  });
+
+  it('a new-keys config drives the legacy OAUTH_ALLOWED_* vars too', () => {
+    const { config } = resolveConfig(
+      baseConfig({
+        auth: {
+          browser: {
+            allowedOrg: 'acme',
+            allowedUsers: ['alice'],
+            allowedGroups: ['g1', 'g2'],
+            ownerOnly: true,
+            adminUsers: ['root'],
+          },
+        },
+      }),
+    );
+    const vars = authLambdaEnvironment(config);
+    expect(vars.OAUTH_ALLOWED_ORG).toBe('acme');
+    expect(vars.OAUTH_ALLOWED_USERS).toBe('alice');
+    expect(vars.AUTH_BROWSER_ALLOWED_GROUPS).toBe('["g1","g2"]');
+    expect(vars.AUTH_BROWSER_OWNER_ONLY).toBe('true');
+    expect(vars.AUTH_BROWSER_ADMIN_USERS).toBe('["root"]');
+  });
+});
+
+describe('pod-manager env.ts auth parsing', () => {
+  const required = {
+    AWS_ACCOUNT_ID: '123456789012',
+    REGISTRY_TABLE_NAME: 't',
+    CLUSTER_NAME: 'c',
+    EFS_FILESYSTEM_ID: 'fs-x',
+    ALB_LISTENER_ARN: 'arn',
+    ALB_LISTENER_PROTOCOL: 'HTTP',
+    ALB_DNS_NAME: 'alb',
+    BROWSER_TASK_DEF_FAMILY: 'b',
+    TUNNEL_TASK_DEF_FAMILY: 't',
+    BROWSER_TASK_ROLE_ARN: 'r',
+    TUNNEL_TASK_ROLE_ARN: 'r',
+    EXECUTION_ROLE_ARN: 'r',
+    PODS_LOG_GROUP_NAME: 'l',
+    VPC_ID: 'v',
+    PRIVATE_SUBNET_IDS: 's',
+    TASKS_SECURITY_GROUP_ID: 'sg',
+    BROWSER_REPO_URI: 'u',
+    TUNNEL_REPO_URI: 'u',
+    BROWSER_REPO_NAME: 'n',
+    TUNNEL_REPO_NAME: 'n',
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function loadEnv(extra: Record<string, string>) {
+    vi.resetModules();
+    for (const [k, v] of Object.entries({ ...required, ...extra })) vi.stubEnv(k, v);
+    return (await import('../lambda/pod-manager/env')).env;
+  }
+
+  it('round-trips the values authLambdaEnvironment produces', async () => {
+    const { config } = resolveConfig(
+      baseConfig({
+        auth: { browser: { allowedOrg: 'acme', allowedUsers: ['alice'], allowedTenants: ['t1'], ownerOnly: true } },
+      }),
+    );
+    const env = await loadEnv(authLambdaEnvironment(config));
+    expect(env.auth).toEqual({
+      browser: {
+        provider: 'github',
+        issuerUrl: '',
+        allowedOrg: 'acme',
+        allowedUsers: ['alice'],
+        allowedGroups: [],
+        allowedEmailDomains: [],
+        allowedTenants: ['t1'],
+        ownerOnly: true,
+        adminUsers: [],
+      },
+      tunnel: { provider: 'github' },
+    });
+    expect(env.oauthAllowedOrg).toBe('acme');
+    expect(env.oauthAllowedUsers).toBe('alice');
+  });
+
+  it('defaults when the AUTH_* vars are unset', async () => {
+    const env = await loadEnv({});
+    expect(env.auth.browser.provider).toBe('github');
+    expect(env.auth.browser.allowedUsers).toEqual([]);
+    expect(env.auth.browser.ownerOnly).toBe(false);
+    expect(env.auth.tunnel.provider).toBe('github');
+  });
+
+  it('rejects a list var that is not a JSON array of strings', async () => {
+    await expect(loadEnv({ AUTH_BROWSER_ALLOWED_GROUPS: 'g1,g2' })).rejects.toThrow(
+      /AUTH_BROWSER_ALLOWED_GROUPS/,
+    );
   });
 });

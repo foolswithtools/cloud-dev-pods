@@ -198,7 +198,7 @@ export class PodTaskFamilyStack extends Stack {
         OAUTH2_PROXY_COOKIE_SECURE: 'true',
         OAUTH2_PROXY_EMAIL_DOMAINS: '*',
         OAUTH2_PROXY_CLIENT_ID: '',  // injected by pod-manager via env override
-        OAUTH2_PROXY_GITHUB_ORG: config.github.oauthAllowedOrg ?? '',
+        OAUTH2_PROXY_GITHUB_ORG: config.auth.browser.allowedOrg ?? '',
       },
       secrets: {
         OAUTH2_PROXY_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oauthClientSecret),

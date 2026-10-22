@@ -6,6 +6,22 @@ function req(name: string): string {
   return v;
 }
 
+// List-valued AUTH_* vars are JSON arrays (see infra/lib/config/auth-env.ts).
+function jsonList(name: string): string[] {
+  const v = process.env[name];
+  if (!v) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(v);
+  } catch {
+    throw new Error(`Env var ${name} must be a JSON array of strings`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === 'string')) {
+    throw new Error(`Env var ${name} must be a JSON array of strings`);
+  }
+  return parsed;
+}
+
 export const env = {
   region: process.env.AWS_REGION ?? 'us-west-2',
   accountId: req('AWS_ACCOUNT_ID'),
@@ -32,4 +48,23 @@ export const env = {
   tunnelRepoName: req('TUNNEL_REPO_NAME'),
   oauthAllowedOrg: process.env.OAUTH_ALLOWED_ORG ?? '',
   oauthAllowedUsers: process.env.OAUTH_ALLOWED_USERS ?? '',
+  // Resolved provider-neutral auth config (ADR 0008). Only provider "github"
+  // is wired at runtime so far; the guard and sidecar still read the
+  // oauthAllowed* fields above.
+  auth: {
+    browser: {
+      provider: (process.env.AUTH_BROWSER_PROVIDER ?? 'github') as 'github' | 'entra-id' | 'oidc',
+      issuerUrl: process.env.AUTH_BROWSER_ISSUER_URL ?? '',
+      allowedOrg: process.env.AUTH_BROWSER_ALLOWED_ORG ?? '',
+      allowedUsers: jsonList('AUTH_BROWSER_ALLOWED_USERS'),
+      allowedGroups: jsonList('AUTH_BROWSER_ALLOWED_GROUPS'),
+      allowedEmailDomains: jsonList('AUTH_BROWSER_ALLOWED_EMAIL_DOMAINS'),
+      allowedTenants: jsonList('AUTH_BROWSER_ALLOWED_TENANTS'),
+      ownerOnly: process.env.AUTH_BROWSER_OWNER_ONLY === 'true',
+      adminUsers: jsonList('AUTH_BROWSER_ADMIN_USERS'),
+    },
+    tunnel: {
+      provider: (process.env.AUTH_TUNNEL_PROVIDER ?? 'github') as 'github' | 'microsoft',
+    },
+  },
 };

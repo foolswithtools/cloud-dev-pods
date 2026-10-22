@@ -8,6 +8,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { acknowledgeNag, nagImportRef } from '../util/nag';
 import type { Construct } from 'constructs';
 import * as path from 'path';
+import { authLambdaEnvironment } from '../config/auth-env';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
 import type { ClusterStack } from './cluster-stack';
@@ -91,8 +92,7 @@ export class PodManagerStack extends Stack {
         BROWSER_REPO_NAME: 'cloud-dev-pods/vscode-browser',
         TUNNEL_REPO_NAME: 'cloud-dev-pods/vscode-tunnel',
         AWS_ACCOUNT_ID: config.aws.accountId,
-        OAUTH_ALLOWED_ORG: config.github.oauthAllowedOrg ?? '',
-        OAUTH_ALLOWED_USERS: config.github.oauthAllowedUsers ?? '',
+        ...authLambdaEnvironment(config),
       },
     });
 
