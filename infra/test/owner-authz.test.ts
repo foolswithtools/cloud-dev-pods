@@ -45,7 +45,7 @@ describe('buildBrowserAuthTaskParts', () => {
     expect(parts.volumes).toEqual([]);
   });
 
-  it('github + ownerOnly + adminUsers: [ops] emits GITHUB_USER=<owner>,ops', () => {
+  it('github + ownerOnly + adminUsers: [ops] emits GITHUB_USERS=<owner>,ops', () => {
     const parts = buildBrowserAuthTaskParts(
       { provider: 'github', allowedUsers: ['alice', 'bob'], ownerOnly: true, adminUsers: ['ops'] },
       'carol',
@@ -55,14 +55,15 @@ describe('buildBrowserAuthTaskParts', () => {
     expect(parts.containers).toHaveLength(1);
     expect(parts.volumes).toEqual([]);
     const env = envMap(parts.containers[0]!.environment);
-    expect(env.OAUTH2_PROXY_GITHUB_USER).toBe('carol,ops');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_USER');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_ALLOWED_GROUPS');
   });
 
   it('github + ownerOnly keeps allowedOrg as an AND check (allowed group), not GITHUB_ORG', () => {
-    // oauth2-proxy ORs GITHUB_USER with GITHUB_ORG: any org member would pass.
-    // ALLOWED_GROUPS is checked on every request in addition to GITHUB_USER.
+    // oauth2-proxy ORs GITHUB_USERS with GITHUB_ORG: any org member would pass.
+    // ALLOWED_GROUPS is checked on every request in addition to GITHUB_USERS.
     const parts = buildBrowserAuthTaskParts(
       { provider: 'github', allowedOrg: 'acme', allowedUsers: [], ownerOnly: true, adminUsers: [] },
       'carol',
@@ -70,7 +71,7 @@ describe('buildBrowserAuthTaskParts', () => {
       { ...opts, initImage },
     );
     const env = envMap(parts.containers[0]!.environment);
-    expect(env.OAUTH2_PROXY_GITHUB_USER).toBe('carol');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol');
     expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
   });
@@ -82,7 +83,7 @@ describe('buildBrowserAuthTaskParts', () => {
       secretArns,
       { ...opts, initImage },
     );
-    expect(envMap(parts.containers[0]!.environment).OAUTH2_PROXY_GITHUB_USER).toBe('carol,ops');
+    expect(envMap(parts.containers[0]!.environment).OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
   });
 });
 
@@ -272,7 +273,7 @@ describe('registerTaskDef with owner authorization', () => {
     const input = await register();
     expect(input.containerDefinitions.map((c) => c.name)).toEqual(['vscode', 'oauth2-proxy']);
     const env = envMap(input.containerDefinitions[1]!.environment);
-    expect(env.OAUTH2_PROXY_GITHUB_USER).toBe('carol,ops');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
     expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
     expect(input.volumes.map((v) => v.name)).toEqual(['workspace']);

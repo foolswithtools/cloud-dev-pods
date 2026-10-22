@@ -4,10 +4,10 @@
 // validateOwnerAuthorization before creating any AWS resource.
 //
 // oauth2-proxy semantics this module relies on (v7.15.5 source):
-// - github: GITHUB_USER is ORed with GITHUB_ORG (a listed user skips the org
-//   check), and GITHUB_USER is only checked at login. ALLOWED_GROUPS is
+// - github: GITHUB_USERS is ORed with GITHUB_ORG (a listed user skips the org
+//   check), and GITHUB_USERS is only checked at login. ALLOWED_GROUPS is
 //   checked at login and on every request, and the github provider puts the
-//   user's org logins in the session groups. So owner-only uses GITHUB_USER
+//   user's org logins in the session groups. So owner-only uses GITHUB_USERS
 //   and keeps allowedOrg as ALLOWED_GROUPS (an AND), never GITHUB_ORG.
 // - oidc / entra-id: the authenticated-emails file is ORed with EMAIL_DOMAINS
 //   ("*" admits everyone), so owner-only removes EMAIL_DOMAINS. The emails
@@ -137,9 +137,9 @@ export function buildOwnerAuthorization(
     const org = auth.allowedOrg?.trim();
     return {
       ...none,
-      removeSidecarEnvironment: ['OAUTH2_PROXY_GITHUB_ORG', 'OAUTH2_PROXY_GITHUB_USER'],
+      removeSidecarEnvironment: ['OAUTH2_PROXY_GITHUB_ORG', 'OAUTH2_PROXY_GITHUB_USERS'],
       sidecarEnvironment: [
-        { name: 'OAUTH2_PROXY_GITHUB_USER', value: dedupe([owner, ...auth.adminUsers]).join(',') },
+        { name: 'OAUTH2_PROXY_GITHUB_USERS', value: dedupe([owner, ...auth.adminUsers]).join(',') },
         ...(org ? [{ name: 'OAUTH2_PROXY_ALLOWED_GROUPS', value: org }] : []),
       ],
     };

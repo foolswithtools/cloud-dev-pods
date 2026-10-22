@@ -27,16 +27,16 @@ const envOf = (auth: Oauth2ProxyAuthConfig, o = opts) =>
   );
 
 describe('buildOauth2ProxyContainer (github provider)', () => {
-  it('allowedOrg emits PROVIDER=github and GITHUB_ORG, and no GITHUB_USER', () => {
+  it('allowedOrg emits PROVIDER=github and GITHUB_ORG, and no GITHUB_USERS', () => {
     const env = envOf({ provider: 'github', allowedOrg: 'acme', allowedUsers: [] });
     expect(env.OAUTH2_PROXY_PROVIDER).toBe('github');
     expect(env.OAUTH2_PROXY_GITHUB_ORG).toBe('acme');
-    expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_USER');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_USERS');
   });
 
-  it('allowedUsers emits GITHUB_USER as a comma-separated list, and no GITHUB_ORG', () => {
+  it('allowedUsers emits GITHUB_USERS as a comma-separated list, and no GITHUB_ORG', () => {
     const env = envOf({ provider: 'github', allowedUsers: ['alice', 'bob'] });
-    expect(env.OAUTH2_PROXY_GITHUB_USER).toBe('alice,bob');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('alice,bob');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
   });
 
@@ -49,6 +49,24 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
     const auth: Oauth2ProxyAuthConfig = { provider: 'github', allowedOrg: 'acme', allowedUsers: [] };
     expect(envOf(auth, { ...opts, listenerProtocol: 'HTTP' }).OAUTH2_PROXY_COOKIE_SECURE).toBe('false');
     expect(envOf(auth, { ...opts, listenerProtocol: 'HTTPS' }).OAUTH2_PROXY_COOKIE_SECURE).toBe('true');
+  });
+
+  // oauth2-proxy reads OAUTH2_PROXY_<cfg name upper-cased> and silently
+  // ignores anything else. These are the cfg tags (v7.15.5,
+  // pkg/apis/options) of every setting the sidecar uses; the user list is
+  // `github_users`, so OAUTH2_PROXY_GITHUB_USER (singular) would be dropped.
+  it('emits only environment names oauth2-proxy actually reads', () => {
+    const known = new Set(
+      [
+        'provider', 'http_address', 'upstreams', 'reverse_proxy', 'pass_authorization_header',
+        'cookie_secure', 'email_domains', 'github_org', 'github_users', 'allowed_groups',
+        'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
+      ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
+    );
+    const c = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] }, secretArns, opts);
+    for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
+      expect(known.has(name), name).toBe(true);
+    }
   });
 
   it('image is v7.8.0 or later and pinned by digest', () => {
@@ -67,8 +85,10 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
   });
 
   // Golden copy of the definition registerTaskDef emitted before the builder
-  // was extracted (v0.4.0). Only the image reference may differ.
-  it('matches the pre-extraction container definition exactly, apart from the image', () => {
+  // was extracted (v0.4.0). Only the image reference and the user-list env
+  // name may differ: v0.4.0 emitted OAUTH2_PROXY_GITHUB_USER, which
+  // oauth2-proxy ignores (#133 fixed it to OAUTH2_PROXY_GITHUB_USERS).
+  it('matches the pre-extraction container definition, apart from the image and the user-list name', () => {
     const c = buildOauth2ProxyContainer(
       { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice', 'bob'] },
       secretArns,
@@ -96,7 +116,7 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
         { name: 'OAUTH2_PROXY_COOKIE_SECURE', value: 'true' },
         { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' },
         { name: 'OAUTH2_PROXY_GITHUB_ORG', value: 'acme' },
-        { name: 'OAUTH2_PROXY_GITHUB_USER', value: 'alice,bob' },
+        { name: 'OAUTH2_PROXY_GITHUB_USERS', value: 'alice,bob' },
       ],
       secrets: [
         { name: 'OAUTH2_PROXY_CLIENT_ID', valueFrom: secretArns.clientId },

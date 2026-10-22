@@ -61,11 +61,13 @@ export function buildOauth2ProxyContainer(
       { name: 'OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER', value: 'true' },
       { name: 'OAUTH2_PROXY_COOKIE_SECURE', value: opts.listenerProtocol === 'HTTPS' ? 'true' : 'false' },
       { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' },
-      // Auth allowlists: org takes precedence if set; user list applies on
-      // top. If both empty, oauth2-proxy will accept any GitHub user (which
-      // is why podUp refuses a browser pod when neither is configured).
+      // Auth allowlists: a listed user is admitted without the org check;
+      // anyone else must be in the org. If both are empty, oauth2-proxy will
+      // accept any GitHub user (which is why podUp refuses a browser pod when
+      // neither is configured). The env name follows the cfg tag
+      // `github_users`; the singular OAUTH2_PROXY_GITHUB_USER is ignored.
       ...(auth.allowedOrg ? [{ name: 'OAUTH2_PROXY_GITHUB_ORG', value: auth.allowedOrg }] : []),
-      ...(allowedUsers ? [{ name: 'OAUTH2_PROXY_GITHUB_USER', value: allowedUsers }] : []),
+      ...(allowedUsers ? [{ name: 'OAUTH2_PROXY_GITHUB_USERS', value: allowedUsers }] : []),
     ],
     secrets: [
       { name: 'OAUTH2_PROXY_CLIENT_ID', valueFrom: secretArns.clientId },
