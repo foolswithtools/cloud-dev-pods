@@ -139,9 +139,11 @@ export class PodTaskFamilyStack extends Stack {
       },
     };
 
-    // Browser: openvscode-server (loopback) + oauth2-proxy sidecar (ALB target).
-    // The image URIs below are placeholders — pod-manager registers a fresh
-    // revision with the resolved-by-SHA image at pod-up time.
+    // Browser: openvscode-server only. The image URI below is a placeholder.
+    // This revision is never run: pod-manager registers a fresh revision per
+    // pod-up with the resolved-by-SHA image plus the oauth2-proxy sidecar
+    // (ALB target), built by infra/lambda/pod-manager/oauth2-proxy.ts. Only
+    // the family name is consumed (PodManagerStack's BROWSER_TASK_DEF_FAMILY).
     this.browserTaskDef = new ecs.FargateTaskDefinition(this, 'BrowserTaskDef', {
       family: 'cloud-dev-pods-browser',
       cpu: config.pods.defaultCpu,
@@ -176,38 +178,6 @@ export class PodTaskFamilyStack extends Stack {
       sourceVolume: 'workspace',
       containerPath: '/workspace',
       readOnly: false,
-    });
-
-    const oauth2Proxy = this.browserTaskDef.addContainer('oauth2-proxy', {
-      containerName: 'oauth2-proxy',
-      image: ecs.ContainerImage.fromRegistry(
-        'quay.io/oauth2-proxy/oauth2-proxy:v7.7.1',
-      ),
-      essential: true,
-      portMappings: [{ containerPort: 4180, protocol: ecs.Protocol.TCP }],
-      logging: ecs.LogDrivers.awsLogs({
-        logGroup: cluster.podsLogGroup,
-        streamPrefix: 'browser/oauth2-proxy',
-      }),
-      environment: {
-        OAUTH2_PROXY_PROVIDER: 'github',
-        OAUTH2_PROXY_HTTP_ADDRESS: '0.0.0.0:4180',
-        OAUTH2_PROXY_UPSTREAMS: 'http://127.0.0.1:3000',
-        OAUTH2_PROXY_REVERSE_PROXY: 'true',
-        OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: 'true',
-        OAUTH2_PROXY_COOKIE_SECURE: 'true',
-        OAUTH2_PROXY_EMAIL_DOMAINS: '*',
-        OAUTH2_PROXY_CLIENT_ID: '',  // injected by pod-manager via env override
-        OAUTH2_PROXY_GITHUB_ORG: config.auth.browser.allowedOrg ?? '',
-      },
-      secrets: {
-        OAUTH2_PROXY_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oauthClientSecret),
-        OAUTH2_PROXY_COOKIE_SECRET: ecs.Secret.fromSecretsManager(oauthCookieSecret),
-      },
-    });
-    oauth2Proxy.addContainerDependencies({
-      container: browserVscode,
-      condition: ecs.ContainerDependencyCondition.HEALTHY,
     });
 
     // Tunnel: single container; no oauth2-proxy, no ALB target.
@@ -281,21 +251,6 @@ export class PodTaskFamilyStack extends Stack {
             'Action::ecr:*',
             'Action::logs:*',
           ],
-        },
-      ],
-    );
-
-    // ECS2 (env vars on oauth2-proxy): the env keys here are *public configuration*
-    // (provider name, listen address, upstream URL). Actual credentials use the
-    // `secrets:` block that pulls from Secrets Manager. Suppress with that
-    // justification at the task definition level.
-    acknowledgeNag(
-      this.browserTaskDef,
-      [
-        {
-          id: 'AwsSolutions-ECS2',
-          reason:
-            'Plaintext env vars on the oauth2-proxy container are non-sensitive configuration (provider, addresses, allowed org). Sensitive creds (client secret, cookie secret) use the `secrets:` block backed by AWS Secrets Manager.',
         },
       ],
     );

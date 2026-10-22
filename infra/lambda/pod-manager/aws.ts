@@ -6,8 +6,10 @@ import {
   ECRClient,
 } from '@aws-sdk/client-ecr';
 import {
+  type ContainerDefinition,
   DescribeTasksCommand,
   ECSClient,
+  type LogConfiguration,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -42,6 +44,7 @@ import {
 } from '@aws-sdk/client-secrets-manager';
 
 import { env } from './env';
+import { buildOauth2ProxyContainer } from './oauth2-proxy';
 import { priorityForPod } from './priority';
 
 const ecs = new ECSClient({ region: env.region });
@@ -259,8 +262,8 @@ export interface TaskDefArgs {
 export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
   const taskRoleArn = args.mode === 'browser' ? env.browserTaskRoleArn : env.tunnelTaskRoleArn;
 
-  const containerDefs: Record<string, unknown>[] = [];
-  const logConfig = (streamPrefix: string) => ({
+  const containerDefs: ContainerDefinition[] = [];
+  const logConfig = (streamPrefix: string): LogConfiguration => ({
     logDriver: 'awslogs',
     options: {
       'awslogs-group': env.podsLogGroupName,
@@ -282,42 +285,20 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         interval: 30, timeout: 5, retries: 3, startPeriod: 20,
       },
     });
-    containerDefs.push({
-      name: 'oauth2-proxy',
-      image: 'quay.io/oauth2-proxy/oauth2-proxy:v7.7.1',
-      essential: true,
-      portMappings: [{ containerPort: 4180, protocol: 'tcp' }],
-      logConfiguration: logConfig(`browser/${args.podName}/oauth2-proxy`),
-      environment: [
-        { name: 'OAUTH2_PROXY_PROVIDER', value: 'github' },
-        { name: 'OAUTH2_PROXY_HTTP_ADDRESS', value: '0.0.0.0:4180' },
-        { name: 'OAUTH2_PROXY_UPSTREAMS', value: 'http://127.0.0.1:3000' },
-        { name: 'OAUTH2_PROXY_REVERSE_PROXY', value: 'true' },
-        { name: 'OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER', value: 'true' },
-        { name: 'OAUTH2_PROXY_COOKIE_SECURE', value: env.albListenerProtocol === 'HTTPS' ? 'true' : 'false' },
-        { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' },
-        // Auth allowlists: org takes precedence if set; user list applies on
-        // top. If both empty, oauth2-proxy will accept any GitHub user (which
-        // is why we error out below if neither is configured).
-        ...(env.oauthAllowedOrg ? [{ name: 'OAUTH2_PROXY_GITHUB_ORG', value: env.oauthAllowedOrg }] : []),
-        ...(env.oauthAllowedUsers ? [{ name: 'OAUTH2_PROXY_GITHUB_USER', value: env.oauthAllowedUsers }] : []),
-      ],
-      secrets: [
-        {
-          name: 'OAUTH2_PROXY_CLIENT_ID',
-          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/client-id'),
-        },
-        {
-          name: 'OAUTH2_PROXY_CLIENT_SECRET',
-          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/client-secret'),
-        },
-        {
-          name: 'OAUTH2_PROXY_COOKIE_SECRET',
-          valueFrom: await resolveSecretArn('/cloud-dev-pods/oauth/cookie-secret'),
-        },
-      ],
-      dependsOn: [{ containerName: 'vscode', condition: 'HEALTHY' }],
-    });
+    containerDefs.push(buildOauth2ProxyContainer(
+      env.auth.browser,
+      {
+        clientId: await resolveSecretArn('/cloud-dev-pods/oauth/client-id'),
+        clientSecret: await resolveSecretArn('/cloud-dev-pods/oauth/client-secret'),
+        cookieSecret: await resolveSecretArn('/cloud-dev-pods/oauth/cookie-secret'),
+      },
+      {
+        podName: args.podName,
+        listenerProtocol: env.albListenerProtocol,
+        logGroupName: env.podsLogGroupName,
+        region: env.region,
+      },
+    ));
   } else {
     containerDefs.push({
       name: 'vscode-tunnel',
@@ -346,8 +327,7 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         authorizationConfig: { accessPointId: args.accessPointId, iam: 'ENABLED' },
       },
     }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    containerDefinitions: containerDefs as any,
+    containerDefinitions: containerDefs,
     tags: [
       { key: 'Project', value: 'cloud-dev-pods' },
       { key: 'Pod', value: args.podName },
