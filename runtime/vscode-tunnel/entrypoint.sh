@@ -25,7 +25,7 @@ fi
 # account's slot is freed now rather than at the 30-day inactivity expiry
 # (an account may register 10 tunnels; an 11th evicts a random unused one).
 # Unregister runs after the tunnel exits so the running CLI can't re-create
-# it. Both steps are bounded to fit the container's 30 s stopTimeout.
+# it. Both steps are bounded (5 s + 22 s) to fit the container's 30 s stopTimeout.
 child=""
 # shellcheck disable=SC2329 # invoked by the TERM trap
 on_term() {
@@ -39,7 +39,7 @@ on_term() {
     kill -KILL "$child" 2>/dev/null || true
     wait "$child" 2>/dev/null || true
   fi
-  timeout 20 code tunnel unregister || true
+  timeout -k 2 20 code tunnel unregister || true
   exit 0
 }
 trap on_term TERM

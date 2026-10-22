@@ -176,11 +176,6 @@ jobs:
             echo "- Owner: \`${POD_OWNER:-unknown}\`"
             echo "- CPU: ${{ inputs.cpu }}, Memory: ${{ inputs.memory }} MB"
             echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
-            if [ -n "$POD_WARNING" ]; then
-              echo ""
-              echo "> [!WARNING]"
-              echo "> $POD_WARNING"
-            fi
             if [ "${{ inputs.mode }}" = "browser" ]; then
               echo "- URL: ${{ steps.up.outputs.url }}"
               echo "- OAuth redirect URI: \`${{ steps.up.outputs.url }}/oauth2/callback\`"
@@ -205,6 +200,11 @@ jobs:
                 echo "aws logs tail /cloud-dev-pods/dev/pods --follow --since 5m"
                 echo '```'
               fi
+            fi
+            if [ -n "$POD_WARNING" ]; then
+              echo ""
+              echo "> [!WARNING]"
+              echo "> $POD_WARNING"
             fi
             echo ""
             echo "Stop this pod: \`gh workflow run pod-down.yml -f pod_name=${{ inputs.pod_name }}\`"
