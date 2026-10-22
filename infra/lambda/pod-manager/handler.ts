@@ -36,6 +36,7 @@ export interface PodResult {
   url?: string;
   tunnelName?: string;
   podName?: string;
+  owner?: string;
   pods?: Array<Record<string, unknown>>;
 }
 

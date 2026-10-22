@@ -172,6 +172,7 @@ describe('registerTaskDef uses the oauth2-proxy builder', () => {
       cpu: '1024',
       memory: '2048',
       mode: 'browser',
+      owner: 'alice',
     });
     expect(arn).toBe('arn:td:1');
 

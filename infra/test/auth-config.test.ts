@@ -115,12 +115,12 @@ describe('auth config resolution', () => {
     ).toThrow(/pluggable-identity-remote-access/);
   });
 
-  it('rejection: ownerOnly true fails validation until owner authorization is enforced', () => {
-    // The sidecar ignores ownerOnly until #133, and the browser auth guard
-    // counts it as a restriction, so accepting it would launch an open pod.
-    expect(() =>
-      resolveConfig(baseConfig({ auth: { browser: { allowedOrg: 'acme', ownerOnly: true } } })),
-    ).toThrow(/#133/);
+  it('ownerOnly true is accepted now that owner authorization is enforced (#133)', () => {
+    const { config } = resolveConfig(
+      baseConfig({ auth: { browser: { allowedOrg: 'acme', ownerOnly: true, adminUsers: ['ops'] } } }),
+    );
+    expect(config.auth.browser.ownerOnly).toBe(true);
+    expect(config.auth.browser.adminUsers).toEqual(['ops']);
   });
 
   it('rejection: an unknown provider fails validation', () => {
@@ -168,7 +168,6 @@ describe('PodManager Lambda auth environment', () => {
         },
       }),
     );
-    // Rejected by the schema until #133; set after validation to cover the plumbing.
     config.auth.browser.ownerOnly = true;
     const vars = authLambdaEnvironment(config);
     expect(vars.AUTH_BROWSER_ALLOWED_ORG).toBe('acme');

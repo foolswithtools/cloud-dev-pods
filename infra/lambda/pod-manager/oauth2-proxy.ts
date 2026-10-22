@@ -1,6 +1,7 @@
 // The single definition of the oauth2-proxy sidecar container (ADR 0002,
 // ADR 0008). Pure: no env reads, no SDK calls, so it can be unit-tested and
-// imported outside a Lambda. registerTaskDef in aws.ts is the only caller.
+// imported outside a Lambda. buildBrowserAuthTaskParts in owner-authz.ts is
+// the only caller; it layers per-pod owner authorization on top.
 
 import type { ContainerDefinition } from '@aws-sdk/client-ecs';
 
