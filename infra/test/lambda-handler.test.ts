@@ -1,6 +1,7 @@
 // Validates the input-validation surface of the Lambda dispatcher. Action bodies
 // are integration-tested against AWS in a sandbox account; here we only test the
-// guard behavior so a malformed event is rejected before any SDK call.
+// guard behavior so a malformed event is rejected before any SDK call, and
+// the browser auth guard (issue #132) refuses before any resource is created.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
