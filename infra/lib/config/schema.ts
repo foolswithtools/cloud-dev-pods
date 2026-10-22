@@ -66,12 +66,13 @@ export const ConfigSchema = z.object({
   }),
   // Provider-neutral identity config (ADR 0008). Optional; resolveConfig
   // fills defaults and maps the deprecated github.oauthAllowed* keys.
+  // nullish: a bare `auth:` / `browser:` key in YAML parses as null.
   auth: z
     .object({
-      browser: AuthBrowserSchema.optional(),
-      tunnel: AuthTunnelSchema.optional(),
+      browser: AuthBrowserSchema.nullish(),
+      tunnel: AuthTunnelSchema.nullish(),
     })
-    .optional(),
+    .nullish(),
   domain: z.object({
     strategy: z.enum(['byo', 'alb-default']).default('alb-default'),
     baseDomain: z.string().optional(),

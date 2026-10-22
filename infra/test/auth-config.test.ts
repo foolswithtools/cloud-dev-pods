@@ -38,6 +38,16 @@ describe('auth config resolution', () => {
     expect(warnings).toEqual([]);
   });
 
+  it('a bare `auth:` / `browser:` key (YAML null) is treated as absent', () => {
+    const nullAuth = resolveConfig(baseConfig({ github: { oauthAllowedOrg: 'acme' }, auth: null }));
+    expect(nullAuth.config.auth.browser.allowedOrg).toBe('acme');
+    const nullBrowser = resolveConfig(
+      baseConfig({ github: { oauthAllowedOrg: 'acme' }, auth: { browser: null, tunnel: null } }),
+    );
+    expect(nullBrowser.config.auth.browser.allowedOrg).toBe('acme');
+    expect(nullBrowser.config.auth.tunnel.provider).toBe('github');
+  });
+
   it('legacy mapping: github.oauthAllowedOrg maps to auth.browser.allowedOrg with one deprecation warning', () => {
     const { config, warnings } = resolveConfig(
       baseConfig({ github: { oauthAllowedOrg: 'acme' } }),
@@ -228,6 +238,14 @@ describe('pod-manager env.ts auth parsing', () => {
     expect(env.auth.browser.allowedUsers).toEqual([]);
     expect(env.auth.browser.ownerOnly).toBe(false);
     expect(env.auth.tunnel.provider).toBe('github');
+  });
+
+  it('rejects an unknown browser provider value', async () => {
+    await expect(loadEnv({ AUTH_BROWSER_PROVIDER: 'okta' })).rejects.toThrow(/AUTH_BROWSER_PROVIDER/);
+  });
+
+  it('rejects an unknown tunnel provider value', async () => {
+    await expect(loadEnv({ AUTH_TUNNEL_PROVIDER: 'gitlab' })).rejects.toThrow(/AUTH_TUNNEL_PROVIDER/);
   });
 
   it('rejects a list var that is not a JSON array of strings', async () => {

@@ -22,6 +22,14 @@ function jsonList(name: string): string[] {
   return parsed;
 }
 
+function oneOf<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
+  const v = process.env[name] || fallback;
+  if (!(allowed as readonly string[]).includes(v)) {
+    throw new Error(`Env var ${name} must be one of ${allowed.join(', ')}; got "${v}"`);
+  }
+  return v as T;
+}
+
 export const env = {
   region: process.env.AWS_REGION ?? 'us-west-2',
   accountId: req('AWS_ACCOUNT_ID'),
@@ -53,7 +61,7 @@ export const env = {
   // oauthAllowed* fields above.
   auth: {
     browser: {
-      provider: (process.env.AUTH_BROWSER_PROVIDER ?? 'github') as 'github' | 'entra-id' | 'oidc',
+      provider: oneOf('AUTH_BROWSER_PROVIDER', ['github', 'entra-id', 'oidc'], 'github'),
       issuerUrl: process.env.AUTH_BROWSER_ISSUER_URL ?? '',
       allowedOrg: process.env.AUTH_BROWSER_ALLOWED_ORG ?? '',
       allowedUsers: jsonList('AUTH_BROWSER_ALLOWED_USERS'),
@@ -64,7 +72,7 @@ export const env = {
       adminUsers: jsonList('AUTH_BROWSER_ADMIN_USERS'),
     },
     tunnel: {
-      provider: (process.env.AUTH_TUNNEL_PROVIDER ?? 'github') as 'github' | 'microsoft',
+      provider: oneOf('AUTH_TUNNEL_PROVIDER', ['github', 'microsoft'], 'github'),
     },
   },
 };
