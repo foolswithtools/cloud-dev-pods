@@ -13,7 +13,9 @@ const PodEventSchema = z.discriminatedUnion('action', [
     memory: z.number().int().optional(),
     imageTag: z.string().optional(),
     idleMinutes: z.number().int().optional(),
-    owner: z.string().optional(),
+    // Becomes an ECS tag value and a workflow output, so only the characters
+    // ECS tags allow, and no whitespace (a newline could forge outputs).
+    owner: z.string().regex(/^[\p{L}\p{N}+\-=._:/@]{1,256}$/u).optional(),
   }),
   z.object({
     action: z.literal('down'),

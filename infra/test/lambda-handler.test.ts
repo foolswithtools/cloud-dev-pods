@@ -62,6 +62,14 @@ describe('handler input validation', () => {
     expect(r.status).toBe('invalid-input');
   });
 
+  it('rejects up with an owner containing whitespace or a newline', async () => {
+    const { handler } = await import('../lambda/pod-manager/handler');
+    for (const owner of ['carol\nurl=https://evil.test', 'two words', '', 'a'.repeat(257)]) {
+      const r = await handler({ action: 'up', podName: 'ok', mode: 'browser', owner });
+      expect(r.status, JSON.stringify(owner)).toBe('invalid-input');
+    }
+  });
+
   it('rejects status without a podName', async () => {
     const { handler } = await import('../lambda/pod-manager/handler');
     const r = await handler({ action: 'status' });
@@ -259,7 +267,8 @@ describe('handler per-pod owner authorization (issue #133)', () => {
     vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
     const aws = mockAws();
     const { handler } = await import('../lambda/pod-manager/handler');
-    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser', owner: 'not a login' });
+    // github provider: an email is not a GitHub login.
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser', owner: 'carol@example.com' });
 
     expect(r.status).toBe('error');
     expect(aws.createAccessPoint).not.toHaveBeenCalled();
