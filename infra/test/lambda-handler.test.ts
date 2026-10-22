@@ -151,6 +151,8 @@ describe('handler browser auth guard (issue #132)', () => {
   });
 
   it('refuses browser up when the only email domain is "*"', async () => {
+    // oidc, because allowedEmailDomains doesn't count for github at all.
+    vi.stubEnv('AUTH_BROWSER_PROVIDER', 'oidc');
     vi.stubEnv('AUTH_BROWSER_ALLOWED_EMAIL_DOMAINS', '["*"]');
     const aws = mockAws();
     const { handler } = await import('../lambda/pod-manager/handler');
