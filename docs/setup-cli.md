@@ -217,7 +217,7 @@ gh workflow run pod-up.yml -f pod_name=dev -f mode=tunnel
 gh run watch
 ```
 
-Workflow summary prints a `https://github.com/login/device` URL + 8-character code. Open the URL on your laptop, enter the code, sign in. Then in VS Code Desktop: Cmd-Shift-P → "Remote Tunnels: Connect to Tunnel" → pick `dev`.
+Workflow summary prints a `https://github.com/login/device` URL + 8-character code (or a `https://login.microsoft.com/device` URL with `-f tunnel_provider=microsoft`; see [delivery modes](delivery-modes.md#tunnel-account-github-or-microsoft)). Open the URL on your laptop, enter the code, sign in. Then in VS Code Desktop: Cmd-Shift-P → "Remote Tunnels: Connect to Tunnel" → pick `dev`.
 
 ## Day-2
 

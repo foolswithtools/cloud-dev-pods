@@ -251,7 +251,7 @@ gh workflow run pod-list.yml
 aws logs tail /cloud-dev-pods/dev/pods --follow --since 10m
 ```
 
-For tunnel pods: after `pod-up` succeeds, the workflow summary surfaces the GitHub device-code URL + code. The user opens it on their laptop, authenticates, then connects via VS Code Desktop's `Remote Tunnels: Connect to Tunnel`.
+For tunnel pods: after `pod-up` succeeds, the workflow summary surfaces the device-code URL + code (GitHub by default; Microsoft/Entra when `auth.tunnel.provider: microsoft` or `pod-up -f tunnel_provider=microsoft`, see `docs/delivery-modes.md`). The user opens it on their laptop, authenticates, then connects via VS Code Desktop's `Remote Tunnels: Connect to Tunnel`.
 
 ## 5. Destructive operation guardrails
 
@@ -303,7 +303,7 @@ Common signatures with diagnostic + fix in [`docs/troubleshooting.md`](docs/trou
 - oauth2-proxy crashes with `cookie_secret must be 16, 24, or 32 bytes ... but is N bytes` → `aws secretsmanager update-secret` with `$(openssl rand -hex 16)` (32 bytes).
 - Idle reaper stops fresh pods within 5 min → ensure `ALB_NAME_DIMENSION` env var is wired (Phase 9.8).
 - ALB rule limit (100) hit → quota raise (`L-EAD7E5BC`).
-- Tunnel pod missing in VS Code Desktop → wrong GitHub account on the local side.
+- Tunnel pod missing in VS Code Desktop → wrong GitHub/Microsoft account on the local side.
 
 ## 9. What you should NOT do
 
