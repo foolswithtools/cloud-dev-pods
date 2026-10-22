@@ -2,6 +2,7 @@
 
 import type { PodEvent, PodResult } from './handler';
 import { env } from './env';
+import { assertBrowserAuthRestricted } from './auth-guard';
 import {
   allocatePosixUid,
   createAccessPoint,
@@ -37,16 +38,13 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     };
   }
 
-  // Fail-fast safety: refuse to launch a browser pod without an oauth allowlist
-  // (oauth2-proxy would otherwise accept any GitHub user).
-  if (mode === 'browser' && !env.oauthAllowedOrg && !env.oauthAllowedUsers) {
-    return {
-      ok: false,
-      status: 'error',
-      podName,
-      message:
-        'Refusing browser-mode pod-up: neither github.oauthAllowedOrg nor github.oauthAllowedUsers is set in config. Set at least one and re-deploy CloudDevPods-PodManager.',
-    };
+  // Fail-fast safety: refuse to launch a browser pod whose provider has no
+  // sign-in restriction (oauth2-proxy would otherwise admit any account).
+  if (mode === 'browser') {
+    const guard = assertBrowserAuthRestricted(env.auth.browser);
+    if (!guard.ok) {
+      return { ok: false, status: 'error', podName, message: guard.message };
+    }
   }
 
   const repoName = mode === 'browser' ? env.browserRepoName : env.tunnelRepoName;

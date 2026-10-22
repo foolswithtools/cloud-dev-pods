@@ -4,17 +4,10 @@ import type { Config } from './schema';
  * Lambda environment variables carrying the resolved `auth` block to the
  * pod-manager (parsed by `infra/lambda/pod-manager/env.ts`). List values are
  * JSON-encoded arrays.
- *
- * OAUTH_ALLOWED_ORG / OAUTH_ALLOWED_USERS keep their pre-ADR-0008 names and
- * comma-separated format because the fail-fast guard still reads them; they
- * are now sourced from `auth.browser`. The oauth2-proxy sidecar builder reads
- * the AUTH_BROWSER_* values instead.
  */
 export function authLambdaEnvironment(config: Config): Record<string, string> {
   const { browser, tunnel } = config.auth;
   return {
-    OAUTH_ALLOWED_ORG: browser.allowedOrg ?? '',
-    OAUTH_ALLOWED_USERS: browser.allowedUsers.join(','),
     AUTH_BROWSER_PROVIDER: browser.provider,
     AUTH_BROWSER_ISSUER_URL: browser.issuerUrl ?? '',
     AUTH_BROWSER_ALLOWED_ORG: browser.allowedOrg ?? '',

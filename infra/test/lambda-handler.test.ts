@@ -1,8 +1,9 @@
 // Validates the input-validation surface of the Lambda dispatcher. Action bodies
 // are integration-tested against AWS in a sandbox account; here we only test the
-// guard behavior so a malformed event is rejected before any SDK call.
+// guard behavior so a malformed event is rejected before any SDK call, and
+// the browser auth guard (issue #132) refuses before any resource is created.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The handler reads env at module load (via env.ts). Mock those so import works.
 beforeEach(() => {
@@ -83,5 +84,102 @@ describe('handler input validation', () => {
     expect(r.status).toBe('ok');
     expect(r.pods).toEqual([]);
     vi.doUnmock('../lambda/pod-manager/actions');
+  });
+});
+
+describe('handler browser auth guard (issue #132)', () => {
+  // Every pod-up SDK wrapper as a spy, so a refusal can be shown to create
+  // nothing. registryGet returns undefined so the conflict check passes.
+  function mockAws() {
+    const m = {
+      registryGet: vi.fn(async () => undefined),
+      registryPut: vi.fn(async () => undefined),
+      registryScan: vi.fn(async () => []),
+      registryDelete: vi.fn(),
+      resolveLatestImageTag: vi.fn(async () => 'sha-abc'),
+      findExistingAccessPoint: vi.fn(async () => undefined),
+      allocatePosixUid: vi.fn(async () => 12345),
+      createAccessPoint: vi.fn(async () => 'fsap-NEW'),
+      deleteAccessPoint: vi.fn(),
+      registerTaskDef: vi.fn(async () => 'arn:aws:ecs:us-west-2:123456789012:task-definition/x:1'),
+      createTargetGroup: vi.fn(async () => 'arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/x/1'),
+      createListenerRule: vi.fn(async () => 'arn:aws:elasticloadbalancing:us-west-2:123456789012:listener-rule/x/1'),
+      registerTarget: vi.fn(),
+      runTask: vi.fn(async () => 'arn:aws:ecs:us-west-2:123456789012:task/c/t1'),
+      waitForTaskRunning: vi.fn(async () => ({
+        taskArn: 'arn:aws:ecs:us-west-2:123456789012:task/c/t1',
+        lastStatus: 'RUNNING',
+        desiredStatus: 'RUNNING',
+        privateIp: '10.0.0.5',
+      })),
+      deleteListenerRule: vi.fn(),
+      deregisterAndDeleteTargetGroup: vi.fn(),
+      stopTask: vi.fn(),
+      describeTasks: vi.fn(async () => []),
+    };
+    vi.doMock('../lambda/pod-manager/aws', () => m);
+    return m;
+  }
+
+  afterEach(() => {
+    vi.doUnmock('../lambda/pod-manager/aws');
+    vi.unstubAllEnvs();
+  });
+
+  it('refuses browser up with an unrestricted config and creates no AWS resources', async () => {
+    vi.stubEnv('AUTH_BROWSER_PROVIDER', 'github');
+    vi.stubEnv('AUTH_BROWSER_ALLOWED_ORG', '');
+    vi.stubEnv('AUTH_BROWSER_ALLOWED_USERS', '[]');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser' });
+
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe('error');
+    expect(r.message).toContain('auth.browser.allowedOrg');
+    expect(r.message).toContain('auth.browser.allowedUsers');
+    for (const fn of [
+      'allocatePosixUid',
+      'createAccessPoint',
+      'registerTaskDef',
+      'createTargetGroup',
+      'createListenerRule',
+      'runTask',
+      'registryPut',
+    ] as const) {
+      expect(aws[fn], fn).not.toHaveBeenCalled();
+    }
+  });
+
+  it('refuses browser up when the only email domain is "*"', async () => {
+    // oidc, because allowedEmailDomains doesn't count for github at all.
+    vi.stubEnv('AUTH_BROWSER_PROVIDER', 'oidc');
+    vi.stubEnv('AUTH_BROWSER_ALLOWED_EMAIL_DOMAINS', '["*"]');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser' });
+
+    expect(r.status).toBe('error');
+    expect(aws.createAccessPoint).not.toHaveBeenCalled();
+  });
+
+  it('never refuses tunnel up, even with an unrestricted browser config', async () => {
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'tunnel' });
+
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe('ok');
+    expect(aws.runTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('launches browser up when auth.browser.allowedUsers is set', async () => {
+    vi.stubEnv('AUTH_BROWSER_ALLOWED_USERS', '["alice"]');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser' });
+
+    expect(r.ok).toBe(true);
+    expect(aws.createListenerRule).toHaveBeenCalledTimes(1);
   });
 });

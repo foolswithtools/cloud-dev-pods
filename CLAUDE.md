@@ -82,7 +82,7 @@ Three questions before the user runs anything:
    - Browser → user accesses VS Code at `https://<pod>.<base-domain>` via GitHub OAuth.
    - Tunnel → user connects from local VS Code Desktop via the device-code flow.
 2. **Do you own a domain?** Browser mode requires one (Route53 hosted zone). If no domain, default to tunnel-only.
-3. **Solo or org-restricted?** Sets `oauthAllowedUsers` (single user) or `oauthAllowedOrg` (a GitHub org) in `config/config.yaml`. **At least one must be set or browser pods refuse to launch.**
+3. **Solo or org-restricted?** Sets `auth.browser.allowedUsers` (single user) or `auth.browser.allowedOrg` (a GitHub org) in `config/config.yaml` (the older `github.oauthAllowedUsers` / `oauthAllowedOrg` keys still work but are deprecated). **At least one must be set or browser pods refuse to launch** (see `docs/troubleshooting.md`).
 
 ## 3. First-run sequence
 

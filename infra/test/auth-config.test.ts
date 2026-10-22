@@ -115,6 +115,14 @@ describe('auth config resolution', () => {
     ).toThrow(/pluggable-identity-remote-access/);
   });
 
+  it('rejection: ownerOnly true fails validation until owner authorization is enforced', () => {
+    // The sidecar ignores ownerOnly until #133, and the browser auth guard
+    // counts it as a restriction, so accepting it would launch an open pod.
+    expect(() =>
+      resolveConfig(baseConfig({ auth: { browser: { allowedOrg: 'acme', ownerOnly: true } } })),
+    ).toThrow(/#133/);
+  });
+
   it('rejection: an unknown provider fails validation', () => {
     expect(() =>
       resolveConfig(baseConfig({ auth: { browser: { provider: 'okta' } } })),
@@ -134,8 +142,6 @@ describe('PodManager Lambda auth environment', () => {
       baseConfig({ github: { oauthAllowedOrg: 'acme', oauthAllowedUsers: 'alice, bob' } }),
     );
     expect(authLambdaEnvironment(config)).toEqual({
-      OAUTH_ALLOWED_ORG: 'acme',
-      OAUTH_ALLOWED_USERS: 'alice,bob',
       AUTH_BROWSER_PROVIDER: 'github',
       AUTH_BROWSER_ISSUER_URL: '',
       AUTH_BROWSER_ALLOWED_ORG: 'acme',
@@ -149,7 +155,7 @@ describe('PodManager Lambda auth environment', () => {
     });
   });
 
-  it('a new-keys config drives the legacy OAUTH_ALLOWED_* vars too', () => {
+  it('a new-keys config drives every AUTH_BROWSER_* var', () => {
     const { config } = resolveConfig(
       baseConfig({
         auth: {
@@ -157,15 +163,16 @@ describe('PodManager Lambda auth environment', () => {
             allowedOrg: 'acme',
             allowedUsers: ['alice'],
             allowedGroups: ['g1', 'g2'],
-            ownerOnly: true,
             adminUsers: ['root'],
           },
         },
       }),
     );
+    // Rejected by the schema until #133; set after validation to cover the plumbing.
+    config.auth.browser.ownerOnly = true;
     const vars = authLambdaEnvironment(config);
-    expect(vars.OAUTH_ALLOWED_ORG).toBe('acme');
-    expect(vars.OAUTH_ALLOWED_USERS).toBe('alice');
+    expect(vars.AUTH_BROWSER_ALLOWED_ORG).toBe('acme');
+    expect(vars.AUTH_BROWSER_ALLOWED_USERS).toBe('["alice"]');
     expect(vars.AUTH_BROWSER_ALLOWED_GROUPS).toBe('["g1","g2"]');
     expect(vars.AUTH_BROWSER_OWNER_ONLY).toBe('true');
     expect(vars.AUTH_BROWSER_ADMIN_USERS).toBe('["root"]');
@@ -210,9 +217,10 @@ describe('pod-manager env.ts auth parsing', () => {
   it('round-trips the values authLambdaEnvironment produces', async () => {
     const { config } = resolveConfig(
       baseConfig({
-        auth: { browser: { allowedOrg: 'acme', allowedUsers: ['alice'], allowedTenants: ['t1'], ownerOnly: true } },
+        auth: { browser: { allowedOrg: 'acme', allowedUsers: ['alice'], allowedTenants: ['t1'] } },
       }),
     );
+    config.auth.browser.ownerOnly = true;
     const env = await loadEnv(authLambdaEnvironment(config));
     expect(env.auth).toEqual({
       browser: {
@@ -228,8 +236,8 @@ describe('pod-manager env.ts auth parsing', () => {
       },
       tunnel: { provider: 'github' },
     });
-    expect(env.oauthAllowedOrg).toBe('acme');
-    expect(env.oauthAllowedUsers).toBe('alice');
+    expect(env).not.toHaveProperty('oauthAllowedOrg');
+    expect(env).not.toHaveProperty('oauthAllowedUsers');
   });
 
   it('defaults when the AUTH_* vars are unset', async () => {
