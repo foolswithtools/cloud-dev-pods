@@ -59,6 +59,15 @@ pods: { defaultCpu: 1024, defaultMemory: 2048, spotPercentage: 100, idleMinutes:
 naming: { prefix: CloudDevPods }
 ```
 
+`github.oauthAllowedUsers` and `github.oauthAllowedOrg` are deprecated. They still work, but synth prints a deprecation warning. Use the provider-neutral `auth.browser` block instead (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); when it is set, the `github.oauthAllowed*` keys are ignored:
+
+```yaml
+auth:
+  browser:
+    provider: github
+    allowedUsers: [clostaunau]   # or allowedOrg: <your-org>
+```
+
 Browser mode adds:
 
 ```yaml

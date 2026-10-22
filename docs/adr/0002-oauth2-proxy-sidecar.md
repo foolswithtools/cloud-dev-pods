@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-05-03).
+Accepted (2026-05-03). Amended by [ADR 0008](0008-pluggable-browser-idp.md) (pluggable browser identity provider).
 
 ## Context
 
