@@ -59,6 +59,34 @@ aws secretsmanager update-secret \
 
 Restart any running pods to pick up the new value.
 
+## Browser `pod-up` fails with `Refusing browser-mode pod-up: auth.browser.provider "..." has no sign-in restriction`
+
+**Cause:** the pod-manager Lambda refuses to launch a browser pod unless the active identity provider restricts who can sign in. Without a restriction, `oauth2-proxy` would admit any account the provider can authenticate. Tunnel pods are never refused by this check. The keys that count depend on `auth.browser.provider`:
+
+| Provider | Set at least one of |
+| --- | --- |
+| `github` | `auth.browser.allowedOrg`, `auth.browser.allowedUsers` |
+| `entra-id` | `auth.browser.allowedTenants`, `auth.browser.allowedGroups`, `auth.browser.allowedEmailDomains`, `auth.browser.ownerOnly: true` |
+| `oidc` | `auth.browser.allowedGroups`, `auth.browser.allowedEmailDomains`, `auth.browser.ownerOnly: true` |
+
+`allowedEmailDomains: ["*"]` never counts, and a `"*"` anywhere in the list cancels the other domains, because `oauth2-proxy` then accepts every address. Keys a provider doesn't use (for example `allowedTenants` with `github`) don't count either. Only `github` is wired at runtime today, and `ownerOnly: true` fails config validation until per-pod owner authorization lands ([#133](https://github.com/foolswithtools/cloud-dev-pods/issues/133)).
+
+**Fix:** add a restriction to `config/config.yaml`, commit, and re-deploy the pod-manager so the Lambda picks up the new environment:
+
+```yaml
+auth:
+  browser:
+    provider: github
+    allowedUsers: [your-github-login]   # or allowedOrg: your-org
+```
+
+```bash
+git commit -am "chore: restrict browser sign-in" && git push
+gh workflow run cluster-up.yml && gh run watch
+```
+
+The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys still work when `auth.browser` is absent (see [ADR 0008](adr/0008-pluggable-browser-idp.md)).
+
 ## Pod URL returns 502 Bad Gateway
 
 **Cause (transient):** the ALB target group is still registering. Health checks need ~30s after `pod-up` before traffic flows.

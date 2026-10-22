@@ -45,9 +45,8 @@ beforeEach(() => {
   process.env.TUNNEL_REPO_URI = '123456789012.dkr.ecr.us-west-2.amazonaws.com/cloud-dev-pods/vscode-tunnel';
   process.env.BROWSER_REPO_NAME = 'cloud-dev-pods/vscode-browser';
   process.env.TUNNEL_REPO_NAME = 'cloud-dev-pods/vscode-tunnel';
-  // Need at least one of these set or the browser-mode fail-fast will trip.
-  process.env.OAUTH_ALLOWED_USERS = 'tester';
-  process.env.OAUTH_ALLOWED_ORG = '';
+  // Need a restriction set or the browser-mode auth guard will trip.
+  process.env.AUTH_BROWSER_ALLOWED_USERS = '["tester"]';
 });
 
 afterEach(() => {
