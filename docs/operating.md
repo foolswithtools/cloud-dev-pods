@@ -48,7 +48,7 @@ How it is enforced, per provider:
 
 GitHub logins are matched case-sensitively, so pass the owner exactly as GitHub spells it (`GITHUB_ACTOR` always does). `pod-up` refuses an owner-only browser pod when the owner is missing or isn't a valid identity for the provider; see [troubleshooting](troubleshooting.md).
 
-**Known limitation (`github`):** oauth2-proxy checks `GITHUB_USERS` only at sign-in. All pods share one cookie secret, so a signed-in user who copies their session cookie from their own pod to another pod's hostname gets past the owner check there. `allowedOrg` is still enforced. For `entra-id` and `oidc`, oauth2-proxy re-checks the emails file on every request for sessions that carry an email, so a replayed cookie from another pod is rejected. Treat `github` owner-only as protection against accidental access between allowlisted colleagues, not against a deliberate insider.
+**Known limitation (`github`):** oauth2-proxy checks `GITHUB_USERS` only at sign-in. All pods share one cookie secret, so a signed-in user who copies their session cookie from their own pod to another pod's hostname gets past the owner check there. `allowedOrg` is still enforced. For `entra-id` and `oidc`, oauth2-proxy re-checks the emails file on every request for sessions that carry an email, so a replayed cookie from another pod is rejected. Treat `github` owner-only as protection against accidental access between allowlisted colleagues, not against a deliberate insider. Per-pod cookie secrets are tracked in [#156](https://github.com/foolswithtools/cloud-dev-pods/issues/156).
 
 ## Costs
 
