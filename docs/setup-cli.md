@@ -51,13 +51,17 @@ aws:
 github:
   org: clostaunau
   repo: cloud-dev-pods
-  oauthAllowedUsers: clostaunau
+auth:
+  browser:
+    allowedUsers: [clostaunau]   # or allowedOrg: <your-org>
 domain:
   strategy: alb-default
 network: { vpcCidr: "10.50.0.0/16", natGateways: 1, useVpcEndpoints: false }
 pods: { defaultCpu: 1024, defaultMemory: 2048, spotPercentage: 100, idleMinutes: 60 }
 naming: { prefix: CloudDevPods }
 ```
+
+`auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); only `provider: github` (the default) is supported today. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
 
 Browser mode adds:
 

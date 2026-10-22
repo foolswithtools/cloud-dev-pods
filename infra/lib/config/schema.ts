@@ -1,5 +1,52 @@
 import { z } from 'zod';
 
+// Providers the schema knows about vs. the ones wired at runtime today. The
+// rest arrive with later slices of the pluggable-identity epic.
+const EPIC_POINTER =
+  'foolswithtools/cloud-dev-pods#129 (docs/specs/pluggable-identity-remote-access.md)';
+
+const stringList = z.array(z.string()).default([]);
+
+export const AuthBrowserSchema = z
+  .object({
+    provider: z.enum(['github', 'entra-id', 'oidc']).default('github'),
+    issuerUrl: z.url().optional(),
+    allowedOrg: z.string().optional(),
+    allowedUsers: stringList,
+    allowedGroups: stringList,
+    allowedEmailDomains: stringList,
+    allowedTenants: stringList,
+    // Per-pod owner authorization (spec F4). Opt-in; not enforced yet.
+    ownerOnly: z.boolean().default(false),
+    adminUsers: stringList,
+  })
+  .superRefine((b, ctx) => {
+    if (b.provider !== 'github') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['provider'],
+        message: `auth.browser.provider "${b.provider}" is not supported yet; only "github" is wired at runtime. Other providers land with the pluggable identity epic, ${EPIC_POINTER}.`,
+      });
+    }
+  });
+
+export const AuthTunnelSchema = z
+  .object({
+    provider: z.enum(['github', 'microsoft']).default('github'),
+  })
+  .superRefine((t, ctx) => {
+    if (t.provider !== 'github') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['provider'],
+        message: `auth.tunnel.provider "${t.provider}" is not supported yet; only "github" is wired at runtime. Microsoft tunnel login lands with the pluggable identity epic, ${EPIC_POINTER}.`,
+      });
+    }
+  });
+
+export type AuthBrowser = z.infer<typeof AuthBrowserSchema>;
+export type AuthTunnel = z.infer<typeof AuthTunnelSchema>;
+
 export const ConfigSchema = z.object({
   project: z.object({
     name: z.string().default('cloud-dev-pods'),
@@ -12,11 +59,20 @@ export const ConfigSchema = z.object({
   github: z.object({
     org: z.string(),
     repo: z.string(),
-    // oauth2-proxy auth allowlists. Set at least one. If both empty,
-    // oauth2-proxy will accept any authenticated GitHub user (insecure).
+    // DEPRECATED: use auth.browser.allowedOrg / auth.browser.allowedUsers.
+    // Still honored when auth.browser is absent (see resolveConfig + ADR 0008).
     oauthAllowedOrg: z.string().optional(),
     oauthAllowedUsers: z.string().optional(),  // comma-separated GitHub logins
   }),
+  // Provider-neutral identity config (ADR 0008). Optional; resolveConfig
+  // fills defaults and maps the deprecated github.oauthAllowed* keys.
+  // nullish: a bare `auth:` / `browser:` key in YAML parses as null.
+  auth: z
+    .object({
+      browser: AuthBrowserSchema.nullish(),
+      tunnel: AuthTunnelSchema.nullish(),
+    })
+    .nullish(),
   domain: z.object({
     strategy: z.enum(['byo', 'alb-default']).default('alb-default'),
     baseDomain: z.string().optional(),
@@ -47,4 +103,53 @@ export const ConfigSchema = z.object({
     .optional(),
 });
 
-export type Config = z.infer<typeof ConfigSchema>;
+export type RawConfig = z.infer<typeof ConfigSchema>;
+
+/** Validated config with the `auth` block fully resolved. */
+export type Config = Omit<RawConfig, 'auth'> & {
+  auth: { browser: AuthBrowser; tunnel: AuthTunnel };
+};
+
+/**
+ * Validate a parsed config document and resolve `auth`.
+ *
+ * When `auth.browser` is absent, the deprecated `github.oauthAllowedOrg` /
+ * `github.oauthAllowedUsers` keys are mapped into `auth.browser.allowedOrg` /
+ * `allowedUsers`. When both are present, `auth.browser` wins. Either way a
+ * single deprecation warning is returned for the caller to print.
+ */
+export function resolveConfig(input: unknown): { config: Config; warnings: string[] } {
+  const raw = ConfigSchema.parse(input);
+  const { oauthAllowedOrg, oauthAllowedUsers } = raw.github;
+  const legacyKeys = [
+    ...(oauthAllowedOrg !== undefined ? ['github.oauthAllowedOrg'] : []),
+    ...(oauthAllowedUsers !== undefined ? ['github.oauthAllowedUsers'] : []),
+  ];
+  const warnings: string[] = [];
+
+  let browser = raw.auth?.browser;
+  if (browser) {
+    if (legacyKeys.length > 0) {
+      warnings.push(
+        `${legacyKeys.join(' and ')} ${legacyKeys.length > 1 ? 'are' : 'is'} deprecated and ignored because auth.browser is set; auth.browser wins. Remove the github.oauthAllowed* keys. See docs/adr/0008-pluggable-browser-idp.md.`,
+      );
+    }
+  } else {
+    browser = AuthBrowserSchema.parse({
+      allowedOrg: oauthAllowedOrg,
+      allowedUsers: splitCsv(oauthAllowedUsers),
+    });
+    if (legacyKeys.length > 0) {
+      warnings.push(
+        `${legacyKeys.join(' and ')} ${legacyKeys.length > 1 ? 'are' : 'is'} deprecated; move to auth.browser.allowedOrg / auth.browser.allowedUsers. See docs/adr/0008-pluggable-browser-idp.md.`,
+      );
+    }
+  }
+
+  const tunnel = raw.auth?.tunnel ?? AuthTunnelSchema.parse({});
+  return { config: { ...raw, auth: { browser, tunnel } }, warnings };
+}
+
+function splitCsv(value: string | undefined): string[] {
+  return (value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}

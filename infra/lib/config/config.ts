@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { ConfigSchema, type Config } from './schema';
+import { resolveConfig, type Config } from './schema';
 
 /**
  * Load and validate the YAML config.
@@ -14,12 +14,17 @@ import { ConfigSchema, type Config } from './schema';
  *
  * Always relative to process.cwd(). For invocations from `infra/`, paths are
  * adjusted automatically.
+ *
+ * Deprecation warnings from resolveConfig (e.g. github.oauthAllowed*) are
+ * printed to stderr, one line each.
  */
 export function loadConfig(explicitPath?: string): Config {
   const path = pickPath(explicitPath);
   const raw = readFileSync(path, 'utf8');
   const parsed: unknown = parseYaml(raw);
-  return ConfigSchema.parse(parsed);
+  const { config, warnings } = resolveConfig(parsed);
+  for (const w of warnings) console.warn(`[cloud-dev-pods] DEPRECATION: ${w}`);
+  return config;
 }
 
 function pickPath(explicit?: string): string {

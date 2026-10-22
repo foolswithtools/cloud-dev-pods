@@ -14,9 +14,24 @@ aws:
 github:
   org: foolswithtools
   repo: cloud-dev-pods
-  # GitHub org login that oauth2-proxy will allow into pod URLs.
-  # Leave empty to allow only the single GitHub user matching OAUTH2_PROXY_GITHUB_USER.
+  # DEPRECATED: use auth.browser.allowedOrg / auth.browser.allowedUsers below.
+  # Still honored when auth.browser is absent; synth prints a deprecation
+  # warning. GitHub org login that oauth2-proxy will allow into pod URLs.
   oauthAllowedOrg: foolswithtools
+
+# Provider-neutral identity config (ADR 0008). Replaces github.oauthAllowed*.
+# When auth.browser is set, the github.oauthAllowed* keys are ignored.
+# Only provider "github" is supported today; other values fail validation
+# until the pluggable identity epic (#129) wires them.
+# auth:
+#   browser:
+#     provider: github          # github | entra-id | oidc
+#     allowedOrg: foolswithtools
+#     allowedUsers: []          # GitHub logins, e.g. [alice, bob]
+#     ownerOnly: false          # per-pod owner authorization (not enforced yet)
+#     adminUsers: []
+#   tunnel:
+#     provider: github          # github | microsoft
 
 domain:
   # "byo": bring your own Route53 hosted zone (recommended).
