@@ -87,6 +87,38 @@ describe('buildBrowserAuthTaskParts', () => {
   });
 });
 
+// Same list as oauth2-proxy-builder.test.ts: cfg tags (v7.15.5) of the
+// settings the sidecar uses. oauth2-proxy ignores unknown env names.
+const KNOWN_ENV = new Set(
+  [
+    'provider', 'http_address', 'upstreams', 'reverse_proxy', 'pass_authorization_header',
+    'cookie_secure', 'email_domains', 'github_org', 'github_users', 'allowed_groups',
+    'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
+  ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
+);
+
+describe('owner-only sidecar env names', () => {
+  it('are all settings oauth2-proxy actually reads', () => {
+    const github = buildBrowserAuthTaskParts(
+      { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'], ownerOnly: true, adminUsers: ['ops'] },
+      'carol',
+      secretArns,
+      { ...opts, initImage },
+    ).containers[0]!;
+    const oidc = buildOwnerAuthorization(
+      { provider: 'oidc', allowedUsers: [], ownerOnly: true, adminUsers: [] },
+      'owner@example.com',
+      { ...opts, initImage },
+    );
+    const names = [
+      ...[...(github.environment ?? []), ...(github.secrets ?? [])].map((e) => e.name!),
+      ...oidc.sidecarEnvironment.map((e) => e.name!),
+      ...oidc.removeSidecarEnvironment,
+    ];
+    for (const name of names) expect(KNOWN_ENV.has(name), name).toBe(true);
+  });
+});
+
 describe('buildOwnerAuthorization (oidc / entra-id)', () => {
   for (const provider of ['oidc', 'entra-id'] as const) {
     it(`${provider} + ownerOnly emits an init container, a shared volume, and AUTHENTICATED_EMAILS_FILE`, () => {
