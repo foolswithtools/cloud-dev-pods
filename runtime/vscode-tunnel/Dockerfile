@@ -23,6 +23,8 @@ RUN useradd -ms /bin/bash vscode \
  && rm /tmp/vscode_cli.tar.gz \
  && chown -R vscode:vscode /opt/vscode-cli
 
+ENV PATH=/opt/vscode-cli:$PATH
+
 # Entrypoint: COPY before USER switch so it lands as root-owned in /usr/local/bin/.
 COPY entrypoint.sh /usr/local/bin/cloud-dev-pods-entrypoint
 RUN chmod +x /usr/local/bin/cloud-dev-pods-entrypoint
