@@ -151,7 +151,9 @@ export function buildOwnerAuthorization(
 
   let provider: Pick<OwnerAuthorization, 'sidecarEnvironment' | 'removeSidecarEnvironment'>;
   let initEnvironment: KeyValuePair[] = [];
-  const script = ['set -eu', 'umask 022', WRITE_COOKIE_SECRET];
+  // chmod: the sidecar runs as a non-root user and must be able to enter the
+  // volume directory, whatever mode ECS creates it with.
+  const script = ['set -eu', 'umask 022', `chmod 755 ${OWNER_AUTHZ_DIR}`, WRITE_COOKIE_SECRET];
 
   if (auth.provider === 'github') {
     const org = auth.allowedOrg?.trim();
