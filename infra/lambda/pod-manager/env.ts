@@ -57,8 +57,9 @@ export const env = {
   oauthAllowedOrg: process.env.OAUTH_ALLOWED_ORG ?? '',
   oauthAllowedUsers: process.env.OAUTH_ALLOWED_USERS ?? '',
   // Resolved provider-neutral auth config (ADR 0008). Only provider "github"
-  // is wired at runtime so far; the guard and sidecar still read the
-  // oauthAllowed* fields above.
+  // is wired at runtime so far. The oauth2-proxy sidecar builder reads this;
+  // the fail-fast guard in actions.ts still reads the oauthAllowed* fields
+  // above (both are derived from the same config.auth.browser at synth).
   auth: {
     browser: {
       provider: oneOf('AUTH_BROWSER_PROVIDER', ['github', 'entra-id', 'oidc'], 'github'),
