@@ -172,6 +172,9 @@ jobs:
             echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
             if [ "${{ inputs.mode }}" = "browser" ]; then
               echo "- URL: ${{ steps.up.outputs.url }}"
+              echo "- OAuth redirect URI: \`${{ steps.up.outputs.url }}/oauth2/callback\`"
+              echo ""
+              echo "Register the redirect URI on your identity provider before signing in: the GitHub OAuth App's callback URL, or a Web redirect URI on the Entra ID app registration (up to 256 per app; see [docs/setup-entra.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/docs/setup-entra.md))."
               echo ""
               echo "Open the URL and sign in (allowlist enforced by oauth2-proxy; with \`auth.browser.ownerOnly: true\`, only the owner and \`auth.browser.adminUsers\` get in)."
             else

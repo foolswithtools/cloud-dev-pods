@@ -17,6 +17,7 @@ export function authLambdaEnvironment(config: Config): Record<string, string> {
     AUTH_BROWSER_ALLOWED_TENANTS: JSON.stringify(browser.allowedTenants),
     AUTH_BROWSER_OWNER_ONLY: String(browser.ownerOnly),
     AUTH_BROWSER_ADMIN_USERS: JSON.stringify(browser.adminUsers),
+    AUTH_BROWSER_ENTRA_GROUP_OVERAGE: String(browser.entraGroupOverage),
     AUTH_TUNNEL_PROVIDER: tunnel.provider,
   };
 }

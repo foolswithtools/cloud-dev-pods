@@ -80,7 +80,7 @@ Restart any running pods to pick up the new value.
 | `entra-id` | `auth.browser.allowedTenants`, `auth.browser.allowedGroups`, `auth.browser.allowedEmailDomains`, `auth.browser.ownerOnly: true` |
 | `oidc` | `auth.browser.allowedGroups`, `auth.browser.allowedEmailDomains`, `auth.browser.ownerOnly: true` |
 
-`allowedEmailDomains: ["*"]` never counts, and a `"*"` anywhere in the list cancels the other domains, because `oauth2-proxy` then accepts every address. Keys a provider doesn't use (for example `allowedTenants` with `github`) don't count either. Only `github` is wired at runtime today. `ownerOnly: true` also counts as a restriction for `github` (each pod then admits only its owner and `auth.browser.adminUsers`; see [Per-pod owner authorization](operating.md#per-pod-owner-authorization)), but the refusal message suggests the allowlist keys first.
+`allowedEmailDomains: ["*"]` never counts, and a `"*"` anywhere in the list cancels the other domains, because `oauth2-proxy` then accepts every address. Keys a provider doesn't use (for example `allowedTenants` with `github`) don't count either. For `entra-id`, `allowedTenants` does not count when it includes the personal Microsoft account tenant (`9188040d-6c67-4c5b-b112-36a304b66dad`), because anyone can create a personal account. `github` and `entra-id` are wired at runtime today; see [Entra ID setup](setup-entra.md) for the `entra-id` keys. `ownerOnly: true` also counts as a restriction for `github` (each pod then admits only its owner and `auth.browser.adminUsers`; see [Per-pod owner authorization](operating.md#per-pod-owner-authorization)), but the refusal message suggests the allowlist keys first.
 
 **Fix:** add a restriction to `config/config.yaml`, commit, and re-deploy the pod-manager so the Lambda picks up the new environment:
 
@@ -97,6 +97,47 @@ gh workflow run cluster-up.yml && gh run watch
 ```
 
 The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys still work when `auth.browser` is absent (see [ADR 0008](adr/0008-pluggable-browser-idp.md)).
+
+## Synth fails with `auth.browser.issuerUrl must be https://login.microsoftonline.com/<tenant-id>/v2.0 ...`
+
+**Cause:** `auth.browser.provider: entra-id` needs the v2.0 issuer of your tenant, with the tenant ID as a GUID. Common mistakes: the v1 issuer (`https://sts.windows.net/<tenant-id>/`), a missing `/v2.0`, the authorize endpoint (`.../oauth2/v2.0/...`), or a domain name such as `contoso.onmicrosoft.com` in place of the tenant ID (its discovery document reports the GUID issuer, so `oauth2-proxy` would refuse to start).
+
+**Fix:** copy the **Directory (tenant) ID** from the app registration's Overview page and set `issuerUrl: https://login.microsoftonline.com/<tenant-id>/v2.0`. For multi-tenant apps, `common`, `organizations`, or `consumers` replace the tenant ID and `auth.browser.allowedTenants` becomes required. See [Entra ID setup](setup-entra.md#multi-tenant-apps).
+
+## oauth2-proxy exits with `oidc: issuer did not match the issuer returned by provider`
+
+**Signature:** a browser pod with `provider: entra-id` never becomes healthy; the `browser/<pod>/oauth2-proxy` log stream shows `issuer did not match the issuer returned by provider, expected "..." got "..."` (at startup) or `id token issued by a different provider` (at sign-in).
+
+**Cause:** the issuer in `auth.browser.issuerUrl` is not the one Entra reports for the tenant. Usually the tenant ID belongs to a different tenant than the app registration, or the app was registered as multi-tenant while `issuerUrl` names a single tenant (or the reverse).
+
+**Fix:** open `https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration` and compare its `issuer` with `issuerUrl`; they must match exactly. Make the app's **Supported account types** and the issuer agree (see the table in [Entra ID setup](setup-entra.md#multi-tenant-apps)), re-deploy with `cluster-up`, then `pod-down` and `pod-up` the pod.
+
+## Entra sign-in fails with `AADSTS50011: The redirect URI ... does not match`
+
+**Cause:** the pod's callback URL is not registered on the Entra app registration. Each browser pod has its own redirect URI, `https://<pod>.<base-domain>/oauth2/callback`, and Entra compares it exactly (scheme, host, path, case).
+
+**Fix:** copy the **OAuth redirect URI** from the `pod-up` workflow summary and add it under the app registration's **Authentication > Platform configurations > Web > Redirect URIs**. It must be a **Web** platform URI (not SPA or public client) and use `https`. An app holds at most 256 redirect URIs (100 if it also signs in personal Microsoft accounts); remove URIs of pods you no longer use. See [The redirect URI ceiling](setup-entra.md#the-redirect-uri-ceiling).
+
+## Entra sign-in fails with `AADSTS50105` or `AADSTS700016`
+
+- `AADSTS50105` (user not assigned to a role for the application): the app has **Assignment required** set and the user is not assigned. Assign the user or one of their groups under **Enterprise applications > (your app) > Users and groups**.
+- `AADSTS700016` (application not found in the directory): `/cloud-dev-pods/oauth/client-id` doesn't hold this app's **Application (client) ID**, or the user is signing in to a tenant the app is not registered for. Fix the secret value and `pod-down` / `pod-up` the pod.
+
+## Entra ID sign-in fails with `neither the id_token nor the profileURL set an email`
+
+**Cause:** `oauth2-proxy` needs an email for every session, and Entra only puts an `email` claim in the token for users with a mailbox (the `mail` attribute). Accounts without one, often admin or service accounts, cannot sign in.
+
+**Fix:** give the user a mail address in Entra, or have them use an account that has one. `allowedEmailDomains` and `ownerOnly` match this address, so set it to what those settings expect.
+
+## Entra user in the tenant gets a 403 from oauth2-proxy
+
+**Cause:** the user signed in but failed a restriction: not in any `auth.browser.allowedGroups` group, outside `allowedEmailDomains` or `allowedTenants`, or (with `ownerOnly`) not the pod's owner or an admin. This is the intended result for users who are not allowed in.
+
+If the user should be allowed in:
+
+- Check the app has a **groups claim** (Token configuration) emitting **Group ID**s, and that `allowedGroups` lists object IDs, not group names.
+- Users in more than 200 groups get no `groups` claim; set `auth.browser.entraGroupOverage: true` so `oauth2-proxy` reads groups from Microsoft Graph. See [Entra ID setup](setup-entra.md#3-add-a-groups-claim-only-if-you-use-allowedgroups).
+- Changes to `config/config.yaml` need `cluster-up`, then `pod-down` / `pod-up` for running pods.
 
 ## Pod URL returns 502 Bad Gateway
 

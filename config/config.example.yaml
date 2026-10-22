@@ -21,8 +21,9 @@ github:
 
 # Provider-neutral identity config (ADR 0008). Replaces github.oauthAllowed*.
 # When auth.browser is set, the github.oauthAllowed* keys are ignored.
-# Browser: only provider "github" is supported today; other values fail
-# validation until the pluggable identity epic (#129) wires them.
+# Browser: providers "github" and "entra-id" are supported ("oidc" fails
+# validation until the pluggable identity epic, #129, wires it). Entra ID
+# setup, including the keys below, is in docs/setup-entra.md.
 # Tunnel: github and microsoft (incl. Entra work/school) are both supported;
 # pod-up's tunnel_provider input overrides it per pod.
 # auth:
@@ -32,6 +33,12 @@ github:
 #     allowedUsers: []          # GitHub logins, e.g. [alice, bob]
 #     ownerOnly: false          # true: each browser pod admits only its owner + adminUsers
 #     adminUsers: []            # break-glass access to every pod when ownerOnly is true
+#     # entra-id only (requires domain.strategy: byo):
+#     # issuerUrl: https://login.microsoftonline.com/<tenant-id>/v2.0
+#     # allowedTenants: []      # tenant IDs; required with /common/, /organizations/, /consumers/
+#     # allowedGroups: []       # group object IDs
+#     # allowedEmailDomains: [] # e.g. [example.com]
+#     # entraGroupOverage: false # true: request User.Read for users in > 200 groups
 #   tunnel:
 #     provider: github          # github | microsoft
 

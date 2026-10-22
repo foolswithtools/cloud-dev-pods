@@ -61,10 +61,24 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
         'provider', 'http_address', 'upstreams', 'reverse_proxy', 'pass_authorization_header',
         'cookie_secure', 'email_domains', 'github_org', 'github_users', 'allowed_groups',
         'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
+        'oidc_issuer_url', 'entra_id_allowed_tenants', 'scope', 'insecure_oidc_skip_issuer_verification',
       ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
     );
-    const c = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] }, secretArns, opts);
-    for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
+    const github = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] }, secretArns, opts);
+    const entra = buildOauth2ProxyContainer(
+      {
+        provider: 'entra-id',
+        issuerUrl: 'https://login.microsoftonline.com/common/v2.0',
+        allowedUsers: [],
+        allowedTenants: ['11111111-2222-3333-4444-555555555555'],
+        allowedGroups: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'],
+        allowedEmailDomains: ['example.com'],
+        entraGroupOverage: true,
+      },
+      secretArns,
+      opts,
+    );
+    for (const c of [github, entra]) for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
       expect(known.has(name), name).toBe(true);
     }
   });
@@ -78,10 +92,10 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
     expect(minor).toBeGreaterThanOrEqual(8);
   });
 
-  it('rejects providers other than github (not wired yet)', () => {
+  it('rejects provider oidc (not wired yet)', () => {
     expect(() =>
-      buildOauth2ProxyContainer({ provider: 'entra-id', allowedUsers: [] }, secretArns, opts),
-    ).toThrow(/entra-id/);
+      buildOauth2ProxyContainer({ provider: 'oidc', allowedUsers: [] }, secretArns, opts),
+    ).toThrow(/oidc/);
   });
 
   // Golden copy of the definition registerTaskDef emitted before the builder

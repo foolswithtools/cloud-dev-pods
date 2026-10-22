@@ -4,6 +4,8 @@
 // Pure: no env reads, so it can be unit-tested; actions.ts passes in
 // env.auth.browser, the same source the oauth2-proxy sidecar builder reads.
 
+import { ENTRA_PERSONAL_ACCOUNTS_TENANT } from './entra-id';
+
 export interface BrowserAuthRestrictions {
   provider: 'github' | 'entra-id' | 'oidc';
   allowedOrg?: string;
@@ -33,6 +35,12 @@ function isSet(auth: BrowserAuthRestrictions, key: RestrictionKey): boolean {
   // oauth2-proxy admits every address when "*" is among the email domains,
   // so a wildcard anywhere in the list cancels the restriction.
   if (key === 'allowedEmailDomains' && values.includes('*')) return false;
+  // Anyone can create a personal Microsoft account, and oauth2-proxy admits
+  // a token from any listed tenant, so that tenant anywhere in the list
+  // cancels the restriction.
+  if (key === 'allowedTenants' && values.some((v) => v.toLowerCase() === ENTRA_PERSONAL_ACCOUNTS_TENANT)) {
+    return false;
+  }
   return values.length > 0;
 }
 
@@ -46,12 +54,16 @@ export function assertBrowserAuthRestricted(auth: BrowserAuthRestrictions): Brow
   const wildcardNote = keys.includes('allowedEmailDomains')
     ? ' allowedEmailDomains: ["*"] does not count as a restriction.'
     : '';
+  const personalNote = keys.includes('allowedTenants')
+    ? ` The personal Microsoft account tenant (${ENTRA_PERSONAL_ACCOUNTS_TENANT}) anywhere in allowedTenants cancels that restriction too.`
+    : '';
   return {
     ok: false,
     message:
       `Refusing browser-mode pod-up: auth.browser.provider "${auth.provider}" has no sign-in restriction, ` +
       `so any account the identity provider accepts could open the pod. ` +
       `Set at least one of ${choices.join(', ')} in config/config.yaml and re-deploy CloudDevPods-PodManager.` +
-      wildcardNote,
+      wildcardNote +
+      personalNote,
   };
 }
