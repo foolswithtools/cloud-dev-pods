@@ -31,6 +31,7 @@ Cons:
 
 - Authentication is via a GitHub or Microsoft device-code flow on **every `pod-up`**, including a `pod-down` / `pod-up` of the same pod name. The CLI's login can't be carried to a new task without storing a plaintext token on EFS, so it isn't persisted (see #68; persisting it via Secrets Manager is tracked in #120).
 - Can't share a tunnel with multiple users.
+- All editor traffic is relayed through Microsoft's dev tunnels service, a free preview service with monthly per-user limits and no SLA. See [Data path, limits and egress](#data-path-limits-and-egress).
 
 ### Tunnel account: GitHub or Microsoft
 
@@ -62,6 +63,42 @@ Microsoft dev tunnels allow 10 registered tunnels per account. Registering an el
 
 `pod-up` counts the registry's running tunnel pods with the same owner. At 10 or more it still launches the pod, but adds a cap warning to the result and the workflow summary. The count covers only this cluster's pods: tunnels the same account registered elsewhere aren't visible without the user's token.
 
+### Data path, limits and egress
+
+Check these facts before a compliance review or capacity plan for tunnel mode. They come from Microsoft's documentation, linked below, as of October 2026. Microsoft can change them.
+
+**Data path.** The pod and your laptop both make outbound connections to Microsoft's dev tunnels relay (`*.rel.tunnels.api.visualstudio.com`). Microsoft documents no direct or peer-to-peer path, so all editor traffic (file edits, terminal, extension host, debugging) passes through Microsoft's service. Neither end needs an inbound port.
+
+**Encryption.** VS Code runs an SSH connection over the tunnel for end-to-end encryption; [VS Code's tunnel docs](https://code.visualstudio.com/docs/remote/tunnels) name AES-256 in CTR mode as the preferred cipher. Because Microsoft describes this as end-to-end encryption, the relay carries only ciphertext for editor traffic. Forwarded-port web URLs are different. When you forward a port and open its `*.devtunnels.ms` URL (for example from the Ports view), [TLS terminates at Microsoft's ingress](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/security#web-forwarding) with Microsoft-issued certificates and the service rewrites headers. That traffic is visible to Microsoft. Don't send data through a `*.devtunnels.ms` URL that must not be seen by a third party.
+
+**Limits.** The [dev tunnels limits](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#dev-tunnels-limits) apply per account (the GitHub or Microsoft account the pod signs in with) and reset monthly:
+
+| Resource | Limit |
+|---|---|
+| Bandwidth | 5 GB per user |
+| Tunnels | 10 per user |
+| Ports | 10 per tunnel |
+| Active connections | 1000 per port |
+| HTTP request rate | 1500 per minute per port |
+| Data transfer rate | Up to 20 MB/s per tunnel |
+| Web-forwarding HTTP request body | 16 MB |
+
+Registering an 11th tunnel makes the VS Code CLI delete a random unused one, and [unused tunnels are deleted after 30 days of no activity](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/faq#when-are-unused-dev-tunnels-deleted). [Tunnel slots](#tunnel-slots-the-10-tunnel-cap) covers how `pod-down` and `pod-up` deal with both.
+
+**Service status.** Dev tunnels is [in public preview](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/overview): "This preview version is provided without a service-level agreement, and it's not recommended for production workloads." Microsoft publishes no pricing page and no paid tier, so there's no charge and no way to buy higher limits or an SLA. If the relay is down, tunnel pods can't be reached; browser pods don't use it.
+
+**What counts toward the 5 GB.** Only traffic that crosses the tunnel: editor sessions, terminal output, file transfers and forwarded-port previews. Forwarded web previews are the usual way to use it up. The pod's own internet traffic (`git clone`, `npm install`, the VS Code server download) goes directly to its destination, not via the relay, so it doesn't count. That follows from the cluster's network layout rather than from a Microsoft statement. Both kinds of traffic leave the VPC through the NAT gateway, including the pod's connection to the relay, so AWS bills NAT data processing per GB on both; only the tunnel bytes count toward the 5 GB. Container image layers mostly come from S3 through the VPC's S3 gateway endpoint, not NAT. See [`cost-controls.md`](cost-controls.md).
+
+**Egress domains.** If you restrict the pods' outbound traffic (for example with a firewall in front of the NAT gateway), allow these from the private subnets. The first two groups come from [Microsoft's dev tunnels domain list](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/security#domains), the third from [VS Code's network list](https://code.visualstudio.com/docs/setup/network):
+
+- Login: `github.com` and `api.github.com` (GitHub tunnel account; the [VS Code CLI](https://github.com/microsoft/vscode/blob/2d0b7506a36c1d6db9a466440131a8e01eab2289/cli/src/auth.rs) checks GitHub tokens against `api.github.com`) or `login.microsoftonline.com` (Microsoft tunnel account).
+- Relay: `global.rel.tunnels.api.visualstudio.com`, `<clusterId>.rel.tunnels.api.visualstudio.com`, `<clusterId>-data.rel.tunnels.api.visualstudio.com`, `*.<clusterId>.devtunnels.ms` and `*.devtunnels.ms`. Microsoft lists the current cluster IDs at `https://global.rel.tunnels.api.visualstudio.com/api/v1/clusters`. Wildcards are simplest: `*.rel.tunnels.api.visualstudio.com` and `*.devtunnels.ms`.
+- VS Code server and extensions: `update.code.visualstudio.com` and `vscode.download.prss.microsoft.com` (the image contains only the CLI, which downloads the matching VS Code server when a client first connects), plus `marketplace.visualstudio.com`, `*.gallery.vsassets.io` and `*.gallerycdn.vsassets.io` for extensions installed on the pod.
+
+Your laptop needs the same relay domains and the device-code page for your account (`github.com/login/device` or `login.microsoft.com/device`). Your own workloads need whatever else they use, such as package registries.
+
+If traffic must not pass through a third party, tunnel mode isn't suitable. For VS Code Desktop, the planned alternative is Remote-SSH over AWS Session Manager (C1 in epic [#129](https://github.com/foolswithtools/cloud-dev-pods/issues/129), Wave 4), which keeps traffic inside AWS. The Cloudflare and Tailscale backends planned in the same epic relay through those providers instead.
+
 ## When to use which
 
 | Use case | Pick |
@@ -70,3 +107,4 @@ Microsoft dev tunnels allow 10 registered tunnels per account. Registering an el
 | Heavy extension use (Pylance, Copilot Chat, Jupyter) | Tunnel |
 | Locked-down laptop, can't install VS Code Desktop | Browser |
 | Want to use VS Code Settings Sync seamlessly | Tunnel |
+| Traffic must not transit a third party | Browser (editor traffic stays on your ALB; sign-in still goes to your identity provider), or for VS Code Desktop the planned Remote-SSH over AWS Session Manager in the remote-access alternatives epic [#129](https://github.com/foolswithtools/cloud-dev-pods/issues/129) (Wave 4). Not tunnel: see [Data path, limits and egress](#data-path-limits-and-egress) |
