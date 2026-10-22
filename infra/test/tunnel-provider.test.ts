@@ -136,6 +136,7 @@ describe('registerTaskDef tunnel container environment', () => {
       memory: '2048',
       mode: 'tunnel',
       tunnelProvider,
+      owner: 'alice',
     });
     const defs = sent[0]!.input.containerDefinitions!;
     expect(defs).toHaveLength(1);

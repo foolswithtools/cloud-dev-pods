@@ -36,6 +36,11 @@ on:
         required: false
         default: ""
         type: string
+      owner:
+        description: "Pod owner: GitHub login, or email for entra-id/oidc (defaults to the actor). Enforced when auth.browser.ownerOnly is true."
+        required: false
+        default: ""
+        type: string
       tunnel_provider:
         description: "Tunnel mode: account type for the tunnel login (config = auth.tunnel.provider)."
         required: false
@@ -84,6 +89,8 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           GITHUB_ACTOR: ${{ github.actor }}
+          # Passed via env, not interpolated, so the value can't inject shell.
+          POD_OWNER: ${{ inputs.owner }}
         run: |
           set -euo pipefail
           IMG_FLAG=""
@@ -94,6 +101,11 @@ jobs:
           if [ "${{ inputs.mode }}" = "tunnel" ] && [ "${{ inputs.tunnel_provider }}" != "config" ]; then
             PROVIDER_FLAG="--tunnel-provider ${{ inputs.tunnel_provider }}"
           fi
+          # Empty owner input: pod-cli falls back to GITHUB_ACTOR.
+          OWNER_ARGS=()
+          if [ -n "$POD_OWNER" ]; then
+            OWNER_ARGS=(--owner "$POD_OWNER")
+          fi
           # shellcheck disable=SC2086
           RESULT=$(npx tsx scripts/pod-cli.ts up \
             --pod "${{ inputs.pod_name }}" \
@@ -101,7 +113,7 @@ jobs:
             --cpu "${{ inputs.cpu }}" \
             --memory "${{ inputs.memory }}" \
             --idle "${{ inputs.idle_minutes }}" \
-            $IMG_FLAG $PROVIDER_FLAG)
+            $IMG_FLAG $PROVIDER_FLAG "${OWNER_ARGS[@]}")
           echo "$RESULT"
           OK=$(echo "$RESULT" | jq -r '.ok')
           if [ "$OK" != "true" ]; then
@@ -110,6 +122,7 @@ jobs:
           fi
           URL=$(echo "$RESULT" | jq -r '.url // empty')
           MSG=$(echo "$RESULT" | jq -r '.message // empty')
+          OWNER=$(echo "$RESULT" | jq -r '.owner // empty')
           case "$(echo "$RESULT" | jq -r '.tunnelProvider // empty')" in
             microsoft) ACCOUNT="Microsoft (personal or Entra work/school)" ;;
             *) ACCOUNT="GitHub" ;;
@@ -117,6 +130,7 @@ jobs:
           {
             echo "url=$URL"
             echo "message=$MSG"
+            echo "owner=$OWNER"
             echo "account=$ACCOUNT"
           } >> "$GITHUB_OUTPUT"
 
@@ -146,17 +160,20 @@ jobs:
           fi
 
       - name: Summary
+        env:
+          POD_OWNER: ${{ steps.up.outputs.owner }}
         run: |
           {
             echo "## Pod \`${{ inputs.pod_name }}\` is up"
             echo ""
             echo "- Mode: \`${{ inputs.mode }}\`"
+            echo "- Owner: \`${POD_OWNER:-unknown}\`"
             echo "- CPU: ${{ inputs.cpu }}, Memory: ${{ inputs.memory }} MB"
             echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
             if [ "${{ inputs.mode }}" = "browser" ]; then
               echo "- URL: ${{ steps.up.outputs.url }}"
               echo ""
-              echo "Open the URL and sign in with GitHub (org allowlist enforced by oauth2-proxy)."
+              echo "Open the URL and sign in (allowlist enforced by oauth2-proxy; with \`auth.browser.ownerOnly: true\`, only the owner and \`auth.browser.adminUsers\` get in)."
             else
               if [ -n "${{ steps.tunnel.outputs.url }}" ]; then
                 echo ""

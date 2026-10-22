@@ -23,7 +23,7 @@ gh variable set OAUTH_ALLOWED_ORG --body "<your-github-org>"
 
 ## Per-repo vs per-org
 
-- **Per-repo** (default for solo devs): the OAuth App is owned by your user account, restricts pod access to a single GitHub user (`OAUTH2_PROXY_GITHUB_USER`).
+- **Per-repo** (default for solo devs): the OAuth App is owned by your user account, restricts pod access to a single GitHub user (`OAUTH2_PROXY_GITHUB_USERS`).
 - **Per-org**: the OAuth App is owned by your org, restricts pod access to org members (`OAUTH2_PROXY_GITHUB_ORG`).
 
 Per-org requires org admin to create/install the app. Per-repo is the simpler default.

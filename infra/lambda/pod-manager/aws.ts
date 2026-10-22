@@ -13,6 +13,7 @@ import {
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
+  type Volume,
 } from '@aws-sdk/client-ecs';
 import {
   type AccessPointDescription,
@@ -44,7 +45,7 @@ import {
 } from '@aws-sdk/client-secrets-manager';
 
 import { env } from './env';
-import { buildOauth2ProxyContainer } from './oauth2-proxy';
+import { buildBrowserAuthTaskParts } from './owner-authz';
 import { priorityForPod } from './priority';
 
 const ecs = new ECSClient({ region: env.region });
@@ -259,12 +260,15 @@ export interface TaskDefArgs {
   mode: 'browser' | 'tunnel';
   // Tunnel login account type; the entrypoint defaults to github when unset.
   tunnelProvider?: 'github' | 'microsoft';
+  // Pod owner identity; only read when auth.browser.ownerOnly is true.
+  owner: string;
 }
 
 export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
   const taskRoleArn = args.mode === 'browser' ? env.browserTaskRoleArn : env.tunnelTaskRoleArn;
 
   const containerDefs: ContainerDefinition[] = [];
+  const extraVolumes: Volume[] = [];
   const logConfig = (streamPrefix: string): LogConfiguration => ({
     logDriver: 'awslogs',
     options: {
@@ -287,8 +291,9 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         interval: 30, timeout: 5, retries: 3, startPeriod: 20,
       },
     });
-    containerDefs.push(buildOauth2ProxyContainer(
+    const authParts = buildBrowserAuthTaskParts(
       env.auth.browser,
+      args.owner,
       {
         clientId: await resolveSecretArn('/cloud-dev-pods/oauth/client-id'),
         clientSecret: await resolveSecretArn('/cloud-dev-pods/oauth/client-secret'),
@@ -299,8 +304,11 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         listenerProtocol: env.albListenerProtocol,
         logGroupName: env.podsLogGroupName,
         region: env.region,
+        initImage: args.imageUri,
       },
-    ));
+    );
+    containerDefs.push(...authParts.containers);
+    extraVolumes.push(...authParts.volumes);
   } else {
     containerDefs.push({
       name: 'vscode-tunnel',
@@ -331,7 +339,7 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         transitEncryption: 'ENABLED',
         authorizationConfig: { accessPointId: args.accessPointId, iam: 'ENABLED' },
       },
-    }],
+    }, ...extraVolumes],
     containerDefinitions: containerDefs,
     tags: [
       { key: 'Project', value: 'cloud-dev-pods' },

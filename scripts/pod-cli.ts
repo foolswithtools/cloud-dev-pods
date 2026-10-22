@@ -7,7 +7,7 @@
  * pretty-prints the response.
  *
  * Usage:
- *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>] [--tunnel-provider github|microsoft]
+ *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>] [--owner <login-or-email>] [--tunnel-provider github|microsoft]
  *   tsx scripts/pod-cli.ts down --pod <name> [--keep-workspace]
  *   tsx scripts/pod-cli.ts list
  *   tsx scripts/pod-cli.ts status --pod <name>

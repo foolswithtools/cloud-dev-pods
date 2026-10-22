@@ -16,8 +16,8 @@ export const AuthBrowserSchema = z
     allowedGroups: stringList,
     allowedEmailDomains: stringList,
     allowedTenants: stringList,
-    // Per-pod owner authorization (spec F4). Opt-in; rejected below until it
-    // is enforced.
+    // Per-pod owner authorization (spec F4). Opt-in; enforced by the
+    // pod-manager (infra/lambda/pod-manager/owner-authz.ts).
     ownerOnly: z.boolean().default(false),
     adminUsers: stringList,
   })
@@ -27,16 +27,6 @@ export const AuthBrowserSchema = z
         code: 'custom',
         path: ['provider'],
         message: `auth.browser.provider "${b.provider}" is not supported yet; only "github" is wired at runtime. Other providers land with the pluggable identity epic, ${EPIC_POINTER}.`,
-      });
-    }
-    // The browser auth guard counts ownerOnly as a restriction, but the
-    // oauth2-proxy sidecar ignores it until owner authorization lands, so
-    // accepting it now would launch a pod open to any account.
-    if (b.ownerOnly) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['ownerOnly'],
-        message: `auth.browser.ownerOnly: true is not enforced yet; set it to false (or remove it). Per-pod owner authorization lands with foolswithtools/cloud-dev-pods#133, part of ${EPIC_POINTER}.`,
       });
     }
   });

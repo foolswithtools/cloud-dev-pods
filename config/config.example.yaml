@@ -30,8 +30,8 @@ github:
 #     provider: github          # github | entra-id | oidc
 #     allowedOrg: foolswithtools
 #     allowedUsers: []          # GitHub logins, e.g. [alice, bob]
-#     ownerOnly: false          # per-pod owner authorization (true is rejected until #133)
-#     adminUsers: []
+#     ownerOnly: false          # true: each browser pod admits only its owner + adminUsers
+#     adminUsers: []            # break-glass access to every pod when ownerOnly is true
 #   tunnel:
 #     provider: github          # github | microsoft
 

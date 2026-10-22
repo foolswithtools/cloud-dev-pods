@@ -62,6 +62,14 @@ describe('handler input validation', () => {
     expect(r.status).toBe('invalid-input');
   });
 
+  it('rejects up with an owner containing whitespace or a newline', async () => {
+    const { handler } = await import('../lambda/pod-manager/handler');
+    for (const owner of ['carol\nurl=https://evil.test', 'two words', '', 'a'.repeat(257)]) {
+      const r = await handler({ action: 'up', podName: 'ok', mode: 'browser', owner });
+      expect(r.status, JSON.stringify(owner)).toBe('invalid-input');
+    }
+  });
+
   it('rejects status without a podName', async () => {
     const { handler } = await import('../lambda/pod-manager/handler');
     const r = await handler({ action: 'status' });
@@ -181,5 +189,109 @@ describe('handler browser auth guard (issue #132)', () => {
 
     expect(r.ok).toBe(true);
     expect(aws.createListenerRule).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores the owner in the registry record and returns it', async () => {
+    vi.stubEnv('AUTH_BROWSER_ALLOWED_USERS', '["alice"]');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser', owner: 'alice' });
+
+    expect(r.ok).toBe(true);
+    expect(r.owner).toBe('alice');
+    expect(aws.registryPut).toHaveBeenCalledWith(expect.objectContaining({ podName: 'hello', owner: 'alice' }));
+    expect(aws.runTask).toHaveBeenCalledWith(expect.any(String), 'hello', 'alice');
+  });
+});
+
+describe('handler per-pod owner authorization (issue #133)', () => {
+  function mockAws() {
+    const m = {
+      registryGet: vi.fn(async () => undefined),
+      registryPut: vi.fn(async () => undefined),
+      registryScan: vi.fn(async () => []),
+      registryDelete: vi.fn(),
+      resolveLatestImageTag: vi.fn(async () => 'sha-abc'),
+      findExistingAccessPoint: vi.fn(async () => undefined),
+      allocatePosixUid: vi.fn(async () => 12345),
+      createAccessPoint: vi.fn(async () => 'fsap-NEW'),
+      deleteAccessPoint: vi.fn(),
+      registerTaskDef: vi.fn(async () => 'arn:aws:ecs:us-west-2:123456789012:task-definition/x:1'),
+      createTargetGroup: vi.fn(async () => 'arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/x/1'),
+      createListenerRule: vi.fn(async () => 'arn:aws:elasticloadbalancing:us-west-2:123456789012:listener-rule/x/1'),
+      registerTarget: vi.fn(),
+      runTask: vi.fn(async () => 'arn:aws:ecs:us-west-2:123456789012:task/c/t1'),
+      waitForTaskRunning: vi.fn(async () => ({
+        taskArn: 'arn:aws:ecs:us-west-2:123456789012:task/c/t1',
+        lastStatus: 'RUNNING',
+        desiredStatus: 'RUNNING',
+        privateIp: '10.0.0.5',
+      })),
+      deleteListenerRule: vi.fn(),
+      deregisterAndDeleteTargetGroup: vi.fn(),
+      stopTask: vi.fn(),
+      describeTasks: vi.fn(async () => []),
+    };
+    vi.doMock('../lambda/pod-manager/aws', () => m);
+    return m;
+  }
+
+  afterEach(() => {
+    vi.doUnmock('../lambda/pod-manager/aws');
+    vi.unstubAllEnvs();
+  });
+
+  it('refuses browser up with ownerOnly and no owner, and creates no AWS resources', async () => {
+    vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser' });
+
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe('error');
+    expect(r.message).toMatch(/owner/);
+    for (const fn of [
+      'allocatePosixUid',
+      'createAccessPoint',
+      'registerTaskDef',
+      'createTargetGroup',
+      'createListenerRule',
+      'runTask',
+      'registryPut',
+    ] as const) {
+      expect(aws[fn], fn).not.toHaveBeenCalled();
+    }
+  });
+
+  it('refuses browser up with ownerOnly when the owner is not a valid identity for the provider', async () => {
+    vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    // github provider: an email is not a GitHub login.
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser', owner: 'carol@example.com' });
+
+    expect(r.status).toBe('error');
+    expect(aws.createAccessPoint).not.toHaveBeenCalled();
+  });
+
+  it('launches browser up with ownerOnly and passes the owner to registerTaskDef', async () => {
+    vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'browser', owner: 'carol' });
+
+    expect(r.ok).toBe(true);
+    expect(aws.registerTaskDef).toHaveBeenCalledWith(expect.objectContaining({ owner: 'carol', mode: 'browser' }));
+    expect(aws.registryPut).toHaveBeenCalledWith(expect.objectContaining({ owner: 'carol' }));
+  });
+
+  it('never applies the owner check to tunnel up', async () => {
+    vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
+    const aws = mockAws();
+    const { handler } = await import('../lambda/pod-manager/handler');
+    const r = await handler({ action: 'up', podName: 'hello', mode: 'tunnel' });
+
+    expect(r.ok).toBe(true);
+    expect(aws.runTask).toHaveBeenCalledTimes(1);
   });
 });
