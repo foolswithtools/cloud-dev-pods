@@ -48,9 +48,21 @@ export const AuthBrowserSchema = z
 
 // Rules for provider entra-id (spec A2, docs/setup-entra.md).
 function refineEntraId(
-  b: { issuerUrl?: string; allowedTenants: string[]; allowedGroups: string[] },
+  b: { issuerUrl?: string; allowedOrg?: string; allowedUsers: string[]; allowedTenants: string[]; allowedGroups: string[] },
   ctx: z.RefinementCtx,
 ): void {
+  // GitHub allowlists do nothing for entra-id; refuse them rather than let
+  // a config look stricter than the sidecar enforces.
+  for (const key of ['allowedOrg', 'allowedUsers'] as const) {
+    const v = b[key];
+    if (Array.isArray(v) ? v.length > 0 : Boolean(v?.trim())) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `auth.browser.${key} only applies to provider "github"; with "entra-id" use allowedTenants, allowedGroups, allowedEmailDomains, or ownerOnly.`,
+      });
+    }
+  }
   const issuer = parseEntraIssuer(b.issuerUrl);
   if (!issuer) {
     ctx.addIssue({

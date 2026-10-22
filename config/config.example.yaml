@@ -35,7 +35,7 @@ github:
 #     adminUsers: []            # break-glass access to every pod when ownerOnly is true
 #     # entra-id only (requires domain.strategy: byo):
 #     # issuerUrl: https://login.microsoftonline.com/<tenant-id>/v2.0
-#     # allowedTenants: []      # tenant IDs; required with a /common/ or /organizations/ issuer
+#     # allowedTenants: []      # tenant IDs; required with /common/, /organizations/, /consumers/
 #     # allowedGroups: []       # group object IDs
 #     # allowedEmailDomains: [] # e.g. [example.com]
 #     # entraGroupOverage: false # true: request User.Read for users in > 200 groups

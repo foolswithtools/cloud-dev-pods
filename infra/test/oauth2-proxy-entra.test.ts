@@ -84,6 +84,21 @@ describe('buildOauth2ProxyContainer (entra-id provider)', () => {
     });
   }
 
+  // Entra issues lowercase IDs and oauth2-proxy compares exactly; its issuer
+  // check is exact too, and Entra's published issuer has no trailing slash.
+  it('normalizes the issuer and IDs to the form Entra issues', () => {
+    const env = envOf(
+      entra({
+        issuerUrl: `https://login.microsoftonline.com/${TENANT.toUpperCase()}/v2.0/`,
+        allowedTenants: [TENANT.toUpperCase()],
+        allowedGroups: [` ${G1.toUpperCase()} `],
+      }),
+    );
+    expect(env.OAUTH2_PROXY_OIDC_ISSUER_URL).toBe(ISSUER);
+    expect(env.OAUTH2_PROXY_ENTRA_ID_ALLOWED_TENANTS).toBe(TENANT);
+    expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe(G1);
+  });
+
   it('omits empty allowlists instead of emitting empty values', () => {
     const env = envOf(entra({ allowedTenants: [], allowedGroups: [G1] }));
     expect(env).not.toHaveProperty('OAUTH2_PROXY_ENTRA_ID_ALLOWED_TENANTS');
@@ -232,6 +247,17 @@ describe('entra-id config validation', () => {
     ).toThrow(/byo/);
   });
 
+  // The builder ignores GitHub allowlists for entra-id; refuse them so a
+  // switched config cannot look stricter than it is.
+  it('refuses the GitHub-only allowedOrg / allowedUsers keys', () => {
+    expect(() =>
+      resolveConfig(entraConfig({ issuerUrl: ISSUER, allowedTenants: [TENANT], allowedUsers: ['alice'] })),
+    ).toThrow(/allowedUsers/);
+    expect(() =>
+      resolveConfig(entraConfig({ issuerUrl: ISSUER, allowedTenants: [TENANT], allowedOrg: 'acme' })),
+    ).toThrow(/allowedOrg/);
+  });
+
   it('entraGroupOverage is refused for other providers', () => {
     expect(() =>
       resolveConfig({
@@ -267,11 +293,22 @@ describe('the #132 guard with provider entra-id', () => {
     expect(r.ok ? '' : r.message).toMatch(/personal Microsoft account/);
   });
 
-  it('accepts a real tenant alongside the personal account tenant', () => {
+  // oauth2-proxy admits a token from any listed tenant, so listing the
+  // personal account tenant anywhere opens the pod, like "*" in email domains.
+  it('does not count allowedTenants that include the personal account tenant', () => {
     expect(
       assertBrowserAuthRestricted(
-        restrictions({ allowedTenants: ['9188040d-6c67-4c5b-b112-36a304b66dad', TENANT] }),
+        restrictions({ allowedTenants: [TENANT, '9188040D-6C67-4C5B-B112-36A304B66DAD'] }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      assertBrowserAuthRestricted(
+        restrictions({ allowedTenants: [TENANT, '9188040d-6c67-4c5b-b112-36a304b66dad'], allowedGroups: [G1] }),
       ).ok,
     ).toBe(true);
+  });
+
+  it('accepts a real tenant on its own', () => {
+    expect(assertBrowserAuthRestricted(restrictions({ allowedTenants: [TENANT] })).ok).toBe(true);
   });
 });

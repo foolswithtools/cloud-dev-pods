@@ -80,11 +80,11 @@ auth:
 | `entraGroupOverage` | Adds `User.Read` to the scope `openid email profile`. | `OAUTH2_PROXY_SCOPE` |
 | `ownerOnly`, `adminUsers` | Per-pod owner authorization by email; see [operating](operating.md#per-pod-owner-authorization). | `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` |
 
-The restrictions combine: a user must pass every one that is set (tenant **and** group **and** email domain, and with `ownerOnly`, be the owner or an admin). A browser `pod-up` is refused unless at least one of `allowedTenants`, `allowedGroups`, `allowedEmailDomains`, or `ownerOnly: true` is set. The personal Microsoft account tenant (`9188040d-6c67-4c5b-b112-36a304b66dad`) does not count as a restriction, because anyone can create a personal account.
+The restrictions combine: a user must pass every one that is set (tenant **and** group **and** email domain, and with `ownerOnly`, be the owner or an admin). A browser `pod-up` is refused unless at least one of `allowedTenants`, `allowedGroups`, `allowedEmailDomains`, or `ownerOnly: true` is set. If `allowedTenants` includes the personal Microsoft account tenant (`9188040d-6c67-4c5b-b112-36a304b66dad`), it does not count as a restriction, because anyone can create a personal account; add `allowedGroups`, `allowedEmailDomains`, or `ownerOnly` as well.
 
 `allowedEmailDomains` and `ownerOnly` match the token's `email` claim, which Entra only fills in for users with a mailbox (the `mail` attribute). Users without one cannot sign in at all; see [troubleshooting](troubleshooting.md#entra-id-sign-in-fails-with-neither-the-id_token-nor-the-profileurl-set-an-email).
 
-`github.oauthAllowedOrg` / `github.oauthAllowedUsers` are ignored once `auth.browser` is set; remove them.
+`auth.browser.allowedOrg` and `auth.browser.allowedUsers` are GitHub-only and fail validation with `entra-id`. The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys are ignored once `auth.browser` is set; remove them.
 
 Commit and push the config.
 
@@ -132,6 +132,8 @@ If users from more than one Entra tenant need access, register the app with **Ac
 | Any organizational directory | `organizations` |
 | Any organizational directory and personal Microsoft accounts | `common` |
 | Personal Microsoft accounts only | `consumers` |
+
+**Owner-only across tenants.** `ownerOnly` matches the `email` claim, and in Entra the administrators of each tenant control their users' mail addresses. With several tenants in `allowedTenants`, an administrator of any of them could give an account another tenant's owner address and open that owner's pod. Only list tenants whose administrators you trust, or combine `ownerOnly` with `allowedGroups`.
 
 With `common`, `organizations`, or `consumers`, `auth.browser.allowedTenants` is required: without it, any Microsoft tenant's users could sign in. For these issuers the sidecar sets `OAUTH2_PROXY_INSECURE_OIDC_SKIP_ISSUER_VERIFICATION=true`, because their discovery documents report a tenant-specific issuer; the `entra-id` provider still checks that each token comes from a `login.microsoftonline.com/<tenant>/v2.0` issuer and from an allowed tenant.
 

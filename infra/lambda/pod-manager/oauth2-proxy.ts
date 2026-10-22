@@ -4,7 +4,7 @@
 // the only caller; it layers per-pod owner authorization on top.
 
 import type { ContainerDefinition } from '@aws-sdk/client-ecs';
-import { ENTRA_ISSUER_HINT, parseEntraIssuer } from './entra-id';
+import { ENTRA_ISSUER_HINT, entraIssuerUrl, parseEntraIssuer } from './entra-id';
 
 // Pinned by the multi-arch image index digest of OAUTH2_PROXY_VERSION. ECS
 // documents only `repo:tag` or `repo@digest` for `image`, so the reference is
@@ -50,13 +50,14 @@ function providerEnvironment(auth: Oauth2ProxyAuthConfig): EnvVar[] {
     // never produce a sidecar that skips issuer checks with no tenant list.
     const issuer = parseEntraIssuer(auth.issuerUrl);
     if (!issuer) throw new Error(`oauth2-proxy entra-id: ${ENTRA_ISSUER_HINT}; got "${auth.issuerUrl ?? ''}".`);
-    const tenants = list(auth.allowedTenants);
+    // Entra issues lowercase object IDs and oauth2-proxy matches exactly.
+    const tenants = list(auth.allowedTenants).toLowerCase();
     if (issuer.multiTenant && !tenants) {
       throw new Error(`oauth2-proxy entra-id: issuer "${issuer.tenant}" spans many tenants; set auth.browser.allowedTenants.`);
     }
-    const groups = list(auth.allowedGroups);
+    const groups = list(auth.allowedGroups).toLowerCase();
     return [
-      { name: 'OAUTH2_PROXY_OIDC_ISSUER_URL', value: auth.issuerUrl!.trim() },
+      { name: 'OAUTH2_PROXY_OIDC_ISSUER_URL', value: entraIssuerUrl(issuer) },
       ...(issuer.multiTenant ? [{ name: 'OAUTH2_PROXY_INSECURE_OIDC_SKIP_ISSUER_VERIFICATION', value: 'true' }] : []),
       ...(tenants ? [{ name: 'OAUTH2_PROXY_ENTRA_ID_ALLOWED_TENANTS', value: tenants }] : []),
       ...(groups ? [{ name: 'OAUTH2_PROXY_ALLOWED_GROUPS', value: groups }] : []),

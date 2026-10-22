@@ -35,10 +35,11 @@ function isSet(auth: BrowserAuthRestrictions, key: RestrictionKey): boolean {
   // oauth2-proxy admits every address when "*" is among the email domains,
   // so a wildcard anywhere in the list cancels the restriction.
   if (key === 'allowedEmailDomains' && values.includes('*')) return false;
-  // Anyone can create a personal Microsoft account, so that tenant alone
-  // admits the public.
-  if (key === 'allowedTenants') {
-    return values.some((v) => v.toLowerCase() !== ENTRA_PERSONAL_ACCOUNTS_TENANT);
+  // Anyone can create a personal Microsoft account, and oauth2-proxy admits
+  // a token from any listed tenant, so that tenant anywhere in the list
+  // cancels the restriction.
+  if (key === 'allowedTenants' && values.some((v) => v.toLowerCase() === ENTRA_PERSONAL_ACCOUNTS_TENANT)) {
+    return false;
   }
   return values.length > 0;
 }
@@ -54,7 +55,7 @@ export function assertBrowserAuthRestricted(auth: BrowserAuthRestrictions): Brow
     ? ' allowedEmailDomains: ["*"] does not count as a restriction.'
     : '';
   const personalNote = keys.includes('allowedTenants')
-    ? ` The personal Microsoft account tenant (${ENTRA_PERSONAL_ACCOUNTS_TENANT}) does not count as a restriction either.`
+    ? ` The personal Microsoft account tenant (${ENTRA_PERSONAL_ACCOUNTS_TENANT}) anywhere in allowedTenants cancels that restriction too.`
     : '';
   return {
     ok: false,
