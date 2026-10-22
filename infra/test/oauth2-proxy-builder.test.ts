@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OAUTH2_PROXY_IMAGE,
+  OAUTH2_PROXY_VERSION,
   buildOauth2ProxyContainer,
   type Oauth2ProxyAuthConfig,
   type Oauth2ProxyOptions,
@@ -53,8 +54,8 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
   it('image is v7.8.0 or later and pinned by digest', () => {
     const c = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: [] }, secretArns, opts);
     expect(c.image).toBe(OAUTH2_PROXY_IMAGE);
-    expect(c.image).toMatch(/^quay\.io\/oauth2-proxy\/oauth2-proxy:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/);
-    const [, major, minor] = /:v(\d+)\.(\d+)\./.exec(c.image!)!.map(Number);
+    expect(c.image).toMatch(/^quay\.io\/oauth2-proxy\/oauth2-proxy@sha256:[0-9a-f]{64}$/);
+    const [, major, minor] = /^v(\d+)\.(\d+)\.\d+$/.exec(OAUTH2_PROXY_VERSION)!.map(Number);
     expect(major).toBe(7);
     expect(minor).toBeGreaterThanOrEqual(8);
   });

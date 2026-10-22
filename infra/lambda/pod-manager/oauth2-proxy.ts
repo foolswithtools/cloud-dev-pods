@@ -4,10 +4,12 @@
 
 import type { ContainerDefinition } from '@aws-sdk/client-ecs';
 
-// v7.15.5, pinned to the multi-arch image index digest. Bump the tag and the
-// digest together; the tag is informational, ECS pulls by digest.
+// Pinned by the multi-arch image index digest of OAUTH2_PROXY_VERSION. ECS
+// documents only `repo:tag` or `repo@digest` for `image`, so the reference is
+// digest-only; bump the version and the digest together.
+export const OAUTH2_PROXY_VERSION = 'v7.15.5';
 export const OAUTH2_PROXY_IMAGE =
-  'quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916';
+  'quay.io/oauth2-proxy/oauth2-proxy@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916';
 
 export interface Oauth2ProxyAuthConfig {
   provider: 'github' | 'entra-id' | 'oidc';
