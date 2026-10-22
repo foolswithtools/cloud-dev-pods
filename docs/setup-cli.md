@@ -116,7 +116,9 @@ gh secret list
 
 ## Browser-mode only: register the OAuth App
 
-Browser pods authenticate via GitHub OAuth. GitHub doesn't let workflows create OAuth Apps via API, so this is manual:
+Browser pods authenticate via GitHub OAuth by default. Using Microsoft Entra ID instead? Follow [Entra ID setup](setup-entra.md) in place of this section and the GitHub-specific parts of "Update oauth secrets".
+
+GitHub doesn't let workflows create OAuth Apps via API, so this is manual:
 
 1. Open <https://github.com/settings/applications/new>.
 2. Fill in:
