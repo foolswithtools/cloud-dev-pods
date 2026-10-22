@@ -29,8 +29,30 @@ Pros:
 
 Cons:
 
-- Authentication is via the GitHub device-code flow on **every `pod-up`**, including a `pod-down` / `pod-up` of the same pod name. The CLI's login can't be carried to a new task without storing a plaintext token on EFS, so it isn't persisted (see #68; persisting it via Secrets Manager is tracked in #120).
+- Authentication is via a GitHub or Microsoft device-code flow on **every `pod-up`**, including a `pod-down` / `pod-up` of the same pod name. The CLI's login can't be carried to a new task without storing a plaintext token on EFS, so it isn't persisted (see #68; persisting it via Secrets Manager is tracked in #120).
 - Can't share a tunnel with multiple users.
+
+### Tunnel account: GitHub or Microsoft
+
+Microsoft dev tunnels accept a GitHub account or a Microsoft account, including an Entra ID work or school account. The pod and your local VS Code Desktop must sign in with the **same** account.
+
+GitHub is the default. To use a Microsoft account for every tunnel pod, set it in `config/config.yaml` and re-run `cluster-up`:
+
+```yaml
+auth:
+  tunnel:
+    provider: microsoft   # github (default) | microsoft
+```
+
+To pick the account for one pod, pass the `tunnel_provider` input to `pod-up`. The default, `config`, uses `auth.tunnel.provider`:
+
+```bash
+gh workflow run pod-up.yml -f pod_name=dev -f mode=tunnel -f tunnel_provider=microsoft
+```
+
+On start the pod runs `code tunnel user login --provider <github|microsoft>`, then `code tunnel`. The workflow summary shows the device-code URL and code. For Microsoft that is `https://login.microsoft.com/device` and for GitHub `https://github.com/login/device`. Open it on your laptop, enter the code and sign in. Then in VS Code Desktop, sign in to Remote Tunnels with the same account and run `Remote Tunnels: Connect to Tunnel`.
+
+**Entra Conditional Access caveat.** The pod signs in with the OAuth device code flow. Microsoft recommends that organizations [block device code flow with Conditional Access](https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-authentication-flows), and many tenants do. Under such a policy the sign-in page refuses the code, the login never completes, and the pod stops when the code expires (about 15 minutes). Ask your Entra administrator for an exception that covers your users, or use `provider: github`. A personal Microsoft account is not subject to your tenant's policies.
 
 ## When to use which
 

@@ -11,6 +11,7 @@
  *   1 — invocation error (bad args, AWS API failure).
  */
 
+import { fileURLToPath } from 'node:url';
 import {
   CloudWatchLogsClient,
   FilterLogEventsCommand,
@@ -40,18 +41,23 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
-interface DeviceCode {
+export interface DeviceCode {
   url: string;
   code: string;
 }
 
-// VS Code CLI prints the prompt as one of:
-//   "To grant access to the server, please log into https://github.com/login/device and use code XXXX-XXXX"
-//   "Please open https://microsoft.com/devicelogin and enter the code XXXXXXXX"
-const URL_RE = /(https:\/\/(?:github\.com\/login\/device|microsoft\.com\/devicelogin)\b)/;
+// VS Code CLI 1.143.0 prints the prompt (`code tunnel user login --provider <p>`) as:
+//   github:    "To grant access to the server, please log into https://github.com/login/device and use code CC3A-5101"
+//   microsoft: "To sign in, use a web browser to open the page https://login.microsoft.com/device and enter the code FHLARZB9J to authenticate."
+// Older CLI builds pointed Microsoft logins at https://microsoft.com/devicelogin; still matched.
+const URL_RE = /(https:\/\/(?:github\.com\/login\/device|login\.microsoft\.com\/device|microsoft\.com\/devicelogin)\b)/;
 const CODE_RE = /\bcode\s+([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})?)/;
 
-function extractDeviceCode(message: string): DeviceCode | undefined {
+// CloudWatch Logs filter: each `?"term"` is a substring alternative.
+export const FILTER_PATTERN =
+  '?"github.com/login/device" ?"login.microsoft.com/device" ?"microsoft.com/devicelogin"';
+
+export function extractDeviceCode(message: string): DeviceCode | undefined {
   const url = URL_RE.exec(message)?.[1];
   const code = CODE_RE.exec(message)?.[1];
   if (url && code) return { url, code };
@@ -71,7 +77,7 @@ async function main(): Promise<void> {
       const r = await client.send(new FilterLogEventsCommand({
         logGroupName: args.logGroup,
         logStreamNamePrefix: args.streamPrefix,
-        filterPattern: '?"github.com/login/device" ?"microsoft.com/devicelogin"',
+        filterPattern: FILTER_PATTERN,
         startTime,
       }));
       for (const event of r.events ?? []) {
@@ -95,7 +101,18 @@ async function main(): Promise<void> {
   process.stdout.write('{}\n');
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`tunnel-poll-logs: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Only run main() when invoked as a CLI (not when imported by tests).
+function isInvokedAsCli(): boolean {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsCli()) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`tunnel-poll-logs: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}

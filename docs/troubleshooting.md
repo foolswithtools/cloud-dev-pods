@@ -181,11 +181,19 @@ Then re-run `cluster-up.yml`.
 
 **Causes (in order of likelihood):**
 
-1. Wrong GitHub account on local VS Code. The `code tunnel` agent authenticated with the GitHub identity used during `pod-up`'s device-code flow. Local VS Code Desktop must use the same.
+1. Wrong account on local VS Code. The `code tunnel` agent authenticated with the GitHub or Microsoft identity used during `pod-up`'s device-code flow (`auth.tunnel.provider` or the `tunnel_provider` input). Local VS Code Desktop must use the same account of the same type.
 2. Device-code prompt timed out (default ~15 min) without you authenticating. Re-run `pod-up`.
 3. ECS task crashed before `code tunnel` registered. Check `aws logs tail /cloud-dev-pods/dev/pods --filter-pattern <pod-name>`.
 
 **Fix:** in VS Code Desktop, sign out of Remote Tunnels (`Cmd-Shift-P` → "Remote Tunnels: Sign out") and sign in with the same account you used in the device-code flow.
+
+## Microsoft tunnel login is refused by Conditional Access
+
+**Signature:** a tunnel pod started with `auth.tunnel.provider: microsoft` (or `tunnel_provider=microsoft`) shows a `https://login.microsoft.com/device` code, but signing in with an Entra work or school account fails with a Conditional Access block (for example `AADSTS53003`), and the pod stops about 15 minutes later.
+
+**Cause:** your tenant blocks the OAuth device code flow with a Conditional Access policy. The pod has no browser, so device code is the only way the tunnel CLI can sign in.
+
+**Fix:** ask your Entra administrator to exclude the users (or a group) who run tunnel pods from the policy, or use `provider: github` for tunnel pods. See [delivery modes](delivery-modes.md#tunnel-account-github-or-microsoft).
 
 ## Tunnel pod asks for a new device code after a restart
 
@@ -193,7 +201,7 @@ Then re-run `cluster-up.yml`.
 
 **Why it isn't persisted:** the CLI encrypts its saved token with a key tied to the machine, so a new task can't read a token written by the old one. The only setting that makes it survive (`VSCODE_CLI_DISABLE_KEYCHAIN_ENCRYPT`) leaves a plaintext tunnel token on the EFS workspace. See #68 for the smoke results and #120 for the Secrets Manager follow-up.
 
-**Fix:** enter the new code from the `pod-up` summary. Your GitHub account can hold at most 10 tunnels. If repeated restarts leave stale entries, remove them in VS Code Desktop's Remote Explorer → Tunnels (right-click → Unregister).
+**Fix:** enter the new code from the `pod-up` summary. Your GitHub or Microsoft account can hold at most 10 tunnels. If repeated restarts leave stale entries, remove them in VS Code Desktop's Remote Explorer → Tunnels (right-click → Unregister).
 
 ## EFS mount target not in same AZ as task
 

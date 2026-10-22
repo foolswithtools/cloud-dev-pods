@@ -16,6 +16,8 @@ const PodEventSchema = z.discriminatedUnion('action', [
     // Becomes an ECS tag value and a workflow output, so only the characters
     // ECS tags allow, and no whitespace (a newline could forge outputs).
     owner: z.string().regex(/^[\p{L}\p{N}+\-=._:/@]{1,256}$/u).optional(),
+    // Per-pod override of auth.tunnel.provider; ignored for browser pods.
+    tunnelProvider: z.enum(['github', 'microsoft']).optional(),
   }),
   z.object({
     action: z.literal('down'),
@@ -37,6 +39,7 @@ export interface PodResult {
   message?: string;
   url?: string;
   tunnelName?: string;
+  tunnelProvider?: 'github' | 'microsoft';
   podName?: string;
   owner?: string;
   pods?: Array<Record<string, unknown>>;

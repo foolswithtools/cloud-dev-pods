@@ -258,6 +258,8 @@ export interface TaskDefArgs {
   cpu: string;
   memory: string;
   mode: 'browser' | 'tunnel';
+  // Tunnel login account type; the entrypoint defaults to github when unset.
+  tunnelProvider?: 'github' | 'microsoft';
   // Pod owner identity; only read when auth.browser.ownerOnly is true.
   owner: string;
 }
@@ -314,7 +316,10 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
       essential: true,
       mountPoints: [{ sourceVolume: 'workspace', containerPath: '/workspace', readOnly: false }],
       logConfiguration: logConfig(`tunnel/${args.podName}/vscode-tunnel`),
-      environment: [{ name: 'POD_NAME', value: args.podName }],
+      environment: [
+        { name: 'POD_NAME', value: args.podName },
+        { name: 'TUNNEL_PROVIDER', value: args.tunnelProvider ?? 'github' },
+      ],
     });
   }
 

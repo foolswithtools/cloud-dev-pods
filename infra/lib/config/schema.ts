@@ -31,19 +31,10 @@ export const AuthBrowserSchema = z
     }
   });
 
-export const AuthTunnelSchema = z
-  .object({
-    provider: z.enum(['github', 'microsoft']).default('github'),
-  })
-  .superRefine((t, ctx) => {
-    if (t.provider !== 'github') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['provider'],
-        message: `auth.tunnel.provider "${t.provider}" is not supported yet; only "github" is wired at runtime. Microsoft tunnel login lands with the pluggable identity epic, ${EPIC_POINTER}.`,
-      });
-    }
-  });
+// Account type the tunnel CLI logs in with (`code tunnel user login --provider`).
+export const AuthTunnelSchema = z.object({
+  provider: z.enum(['github', 'microsoft']).default('github'),
+});
 
 export type AuthBrowser = z.infer<typeof AuthBrowserSchema>;
 export type AuthTunnel = z.infer<typeof AuthTunnelSchema>;
