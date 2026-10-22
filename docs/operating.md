@@ -42,13 +42,13 @@ How it is enforced, per provider:
 | Provider | Sidecar settings with `ownerOnly: true` | What happens to the global allowlist |
 | --- | --- | --- |
 | `github` | `OAUTH2_PROXY_GITHUB_USERS=<owner>,<adminUsers>`; `allowedOrg` becomes `OAUTH2_PROXY_ALLOWED_GROUPS` | `allowedUsers` is replaced by owner + admins; at `pod-up` the owner must be in `allowedUsers` or `adminUsers` when `allowedUsers` is set. `allowedOrg` still applies to everyone, admins included. |
-| `entra-id`, `oidc` | An init container writes owner + admin emails to a task-scoped volume; the sidecar reads it via `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` and drops `OAUTH2_PROXY_EMAIL_DOMAINS` | `allowedEmailDomains` is no longer sent to the sidecar; at `pod-up` the owner's domain must be in it when it is set. |
+| `entra-id`, `oidc` | The init container also writes owner + admin emails to the task-scoped volume; the sidecar reads it via `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` and drops `OAUTH2_PROXY_EMAIL_DOMAINS` | `allowedEmailDomains` is no longer sent to the sidecar; at `pod-up` the owner's domain must be in it when it is set. |
 
 `allowedOrg` is passed as an allowed group, not `OAUTH2_PROXY_GITHUB_ORG`: oauth2-proxy lets anyone in the org through `GITHUB_ORG` even when `GITHUB_USERS` is set, which would defeat owner-only. Likewise, `EMAIL_DOMAINS` would admit every address alongside the emails file.
 
 GitHub logins are matched case-sensitively, so pass the owner exactly as GitHub spells it (`GITHUB_ACTOR` always does). `pod-up` refuses an owner-only browser pod when the owner is missing or isn't a valid identity for the provider; see [troubleshooting](troubleshooting.md).
 
-**Known limitation (`github`):** oauth2-proxy checks `GITHUB_USERS` only at sign-in. All pods share one cookie secret, so a signed-in user who copies their session cookie from their own pod to another pod's hostname gets past the owner check there. `allowedOrg` is still enforced. For `entra-id` and `oidc`, oauth2-proxy re-checks the emails file on every request for sessions that carry an email, so a replayed cookie from another pod is rejected. Treat `github` owner-only as protection against accidental access between allowlisted colleagues, not against a deliberate insider. Per-pod cookie secrets are tracked in [#156](https://github.com/foolswithtools/cloud-dev-pods/issues/156).
+With every provider, owner-only pods also get their own cookie secret. An init container writes a random secret to the task-scoped volume when the task starts, and the sidecar reads it via `OAUTH2_PROXY_COOKIE_SECRET_FILE` instead of the shared `/cloud-dev-pods/oauth/cookie-secret`. A session cookie copied from one pod is not valid on another, so it can't skip the sign-in owner check (oauth2-proxy checks `GITHUB_USERS` only at sign-in). The secret lives only as long as the task: when a pod's task is replaced (pod recreated, Spot interruption), its users sign in again.
 
 ## Costs
 
