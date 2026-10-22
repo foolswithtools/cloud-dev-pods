@@ -21,8 +21,10 @@ github:
 
 # Provider-neutral identity config (ADR 0008). Replaces github.oauthAllowed*.
 # When auth.browser is set, the github.oauthAllowed* keys are ignored.
-# Only provider "github" is supported today; other values fail validation
-# until the pluggable identity epic (#129) wires them.
+# Browser: only provider "github" is supported today; other values fail
+# validation until the pluggable identity epic (#129) wires them.
+# Tunnel: github and microsoft (incl. Entra work/school) are both supported;
+# pod-up's tunnel_provider input overrides it per pod.
 # auth:
 #   browser:
 #     provider: github          # github | entra-id | oidc
