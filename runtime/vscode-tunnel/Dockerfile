@@ -3,6 +3,13 @@
 
 FROM ubuntu:26.04
 
+# The VS Code CLI is pinned to one build: scripts/tunnel-poll-logs.ts matches
+# the exact device-code prompt this CLI prints. To move the pin, follow
+# "Bumping the tunnel VS Code CLI pin" in docs/maintainer-runbook.md.
+ARG VSCODE_CLI_VERSION=1.143.0
+ARG VSCODE_CLI_COMMIT=2d0b7506a36c1d6db9a466440131a8e01eab2289
+ARG VSCODE_CLI_SHA256=efd89d72d5ef9a24bd0dcc2353df902a92650e8665f856527fc538c18eab23e9
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
@@ -17,10 +24,13 @@ RUN useradd -ms /bin/bash vscode \
  && echo 'vscode ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
  && chmod 0440 /etc/sudoers.d/vscode \
  && mkdir -p /opt/vscode-cli \
- && curl -fSL 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' \
+ && curl -fSL "https://update.code.visualstudio.com/commit:${VSCODE_CLI_COMMIT}/cli-alpine-x64/stable" \
       -o /tmp/vscode_cli.tar.gz \
+ && echo "${VSCODE_CLI_SHA256}  /tmp/vscode_cli.tar.gz" | sha256sum -c - \
  && tar -xf /tmp/vscode_cli.tar.gz -C /opt/vscode-cli \
  && rm /tmp/vscode_cli.tar.gz \
+ && /opt/vscode-cli/code --version \
+ && /opt/vscode-cli/code --version | grep -Fqx "code ${VSCODE_CLI_VERSION} (commit ${VSCODE_CLI_COMMIT})" \
  && chown -R vscode:vscode /opt/vscode-cli
 
 ENV PATH=/opt/vscode-cli:$PATH

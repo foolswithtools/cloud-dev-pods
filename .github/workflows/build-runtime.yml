@@ -85,6 +85,17 @@ jobs:
             "runtime/${IMAGE}"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
+      - name: Record VS Code CLI version
+        # The tunnel image pins the CLI (runtime/vscode-tunnel/Dockerfile).
+        # Print it from the built image so the log shows it even when the
+        # download layer came from cache and its RUN output was skipped.
+        if: matrix.image == 'vscode-tunnel'
+        run: |
+          set -euo pipefail
+          CLI_VERSION="$(docker run --rm --entrypoint code "$IMAGE_URI" --version)"
+          echo "$CLI_VERSION"
+          echo "CLI_VERSION=$CLI_VERSION" >> "$GITHUB_ENV"
+
       - name: Trivy image scan (OS packages only)
         # See ci-runtime.yml for rationale: language-level deps bundled in the
         # upstream image are out of our control and surfaced informationally
@@ -112,4 +123,7 @@ jobs:
             echo "- Image: \`${IMAGE_URI}\`"
             echo "- Tag (immutable): \`${GITHUB_SHA}\`"
             echo "- Trivy: clean (CRITICAL/HIGH, fixed-only)"
+            if [ -n "${CLI_VERSION:-}" ]; then
+              echo "- VS Code CLI: \`${CLI_VERSION}\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -30,8 +30,8 @@ describe('tunnel image VS Code CLI pin', () => {
 
   it('verifies the archive against a pinned SHA-256', () => {
     expect(arg('VSCODE_CLI_SHA256')).toMatch(/^[0-9a-f]{64}$/);
-    expect(DOCKERFILE).toMatch(
-      /echo "\$\{VSCODE_CLI_SHA256\}  \/tmp\/vscode_cli\.tar\.gz" \| sha256sum -c -/,
+    expect(DOCKERFILE).toContain(
+      'echo "${VSCODE_CLI_SHA256}  /tmp/vscode_cli.tar.gz" | sha256sum -c -',
     );
   });
 
