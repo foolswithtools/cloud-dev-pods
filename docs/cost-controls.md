@@ -13,6 +13,8 @@ Cloud-dev-pods provisions real AWS resources in your account. Most of the bill i
 | Other (CloudWatch Logs, Route53 zone, SSM Parameter Store, DynamoDB on-demand registry) | All effectively free at this scale | ~$0 |
 | **Idle total** | | **~$50/mo** |
 
+Tunnel relay: free, capped. Tunnel pods' editor traffic goes through Microsoft's dev tunnels relay, which isn't an AWS charge and has no price. It is capped instead, at 5 GB of bandwidth per account per month among other limits, with no paid tier and no SLA; see [Data path, limits and egress](delivery-modes.md#data-path-limits-and-egress). The pod's own downloads (`git clone`, `npm install`, image pulls) go through the NAT gateway and pay its per-GB processing charge, not the relay cap.
+
 `cluster-down` removes everything except the bootstrap stack (OIDC + IAM + ECR + the three Secrets Manager secrets). Post-teardown ongoing spend drops to ~$0.40/month (the three secrets) plus any data sitting in EFS, which is also gone since EFS is part of `cluster-down`.
 
 ## Per-pod runtime cost
