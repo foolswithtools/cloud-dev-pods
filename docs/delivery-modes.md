@@ -54,6 +54,14 @@ On start the pod runs `code tunnel user login --provider <github|microsoft>`, th
 
 **Entra Conditional Access caveat.** The pod signs in with the OAuth device code flow. Microsoft recommends that organizations [block device code flow with Conditional Access](https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-authentication-flows), and many tenants do. Under such a policy the sign-in page refuses the code, the login never completes, and the pod stops when the code expires (about 15 minutes). Ask your Entra administrator for an exception that covers your users, or use `provider: github`. A personal Microsoft account is not subject to your tenant's policies.
 
+### Tunnel slots: the 10-tunnel cap
+
+Microsoft dev tunnels allow 10 registered tunnels per account. Registering an eleventh makes the VS Code CLI delete a random unused tunnel, which can be another of your pods' tunnels.
+
+`pod-down` frees the slot. ECS sends the tunnel container `SIGTERM`, and the entrypoint stops `code tunnel` and runs `code tunnel unregister` (bounded to 20 seconds, inside the container's 30-second stop timeout), so the tunnel leaves your Remote Tunnels list straight away instead of at the 30-day inactivity expiry. A task that dies without `SIGTERM`, such as a crash or an out-of-memory kill, still leaves its tunnel registered until that expiry.
+
+`pod-up` counts the registry's running tunnel pods with the same owner. At 10 or more it still launches the pod, but adds a cap warning to the result and the workflow summary. The count covers only this cluster's pods: tunnels the same account registered elsewhere aren't visible without the user's token.
+
 ## When to use which
 
 | Use case | Pick |
