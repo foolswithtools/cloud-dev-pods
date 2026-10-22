@@ -103,10 +103,15 @@ describe('auth config resolution', () => {
     expect(warnings).toHaveLength(1);
   });
 
-  it('rejection: provider entra-id fails validation with a message naming the epic', () => {
-    expect(() =>
-      resolveConfig(baseConfig({ auth: { browser: { provider: 'entra-id' } } })),
-    ).toThrow(/#129/);
+  it('accepts provider entra-id (wired by #137)', () => {
+    const issuerUrl = 'https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0';
+    const { config } = resolveConfig({
+      ...baseConfig({ auth: { browser: { provider: 'entra-id', issuerUrl, entraGroupOverage: true } } }),
+      domain: { strategy: 'byo', baseDomain: 'pods.example.com', hostedZoneId: 'Z123' },
+    });
+    expect(config.auth.browser.provider).toBe('entra-id');
+    expect(config.auth.browser.issuerUrl).toBe(issuerUrl);
+    expect(authLambdaEnvironment(config).AUTH_BROWSER_ENTRA_GROUP_OVERAGE).toBe('true');
   });
 
   it('rejection: provider oidc fails validation with a message naming the epic', () => {
@@ -156,6 +161,7 @@ describe('PodManager Lambda auth environment', () => {
       AUTH_BROWSER_ALLOWED_TENANTS: '[]',
       AUTH_BROWSER_OWNER_ONLY: 'false',
       AUTH_BROWSER_ADMIN_USERS: '[]',
+      AUTH_BROWSER_ENTRA_GROUP_OVERAGE: 'false',
       AUTH_TUNNEL_PROVIDER: 'github',
     });
   });
@@ -237,6 +243,7 @@ describe('pod-manager env.ts auth parsing', () => {
         allowedTenants: ['t1'],
         ownerOnly: true,
         adminUsers: [],
+        entraGroupOverage: false,
       },
       tunnel: { provider: 'github' },
     });
