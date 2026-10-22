@@ -202,6 +202,8 @@ export class PodTaskFamilyStack extends Stack {
         logGroup: cluster.podsLogGroup,
         streamPrefix: 'tunnel/vscode-tunnel',
       }),
+      // Time for the entrypoint's SIGTERM trap to run `code tunnel unregister`.
+      stopTimeout: Duration.seconds(30),
       // POD_NAME is supplied by pod-manager at RunTask time as a containerOverride.
     });
     tunnelVscode.addMountPoints({

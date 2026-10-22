@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // Runs runtime/vscode-tunnel/entrypoint.sh against a stub `code` binary on
 // PATH. The stub appends its argv to a log file; `tunnel user show` exits 1
-// ("not logged in", as the real CLI does) unless STUB_LOGGED_IN=1.
+// ("not logged in", as the real CLI does) unless STUB_LOGGED_IN=1. With
+// STUB_BLOCK=1 the serving `code tunnel` blocks until it is signalled.
 
 const ENTRYPOINT = resolve(import.meta.dirname, '../runtime/vscode-tunnel/entrypoint.sh');
 
@@ -15,6 +16,9 @@ printf '%s\\n' "$*" >> "$STUB_LOG"
 if [ "$*" = "tunnel user show" ]; then
   if [ "\${STUB_LOGGED_IN:-0}" = "1" ]; then echo "logged in"; exit 0; fi
   echo "not logged in"; exit 1
+fi
+if [ "$1 $2" = "tunnel --accept-server-license-terms" ] && [ "\${STUB_BLOCK:-0}" = "1" ]; then
+  exec sleep 60
 fi
 exit 0
 `;
@@ -98,4 +102,41 @@ describe('tunnel entrypoint', () => {
     expect(r.status).not.toBe(0);
     expect(r.calls).toEqual([]);
   });
+
+  it('unregisters the tunnel on SIGTERM before exiting', async () => {
+    const child = spawn('bash', [ENTRYPOINT], {
+      env: {
+        PATH: `${dir}:${process.env.PATH ?? ''}`,
+        HOME: dir,
+        STUB_LOG: log,
+        STUB_LOGGED_IN: '1',
+        STUB_BLOCK: '1',
+        POD_NAME: 'hello',
+      },
+      stdio: 'ignore',
+    });
+    const exited = new Promise<number | null>((res) => child.on('exit', (code) => res(code)));
+    const readCalls = (): string[] => {
+      try {
+        return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
+      } catch {
+        return [];
+      }
+    };
+
+    // Wait until the serving tunnel is running, so the trap is installed.
+    const deadline = Date.now() + 5000;
+    while (!readCalls().includes('tunnel --accept-server-license-terms --name hello')) {
+      if (Date.now() > deadline) throw new Error(`tunnel never started: ${readCalls().join(', ')}`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    child.kill('SIGTERM');
+
+    expect(await exited).toBe(0);
+    expect(readCalls()).toEqual([
+      'tunnel user show',
+      'tunnel --accept-server-license-terms --name hello',
+      'tunnel unregister',
+    ]);
+  }, 15_000);
 });

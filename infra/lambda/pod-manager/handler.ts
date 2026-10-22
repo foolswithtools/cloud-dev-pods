@@ -42,6 +42,8 @@ export interface PodResult {
   tunnelProvider?: 'github' | 'microsoft';
   podName?: string;
   owner?: string;
+  // Non-fatal notice for the caller, e.g. the tunnel cap warning.
+  warning?: string;
   pods?: Array<Record<string, unknown>>;
 }
 
