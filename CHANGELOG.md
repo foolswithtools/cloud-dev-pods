@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.0...v0.4.1) (2026-10-22)
+
+
+### Features
+
+* **auth:** opt-in per-pod owner authorization for browser pods ([#157](https://github.com/foolswithtools/cloud-dev-pods/issues/157)) ([b41817b](https://github.com/foolswithtools/cloud-dev-pods/commit/b41817b6616b0aa39f8f2d88298f48de7b70776c))
+* **auth:** provider-neutral auth config block and ADR 0008 ([#152](https://github.com/foolswithtools/cloud-dev-pods/issues/152)) ([52a8819](https://github.com/foolswithtools/cloud-dev-pods/commit/52a88190e273d5aae27c869dd43f8dffd3c6c8a4))
+* **auth:** provider-neutral guard against unrestricted browser pods ([#155](https://github.com/foolswithtools/cloud-dev-pods/issues/155)) ([371b59d](https://github.com/foolswithtools/cloud-dev-pods/commit/371b59d1791c466ac52e778425abc2448d3a1785))
+* **auth:** single oauth2-proxy sidecar builder and upgrade to v7.8 or later ([#154](https://github.com/foolswithtools/cloud-dev-pods/issues/154)) ([ab1c232](https://github.com/foolswithtools/cloud-dev-pods/commit/ab1c2325c63850dd16748abdeb5412db53693a41))
+* **tunnel:** choose GitHub or Microsoft (Entra) account for tunnel login ([#159](https://github.com/foolswithtools/cloud-dev-pods/issues/159)) ([5e6e794](https://github.com/foolswithtools/cloud-dev-pods/commit/5e6e79440f33ab7c413d13ae6a1877ca522257af))
+
 ## [0.4.0](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.3.1...v0.4.0) (2026-10-18)
 
 
