@@ -6,8 +6,9 @@ import type { Config } from './schema';
  * JSON-encoded arrays.
  *
  * OAUTH_ALLOWED_ORG / OAUTH_ALLOWED_USERS keep their pre-ADR-0008 names and
- * comma-separated format because the sidecar builder and fail-fast guard still
- * read them; they are now sourced from `auth.browser`.
+ * comma-separated format because the fail-fast guard still reads them; they
+ * are now sourced from `auth.browser`. The oauth2-proxy sidecar builder reads
+ * the AUTH_BROWSER_* values instead.
  */
 export function authLambdaEnvironment(config: Config): Record<string, string> {
   const { browser, tunnel } = config.auth;

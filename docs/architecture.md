@@ -20,6 +20,8 @@ Browser ──HTTPS──> ALB ──> oauth2-proxy (sidecar :4180)
 
 Authentication is enforced by oauth2-proxy via a GitHub OAuth App. ALB enforces HTTPS and forwards to the oauth2-proxy sidecar, which gates traffic before openvscode-server ever sees it.
 
+The sidecar's container definition (image, env, secrets, port, logging, `dependsOn`) comes from one pure builder, `buildOauth2ProxyContainer` in [`infra/lambda/pod-manager/oauth2-proxy.ts`](../infra/lambda/pod-manager/oauth2-proxy.ts). The pod-manager Lambda calls it when it registers each pod's task-definition revision. The image is pinned by digest there. The CDK `cloud-dev-pods-browser` family revision carries only the `vscode` container: it is never run and exists to reserve the family name.
+
 ### Tunnel mode (opt-in)
 
 ```text
