@@ -3,6 +3,8 @@ import { extractDeviceCode, FILTER_PATTERN } from './tunnel-poll-logs.js';
 
 // Verbatim prompt lines printed by VS Code CLI 1.143.0
 // (`code tunnel user login --provider <p>`), as quoted in tunnel-poll-logs.ts.
+// That is the version pinned in runtime/vscode-tunnel/Dockerfile; re-capture these lines in
+// the same PR whenever the pin moves.
 const GITHUB_LINE =
   'To grant access to the server, please log into https://github.com/login/device and use code CC3A-5101';
 const MICROSOFT_LINE =

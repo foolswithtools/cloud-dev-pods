@@ -36,6 +36,10 @@ jobs:
           set -euo pipefail
           docker build -t "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" "runtime/${{ matrix.image }}"
 
+      - name: Print VS Code CLI version
+        if: matrix.image == 'vscode-tunnel'
+        run: docker run --rm --entrypoint code "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" --version
+
       - name: Install trivy
         run: |
           set -euo pipefail

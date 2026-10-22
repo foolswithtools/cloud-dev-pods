@@ -93,6 +93,36 @@ To force a release: comment `/release-please:run` on the PR. To skip: don't merg
 
 (Phase 13: a `pricing-refresh.yml` workflow will pull from the AWS Pricing API and open a PR.)
 
+## Bumping the tunnel VS Code CLI pin
+
+The tunnel image (`runtime/vscode-tunnel/Dockerfile`) installs one specific VS Code CLI build, set by three build args: `VSCODE_CLI_VERSION`, `VSCODE_CLI_COMMIT` and `VSCODE_CLI_SHA256`. The pin exists because `scripts/tunnel-poll-logs.ts` matches the exact device-code prompt the CLI prints, and that wording has changed between CLI releases (1.143.0 moved Microsoft logins from `https://microsoft.com/devicelogin` to `https://login.microsoft.com/device`). Move all three args together, in one PR:
+
+1. Look up the new build. The update API returns the commit (`version`), the release number (`productVersion`) and the archive's `sha256hash`:
+
+   ```bash
+   # Current stable:
+   curl -s https://update.code.visualstudio.com/api/update/cli-alpine-x64/stable/latest
+   # A specific commit:
+   curl -s https://update.code.visualstudio.com/api/versions/commit:<sha>/cli-alpine-x64/stable
+   ```
+
+2. Set `VSCODE_CLI_VERSION`, `VSCODE_CLI_COMMIT` and `VSCODE_CLI_SHA256` in the Dockerfile.
+3. Build the image locally. The build fails if the archive's SHA-256 doesn't match, or if `code --version` doesn't report the pinned version and commit:
+
+   ```bash
+   docker build -t cdp-tunnel:pin runtime/vscode-tunnel
+   ```
+
+4. Re-capture both device-code prompt lines from the new CLI. Each command prints its prompt and then waits; copy the line and press Ctrl-C:
+
+   ```bash
+   docker run --rm -it --entrypoint code cdp-tunnel:pin tunnel user login --provider github
+   docker run --rm -it --entrypoint code cdp-tunnel:pin tunnel user login --provider microsoft
+   ```
+
+5. Paste the lines verbatim into the comment above `URL_RE` in `scripts/tunnel-poll-logs.ts` and into `GITHUB_LINE` / `MICROSOFT_LINE` in `scripts/tunnel-poll-logs.test.ts`, and change the CLI version named in both comments. If the wording changed, update `URL_RE`, `CODE_RE` and `FILTER_PATTERN` until `npm run test` passes. `infra/test/tunnel-cli-pin.test.ts` fails if either comment still names the old version.
+6. On the PR, `ci-runtime.yml` builds the tunnel image and prints its CLI version. In forks, the `build-runtime.yml` log and run summary show the CLI version that went into the pushed image.
+
 ## Handling sync-upstream PRs in users' repos
 
 If a user reports a sync-upstream conflict, ask:

@@ -50,6 +50,9 @@ export interface DeviceCode {
 //   github:    "To grant access to the server, please log into https://github.com/login/device and use code CC3A-5101"
 //   microsoft: "To sign in, use a web browser to open the page https://login.microsoft.com/device and enter the code FHLARZB9J to authenticate."
 // Older CLI builds pointed Microsoft logins at https://microsoft.com/devicelogin; still matched.
+// The CLI version is pinned in runtime/vscode-tunnel/Dockerfile (VSCODE_CLI_COMMIT). Whenever
+// the pin moves, re-capture both prompt lines above from the new CLI, update this comment and
+// the verbatim lines in tunnel-poll-logs.test.ts, and adjust the patterns if the wording changed.
 const URL_RE = /(https:\/\/(?:github\.com\/login\/device|login\.microsoft\.com\/device|microsoft\.com\/devicelogin)\b)/;
 const CODE_RE = /\bcode\s+([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})?)/;
 
