@@ -54,8 +54,8 @@ export const env = {
   tunnelRepoUri: req('TUNNEL_REPO_URI'),
   browserRepoName: req('BROWSER_REPO_NAME'),
   tunnelRepoName: req('TUNNEL_REPO_NAME'),
-  // Resolved provider-neutral auth config (ADR 0008). Only provider "github"
-  // is wired at runtime so far. Both the oauth2-proxy sidecar builder and the
+  // Resolved provider-neutral auth config (ADR 0008). Providers "github" and
+  // "entra-id" are wired at runtime so far. Both the oauth2-proxy sidecar builder and the
   // browser auth guard (auth-guard.ts) read this.
   auth: {
     browser: {
@@ -68,6 +68,7 @@ export const env = {
       allowedTenants: jsonList('AUTH_BROWSER_ALLOWED_TENANTS'),
       ownerOnly: process.env.AUTH_BROWSER_OWNER_ONLY === 'true',
       adminUsers: jsonList('AUTH_BROWSER_ADMIN_USERS'),
+      entraGroupOverage: process.env.AUTH_BROWSER_ENTRA_GROUP_OVERAGE === 'true',
     },
     tunnel: {
       provider: oneOf('AUTH_TUNNEL_PROVIDER', ['github', 'microsoft'], 'github'),

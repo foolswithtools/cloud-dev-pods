@@ -29,7 +29,6 @@ export const OWNER_AUTHZ_EMAILS_PATH = `${OWNER_AUTHZ_DIR}/emails.txt`;
 export interface OwnerAuthzConfig extends Oauth2ProxyAuthConfig {
   ownerOnly: boolean;
   adminUsers: readonly string[];
-  allowedEmailDomains?: readonly string[];
 }
 
 export interface OwnerAuthzOptions extends Oauth2ProxyOptions {
@@ -194,7 +193,7 @@ export function buildBrowserAuthTaskParts(
 ): { containers: ContainerDefinition[]; volumes: Volume[] } {
   const { initImage: _initImage, ...sidecarOpts } = opts;
   const sidecar = buildOauth2ProxyContainer(
-    { provider: auth.provider, allowedOrg: auth.allowedOrg, allowedUsers: auth.allowedUsers },
+    auth,
     secretArns,
     sidecarOpts,
   );

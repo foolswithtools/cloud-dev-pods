@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ENTRA_GUID, ENTRA_ISSUER_HINT, parseEntraIssuer } from '../../lambda/pod-manager/entra-id';
 
 // Providers the schema knows about vs. the ones wired at runtime today. The
 // rest arrive with later slices of the pluggable-identity epic.
@@ -20,16 +21,61 @@ export const AuthBrowserSchema = z
     // pod-manager (infra/lambda/pod-manager/owner-authz.ts).
     ownerOnly: z.boolean().default(false),
     adminUsers: stringList,
+    // entra-id only: request User.Read so oauth2-proxy can read group
+    // memberships from Microsoft Graph for users in more than 200 groups.
+    entraGroupOverage: z.boolean().default(false),
   })
   .superRefine((b, ctx) => {
-    if (b.provider !== 'github') {
+    if (b.provider === 'oidc') {
       ctx.addIssue({
         code: 'custom',
         path: ['provider'],
-        message: `auth.browser.provider "${b.provider}" is not supported yet; only "github" is wired at runtime. Other providers land with the pluggable identity epic, ${EPIC_POINTER}.`,
+        message: `auth.browser.provider "${b.provider}" is not supported yet; only "github" and "entra-id" are wired at runtime. Other providers land with the pluggable identity epic, ${EPIC_POINTER}.`,
       });
     }
+    if (b.provider !== 'entra-id') {
+      if (b.entraGroupOverage) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['entraGroupOverage'],
+          message: 'auth.browser.entraGroupOverage only applies to provider "entra-id".',
+        });
+      }
+      return;
+    }
+    refineEntraId(b, ctx);
   });
+
+// Rules for provider entra-id (spec A2, docs/setup-entra.md).
+function refineEntraId(
+  b: { issuerUrl?: string; allowedTenants: string[]; allowedGroups: string[] },
+  ctx: z.RefinementCtx,
+): void {
+  const issuer = parseEntraIssuer(b.issuerUrl);
+  if (!issuer) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['issuerUrl'],
+      message: `${ENTRA_ISSUER_HINT}; got ${b.issuerUrl === undefined ? 'nothing' : `"${b.issuerUrl}"`}.`,
+    });
+  } else if (issuer.multiTenant && b.allowedTenants.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['allowedTenants'],
+      message: `auth.browser.issuerUrl uses "/${issuer.tenant}/", which accepts accounts from any Microsoft tenant; list the tenant IDs to admit in auth.browser.allowedTenants.`,
+    });
+  }
+  for (const key of ['allowedTenants', 'allowedGroups'] as const) {
+    const bad = b[key].find((v) => !ENTRA_GUID.test(v.trim()));
+    if (bad !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `auth.browser.${key} entries must be Entra object IDs (GUIDs); got "${bad}".`,
+      });
+    }
+  }
+}
 
 // Account type the tunnel CLI logs in with (`code tunnel user login --provider`).
 export const AuthTunnelSchema = z.object({
@@ -112,6 +158,13 @@ export type Config = Omit<RawConfig, 'auth'> & {
  */
 export function resolveConfig(input: unknown): { config: Config; warnings: string[] } {
   const raw = ConfigSchema.parse(input);
+  // Entra accepts only https redirect URIs (localhost aside), and the
+  // alb-default strategy serves pods over plain HTTP.
+  if (raw.auth?.browser?.provider === 'entra-id' && raw.domain.strategy !== 'byo') {
+    throw new Error(
+      'auth.browser.provider "entra-id" requires domain.strategy "byo": Entra ID only accepts https redirect URIs, and "alb-default" serves pods over HTTP. See docs/setup-entra.md.',
+    );
+  }
   const { oauthAllowedOrg, oauthAllowedUsers } = raw.github;
   const legacyKeys = [
     ...(oauthAllowedOrg !== undefined ? ['github.oauthAllowedOrg'] : []),

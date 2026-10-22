@@ -185,17 +185,19 @@ export class BootstrapStack extends Stack {
 
     // 6. OAuth secrets, pre-created with placeholders.
     // - client-id and client-secret: filled in by `init-clone.ts` (Phase 12) or
-    //   `aws secretsmanager update-secret` once the user creates a GitHub OAuth App.
+    //   `aws secretsmanager update-secret` once the user registers an OAuth
+    //   client with the browser identity provider (GitHub OAuth App, Entra ID
+    //   app registration, ...; see auth.browser.provider).
     // - cookie-secret: CDK auto-generates a 44-char random value; the user
     //   never needs to view or rotate it (oauth2-proxy reads it at task start).
     const oauthClientIdSecret = new secretsmanager.Secret(this, 'OAuthClientIdSecret', {
       secretName: '/cloud-dev-pods/oauth/client-id',
-      description: 'GitHub OAuth App Client ID. Update via `aws secretsmanager update-secret`.',
+      description: 'OAuth client ID for the browser identity provider (auth.browser.provider). Update via `aws secretsmanager update-secret`.',
       removalPolicy: RemovalPolicy.RETAIN,
     });
     const oauthClientSecret = new secretsmanager.Secret(this, 'OAuthClientSecret', {
       secretName: '/cloud-dev-pods/oauth/client-secret',
-      description: 'GitHub OAuth App Client Secret. Update via `aws secretsmanager update-secret`.',
+      description: 'OAuth client secret for the browser identity provider (auth.browser.provider). Update via `aws secretsmanager update-secret`.',
       removalPolicy: RemovalPolicy.RETAIN,
     });
     const oauthCookieSecret = new secretsmanager.Secret(this, 'OAuthCookieSecret', {
