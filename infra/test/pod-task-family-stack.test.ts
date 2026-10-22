@@ -49,6 +49,13 @@ describe('PodTaskFamilyStack', () => {
     });
   });
 
+  it('gives the tunnel container 30 s to unregister on stop (issue #141)', () => {
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      Family: 'cloud-dev-pods-tunnel',
+      ContainerDefinitions: [Match.objectLike({ Name: 'vscode-tunnel', StopTimeout: 30 })],
+    });
+  });
+
   it('execution role can still read all three oauth secrets for Lambda-registered revisions', () => {
     const json = JSON.stringify(template.findResources('AWS::IAM::Policy'));
     for (const name of ['client-id', 'client-secret', 'cookie-secret']) {

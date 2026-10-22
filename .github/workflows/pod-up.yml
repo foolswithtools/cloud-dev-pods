@@ -123,6 +123,10 @@ jobs:
           URL=$(echo "$RESULT" | jq -r '.url // empty')
           MSG=$(echo "$RESULT" | jq -r '.message // empty')
           OWNER=$(echo "$RESULT" | jq -r '.owner // empty')
+          WARNING=$(echo "$RESULT" | jq -r '.warning // empty' | tr -d '\r\n')
+          if [ -n "$WARNING" ]; then
+            echo "::warning title=Tunnel cap::$WARNING"
+          fi
           case "$(echo "$RESULT" | jq -r '.tunnelProvider // empty')" in
             microsoft) ACCOUNT="Microsoft (personal or Entra work/school)" ;;
             *) ACCOUNT="GitHub" ;;
@@ -132,6 +136,7 @@ jobs:
             echo "message=$MSG"
             echo "owner=$OWNER"
             echo "account=$ACCOUNT"
+            echo "warning=$WARNING"
           } >> "$GITHUB_OUTPUT"
 
       - name: Poll CW Logs for tunnel device code (tunnel mode only)
@@ -162,6 +167,7 @@ jobs:
       - name: Summary
         env:
           POD_OWNER: ${{ steps.up.outputs.owner }}
+          POD_WARNING: ${{ steps.up.outputs.warning }}
         run: |
           {
             echo "## Pod \`${{ inputs.pod_name }}\` is up"
@@ -170,6 +176,11 @@ jobs:
             echo "- Owner: \`${POD_OWNER:-unknown}\`"
             echo "- CPU: ${{ inputs.cpu }}, Memory: ${{ inputs.memory }} MB"
             echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
+            if [ -n "$POD_WARNING" ]; then
+              echo ""
+              echo "> [!WARNING]"
+              echo "> $POD_WARNING"
+            fi
             if [ "${{ inputs.mode }}" = "browser" ]; then
               echo "- URL: ${{ steps.up.outputs.url }}"
               echo "- OAuth redirect URI: \`${{ steps.up.outputs.url }}/oauth2/callback\`"

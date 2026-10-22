@@ -54,6 +54,8 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     }
   }
 
+  const warning = mode === 'tunnel' ? await tunnelCapWarning(owner) : undefined;
+
   const repoName = mode === 'browser' ? env.browserRepoName : env.tunnelRepoName;
   const repoUri = mode === 'browser' ? env.browserRepoUri : env.tunnelRepoUri;
   const resolvedTag = e.imageTag ?? (await resolveLatestImageTag(repoName));
@@ -150,6 +152,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       owner,
       tunnelName: mode === 'tunnel' ? podName : undefined,
       tunnelProvider,
+      warning,
       message: mode === 'browser'
         ? `Pod is up at ${url}.`
         : `Tunnel pod started; check CloudWatch Logs (/aws/lambda/pod-manager + /cloud-dev-pods/<env>/pods) for the device-code URL.`,
@@ -171,6 +174,28 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       message: `pod-up failed: ${(err as Error).message}`,
     };
   }
+}
+
+// Microsoft dev tunnels allow 10 registered tunnels per account; registering
+// an eleventh makes the CLI delete a random unused one, which may belong to
+// another of the owner's pods. The registry is the only count available
+// without the user's token, so it approximates the owner's tunnels.
+const TUNNEL_CAP = 10;
+
+async function tunnelCapWarning(owner: string): Promise<string | undefined> {
+  let count: number;
+  try {
+    const entries = await registryScan();
+    count = entries.filter((r) => r.mode === 'tunnel' && r.owner === owner).length;
+  } catch (err) {
+    // Best effort: a failed count must not block the launch.
+    console.warn('pod-up: could not count tunnel pods for the cap warning', err);
+    return undefined;
+  }
+  if (count < TUNNEL_CAP) return undefined;
+  return `Owner "${owner}" already has ${count} tunnel pods. An account may register `
+    + `${TUNNEL_CAP} dev tunnels; registering another makes the VS Code CLI delete a random `
+    + `unused tunnel, which can break another pod's tunnel. Run pod-down on tunnel pods you no longer need.`;
 }
 
 export async function podDown(e: Extract<PodEvent, { action: 'down' }>): Promise<PodResult> {

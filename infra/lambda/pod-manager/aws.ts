@@ -316,6 +316,8 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
       essential: true,
       mountPoints: [{ sourceVolume: 'workspace', containerPath: '/workspace', readOnly: false }],
       logConfiguration: logConfig(`tunnel/${args.podName}/vscode-tunnel`),
+      // Time for the entrypoint's SIGTERM trap to run `code tunnel unregister`.
+      stopTimeout: 30,
       environment: [
         { name: 'POD_NAME', value: args.podName },
         { name: 'TUNNEL_PROVIDER', value: args.tunnelProvider ?? 'github' },
