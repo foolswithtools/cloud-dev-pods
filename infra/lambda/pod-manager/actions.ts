@@ -3,6 +3,7 @@
 import type { PodEvent, PodResult } from './handler';
 import { env } from './env';
 import { assertBrowserAuthRestricted } from './auth-guard';
+import { validateOwnerAuthorization } from './owner-authz';
 import {
   allocatePosixUid,
   createAccessPoint,
@@ -44,6 +45,12 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     const guard = assertBrowserAuthRestricted(env.auth.browser);
     if (!guard.ok) {
       return { ok: false, status: 'error', podName, message: guard.message };
+    }
+    // Owner-only pods need an owner the provider can match (spec F4). Check
+    // the raw input: the 'unknown' fallback must never become a pod's owner.
+    const ownerCheck = validateOwnerAuthorization(env.auth.browser, e.owner);
+    if (!ownerCheck.ok) {
+      return { ok: false, status: 'error', podName, message: ownerCheck.message };
     }
   }
 
@@ -97,6 +104,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       cpu: String(cpu),
       memory: String(memory),
       mode,
+      owner,
     });
 
     if (mode === 'browser') {
@@ -137,6 +145,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       status: 'ok',
       podName,
       url,
+      owner,
       tunnelName: mode === 'tunnel' ? podName : undefined,
       message: mode === 'browser'
         ? `Pod is up at ${url}.`

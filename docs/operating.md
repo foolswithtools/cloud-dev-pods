@@ -11,6 +11,45 @@ gh workflow run pod-list.yml
 gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing cost
 ```
 
+## Pod owner
+
+Every pod has an owner, stored in the pod registry, tagged on the ECS task (`Owner`), and shown by `pod-list` and in the `pod-up` workflow summary. By default the owner is the GitHub user who ran `pod-up` (`GITHUB_ACTOR`). Pass a different one with the `owner` input:
+
+```bash
+gh workflow run pod-up.yml -f pod_name=foo -f mode=browser -f owner=octocat
+npx tsx scripts/pod-cli.ts up --pod foo --mode browser --owner octocat   # local
+```
+
+Use a GitHub login for `auth.browser.provider: github` and an email for `entra-id` or `oidc`. Owners may contain only letters, digits, and `+ - = . _ : / @` (the characters ECS tags allow).
+
+## Per-pod owner authorization
+
+By default every browser pod admits anyone on the deployment-wide allowlist, so any allowlisted user can open any other user's pod. Set `auth.browser.ownerOnly: true` to lock each browser pod to its owner, plus the break-glass `auth.browser.adminUsers`:
+
+```yaml
+auth:
+  browser:
+    provider: github
+    allowedOrg: your-org
+    ownerOnly: true
+    adminUsers: [ops-login]   # can open every pod
+```
+
+Commit, then re-deploy the pod-manager (`cluster-up`). The setting applies to pods started afterwards; running pods keep their task definition until they are recreated. Other allowlisted users get HTTP 403 from oauth2-proxy on a pod they don't own. Tunnel pods are unaffected.
+
+How it is enforced, per provider:
+
+| Provider | Sidecar settings with `ownerOnly: true` | What happens to the global allowlist |
+| --- | --- | --- |
+| `github` | `OAUTH2_PROXY_GITHUB_USERS=<owner>,<adminUsers>`; `allowedOrg` becomes `OAUTH2_PROXY_ALLOWED_GROUPS` | `allowedUsers` is replaced by owner + admins; at `pod-up` the owner must be in `allowedUsers` or `adminUsers` when `allowedUsers` is set. `allowedOrg` still applies to everyone, admins included. |
+| `entra-id`, `oidc` | An init container writes owner + admin emails to a task-scoped volume; the sidecar reads it via `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` and drops `OAUTH2_PROXY_EMAIL_DOMAINS` | `allowedEmailDomains` is no longer sent to the sidecar; at `pod-up` the owner's domain must be in it when it is set. |
+
+`allowedOrg` is passed as an allowed group, not `OAUTH2_PROXY_GITHUB_ORG`: oauth2-proxy lets anyone in the org through `GITHUB_ORG` even when `GITHUB_USERS` is set, which would defeat owner-only. Likewise, `EMAIL_DOMAINS` would admit every address alongside the emails file.
+
+GitHub logins are matched case-sensitively, so pass the owner exactly as GitHub spells it (`GITHUB_ACTOR` always does). `pod-up` refuses an owner-only browser pod when the owner is missing or isn't a valid identity for the provider; see [troubleshooting](troubleshooting.md).
+
+**Known limitation (`github`):** oauth2-proxy checks `GITHUB_USERS` only at sign-in. All pods share one cookie secret, so a signed-in user who copies their session cookie from their own pod to another pod's hostname gets past the owner check there. `allowedOrg` is still enforced. For `entra-id` and `oidc`, oauth2-proxy re-checks the emails file on every request for sessions that carry an email, so a replayed cookie from another pod is rejected. Treat `github` owner-only as protection against accidental access between allowlisted colleagues, not against a deliberate insider. Per-pod cookie secrets are tracked in [#156](https://github.com/foolswithtools/cloud-dev-pods/issues/156).
+
 ## Costs
 
 The biggest fixed costs are:

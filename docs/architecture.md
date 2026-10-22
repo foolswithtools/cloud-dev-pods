@@ -22,6 +22,17 @@ Authentication is enforced by oauth2-proxy via a GitHub OAuth App. ALB enforces 
 
 The sidecar's container definition (image, env, secrets, port, logging, `dependsOn`) comes from one pure builder, `buildOauth2ProxyContainer` in [`infra/lambda/pod-manager/oauth2-proxy.ts`](../infra/lambda/pod-manager/oauth2-proxy.ts). The pod-manager Lambda calls it when it registers each pod's task-definition revision. The image is pinned by digest there. The CDK `cloud-dev-pods-browser` family revision carries only the `vscode` container: it is never run and exists to reserve the family name.
 
+#### Authorization model
+
+By default, authorization is deployment-wide: every browser pod's sidecar gets the same allowlist (`auth.browser.allowedOrg` / `allowedUsers`), client ID, and cookie secret, so anyone on the allowlist can open any pod. The pod's owner (from the `pod-up` `owner` input, defaulting to `GITHUB_ACTOR`) is recorded in the registry and as the task's `Owner` tag, but is not checked.
+
+With `auth.browser.ownerOnly: true`, authorization becomes per pod. When the pod-manager registers a browser pod's task definition, `buildBrowserAuthTaskParts` in [`infra/lambda/pod-manager/owner-authz.ts`](../infra/lambda/pod-manager/owner-authz.ts) narrows the sidecar to the owner plus `auth.browser.adminUsers`:
+
+- `github`: `OAUTH2_PROXY_GITHUB_USERS=<owner>,<admins>`, with `allowedOrg` kept as `OAUTH2_PROXY_ALLOWED_GROUPS` (an AND check; `GITHUB_ORG` would be ORed with the user list).
+- `entra-id` / `oidc`: a non-essential init container (the pod's runtime image) writes the owner and admin emails to a task-scoped ephemeral volume. The sidecar waits for it to succeed, mounts the volume read-only, and sets `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` with no `EMAIL_DOMAINS`.
+
+Before creating any resource, `pod-up` refuses an owner-only browser pod whose owner is missing or not a valid identity for the provider. With `ownerOnly: false`, the task definition is exactly the one `buildOauth2ProxyContainer` produces. The cookie secret is still shared across pods; see the known limitation in [operating](operating.md#per-pod-owner-authorization). Usage is in [`docs/operating.md`](operating.md#per-pod-owner-authorization).
+
 ### Tunnel mode (opt-in)
 
 ```text
