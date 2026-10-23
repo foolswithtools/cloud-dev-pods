@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.1...v0.4.2) (2026-10-23)
+
+
+### Features
+
+* **auth:** Microsoft Entra ID provider for browser pods ([#160](https://github.com/foolswithtools/cloud-dev-pods/issues/160)) ([03ec2fa](https://github.com/foolswithtools/cloud-dev-pods/commit/03ec2fa7ef12cec7630d44e38f161062730db376))
+* **auth:** per-pod cookie secret for owner-only browser pods ([#164](https://github.com/foolswithtools/cloud-dev-pods/issues/164)) ([b523662](https://github.com/foolswithtools/cloud-dev-pods/commit/b523662006326a9f0ae6d6130502e5c887361230))
+* **tunnel:** unregister tunnels on pod-down and warn near the 10-tunnel cap ([#163](https://github.com/foolswithtools/cloud-dev-pods/issues/163)) ([120ea67](https://github.com/foolswithtools/cloud-dev-pods/commit/120ea6754a4bcdb8ec3e8da3f9bfc786db21ed4f))
+
 ## [0.4.1](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.0...v0.4.1) (2026-10-22)
 
 
