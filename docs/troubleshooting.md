@@ -70,6 +70,8 @@ aws secretsmanager update-secret \
 
 Restart any running pods to pick up the new value.
 
+With `auth.browser.ownerOnly: true`, browser pods don't use this secret: each task generates its own (see [operating](operating.md#per-pod-owner-authorization)). If an owner-only pod's sidecar never starts, check the `owner-authz-init` container's log stream (`browser/<pod>/owner-authz-init`) for a non-zero exit, then re-run `pod-up`.
+
 ## Browser `pod-up` fails with `Refusing browser-mode pod-up: auth.browser.provider "..." has no sign-in restriction`
 
 **Cause:** the pod-manager Lambda refuses to launch a browser pod unless the active identity provider restricts who can sign in. Without a restriction, `oauth2-proxy` would admit any account the provider can authenticate. Tunnel pods are never refused by this check. The keys that count depend on `auth.browser.provider`:

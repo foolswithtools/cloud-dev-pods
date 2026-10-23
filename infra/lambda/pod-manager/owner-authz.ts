@@ -12,6 +12,11 @@
 // - oidc / entra-id: the authenticated-emails file is ORed with EMAIL_DOMAINS
 //   ("*" admits everyone), so owner-only removes EMAIL_DOMAINS. The emails
 //   check runs on every request.
+// - Every pod shares /cloud-dev-pods/oauth/cookie-secret by default, so a
+//   session cookie from one pod decrypts on another. Owner-only gives each
+//   task its own random cookie secret (COOKIE_SECRET_FILE), so a cookie
+//   replayed from another pod is not a session here. COOKIE_SECRET wins over
+//   COOKIE_SECRET_FILE when both are set, so the shared secret is dropped.
 
 import type { ContainerDefinition, KeyValuePair, MountPoint, Volume } from '@aws-sdk/client-ecs';
 import {
@@ -23,8 +28,18 @@ import {
 
 export const OWNER_AUTHZ_VOLUME = 'owner-authz';
 export const OWNER_AUTHZ_INIT_CONTAINER = 'owner-authz-init';
-const OWNER_AUTHZ_DIR = '/authz';
+export const OWNER_AUTHZ_DIR = '/authz';
 export const OWNER_AUTHZ_EMAILS_PATH = `${OWNER_AUTHZ_DIR}/emails.txt`;
+export const OWNER_AUTHZ_COOKIE_SECRET_PATH = `${OWNER_AUTHZ_DIR}/cookie-secret`;
+
+// 16 random bytes as 32 hex characters, with no trailing newline:
+// oauth2-proxy reads the file verbatim (no trimming), and 32 characters is a
+// valid AES key length whether it base64-decodes (to 24 bytes) or not. A
+// 64-character hex string would be rejected. od and head are in the runtime
+// image (coreutils); openssl is not guaranteed.
+const WRITE_COOKIE_SECRET =
+  `s=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \\n') && [ \${#s} -eq 32 ] && printf '%s' "$s" > ${OWNER_AUTHZ_COOKIE_SECRET_PATH}`;
+const WRITE_EMAILS = `printf '%s\\n' "$OWNER_AUTHZ_EMAILS" | tr ',' '\\n' > ${OWNER_AUTHZ_EMAILS_PATH}`;
 
 export interface OwnerAuthzConfig extends Oauth2ProxyAuthConfig {
   ownerOnly: boolean;
@@ -104,6 +119,7 @@ export function validateOwnerAuthorization(auth: OwnerAuthzConfig, owner: string
 export interface OwnerAuthorization {
   sidecarEnvironment: KeyValuePair[];
   removeSidecarEnvironment: string[];
+  removeSidecarSecrets: string[];
   sidecarMountPoints: MountPoint[];
   sidecarDependsOn: NonNullable<ContainerDefinition['dependsOn']>;
   initContainer?: ContainerDefinition;
@@ -126,33 +142,52 @@ export function buildOwnerAuthorization(
   const none: OwnerAuthorization = {
     sidecarEnvironment: [],
     removeSidecarEnvironment: [],
+    removeSidecarSecrets: [],
     sidecarMountPoints: [],
     sidecarDependsOn: [],
     volumes: [],
   };
   if (!auth.ownerOnly) return none;
 
+  let provider: Pick<OwnerAuthorization, 'sidecarEnvironment' | 'removeSidecarEnvironment'>;
+  let initEnvironment: KeyValuePair[] = [];
+  // chmod: the sidecar runs as a non-root user and must be able to enter the
+  // volume directory, whatever mode ECS creates it with.
+  const script = ['set -eu', 'umask 022', `chmod 755 ${OWNER_AUTHZ_DIR}`, WRITE_COOKIE_SECRET];
+
   if (auth.provider === 'github') {
     const org = auth.allowedOrg?.trim();
-    return {
-      ...none,
+    provider = {
       removeSidecarEnvironment: ['OAUTH2_PROXY_GITHUB_ORG', 'OAUTH2_PROXY_GITHUB_USERS'],
       sidecarEnvironment: [
         { name: 'OAUTH2_PROXY_GITHUB_USERS', value: dedupe([owner, ...auth.adminUsers]).join(',') },
         ...(org ? [{ name: 'OAUTH2_PROXY_ALLOWED_GROUPS', value: org }] : []),
       ],
     };
+  } else {
+    // oidc / entra-id: oauth2-proxy has no inline email allowlist, so the init
+    // container also writes the emails file. The emails arrive through an env
+    // var, never interpolated into the script.
+    const emails = dedupe([owner, ...auth.adminUsers].map((e) => e.toLowerCase()));
+    provider = {
+      sidecarEnvironment: [{ name: 'OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE', value: OWNER_AUTHZ_EMAILS_PATH }],
+      removeSidecarEnvironment: ['OAUTH2_PROXY_EMAIL_DOMAINS'],
+    };
+    initEnvironment = [{ name: 'OWNER_AUTHZ_EMAILS', value: emails.join(',') }];
+    script.push(WRITE_EMAILS);
   }
 
-  // oidc / entra-id: oauth2-proxy has no inline email allowlist, so an init
-  // container writes the emails file into a task-scoped ephemeral volume.
-  // The emails arrive through an env var, never interpolated into the script.
-  const emails = dedupe([owner, ...auth.adminUsers].map((e) => e.toLowerCase()));
+  // One init container writes the per-task files into a task-scoped
+  // ephemeral volume that only it and the sidecar mount.
   return {
-    sidecarEnvironment: [{ name: 'OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE', value: OWNER_AUTHZ_EMAILS_PATH }],
-    removeSidecarEnvironment: ['OAUTH2_PROXY_EMAIL_DOMAINS'],
+    sidecarEnvironment: [
+      ...provider.sidecarEnvironment,
+      { name: 'OAUTH2_PROXY_COOKIE_SECRET_FILE', value: OWNER_AUTHZ_COOKIE_SECRET_PATH },
+    ],
+    removeSidecarEnvironment: provider.removeSidecarEnvironment,
+    removeSidecarSecrets: ['OAUTH2_PROXY_COOKIE_SECRET'],
     sidecarMountPoints: [{ sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: true }],
-    // oauth2-proxy exits if the file is missing, so wait for it.
+    // oauth2-proxy exits if a file is missing, so wait for them.
     sidecarDependsOn: [{ containerName: OWNER_AUTHZ_INIT_CONTAINER, condition: 'SUCCESS' }],
     volumes: [{ name: OWNER_AUTHZ_VOLUME }],
     initContainer: {
@@ -160,13 +195,13 @@ export function buildOwnerAuthorization(
       image: opts.initImage,
       essential: false,
       // The runtime image runs as a non-root user; the fresh volume is
-      // root-owned. The container only writes one file and exits.
+      // root-owned. The container only writes its files and exits. The files
+      // are world-readable because oauth2-proxy runs as a distinct non-root
+      // user; the vscode container does not mount the volume.
       user: '0',
       entryPoint: ['sh', '-c'],
-      command: [
-        `umask 022 && printf '%s\\n' "$OWNER_AUTHZ_EMAILS" | tr ',' '\\n' > ${OWNER_AUTHZ_EMAILS_PATH}`,
-      ],
-      environment: [{ name: 'OWNER_AUTHZ_EMAILS', value: emails.join(',') }],
+      command: [script.join(' && ')],
+      ...(initEnvironment.length ? { environment: initEnvironment } : {}),
       mountPoints: [{ sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: false }],
       logConfiguration: {
         logDriver: 'awslogs',
@@ -182,7 +217,9 @@ export function buildOwnerAuthorization(
 
 /**
  * The auth containers and volumes for a browser task: the oauth2-proxy
- * sidecar, plus the owner-only init container and volume when enabled. With
+ * sidecar, plus the owner-only init container and volume when enabled (all
+ * providers: it writes the per-pod cookie secret, and the emails file for
+ * oidc / entra-id). With
  * ownerOnly false the result is exactly [buildOauth2ProxyContainer(...)].
  */
 export function buildBrowserAuthTaskParts(
@@ -207,6 +244,7 @@ export function buildBrowserAuthTaskParts(
   const withOwner: ContainerDefinition = {
     ...sidecar,
     environment,
+    secrets: (sidecar.secrets ?? []).filter((e) => !o.removeSidecarSecrets.includes(e.name ?? '')),
     ...(o.sidecarMountPoints.length ? { mountPoints: [...(sidecar.mountPoints ?? []), ...o.sidecarMountPoints] } : {}),
     dependsOn: [...(sidecar.dependsOn ?? []), ...o.sidecarDependsOn],
   };

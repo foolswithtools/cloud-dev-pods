@@ -1,4 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ContainerDefinition } from '@aws-sdk/client-ecs';
 import {
   buildOauth2ProxyContainer,
   type Oauth2ProxyAuthConfig,
@@ -6,6 +11,8 @@ import {
   type Oauth2ProxySecretArns,
 } from '../lambda/pod-manager/oauth2-proxy';
 import {
+  OWNER_AUTHZ_COOKIE_SECRET_PATH,
+  OWNER_AUTHZ_DIR,
   OWNER_AUTHZ_EMAILS_PATH,
   OWNER_AUTHZ_INIT_CONTAINER,
   OWNER_AUTHZ_VOLUME,
@@ -28,6 +35,9 @@ const opts: Oauth2ProxyOptions = {
 };
 
 const initImage = '123456789012.dkr.ecr.us-west-2.amazonaws.com/cloud-dev-pods/vscode-browser:sha-abc';
+
+const sidecarOf = (parts: { containers: ContainerDefinition[] }) =>
+  parts.containers.find((c) => c.name === 'oauth2-proxy')!;
 
 const envMap = (env: { name?: string; value?: string }[] | undefined) =>
   Object.fromEntries((env ?? []).map((e) => [e.name, e.value]));
@@ -52,9 +62,7 @@ describe('buildBrowserAuthTaskParts', () => {
       secretArns,
       { ...opts, initImage },
     );
-    expect(parts.containers).toHaveLength(1);
-    expect(parts.volumes).toEqual([]);
-    const env = envMap(parts.containers[0]!.environment);
+    const env = envMap(sidecarOf(parts).environment);
     expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_USER');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
@@ -70,7 +78,7 @@ describe('buildBrowserAuthTaskParts', () => {
       secretArns,
       { ...opts, initImage },
     );
-    const env = envMap(parts.containers[0]!.environment);
+    const env = envMap(sidecarOf(parts).environment);
     expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol');
     expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
@@ -83,7 +91,150 @@ describe('buildBrowserAuthTaskParts', () => {
       secretArns,
       { ...opts, initImage },
     );
-    expect(envMap(parts.containers[0]!.environment).OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
+    expect(envMap(sidecarOf(parts).environment).OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
+  });
+
+  // #156: GITHUB_USERS is only checked at sign-in, so a session cookie from
+  // another pod must not decrypt here. Each owner-only pod gets its own
+  // task-scoped cookie secret.
+  it('github + ownerOnly emits the init container, the shared volume and COOKIE_SECRET_FILE, and no COOKIE_SECRET secret', () => {
+    const parts = buildBrowserAuthTaskParts(
+      { provider: 'github', allowedUsers: ['alice', 'bob'], ownerOnly: true, adminUsers: ['ops'] },
+      'carol',
+      secretArns,
+      { ...opts, initImage },
+    );
+    expect(parts.containers.map((c) => c.name)).toEqual([OWNER_AUTHZ_INIT_CONTAINER, 'oauth2-proxy']);
+    expect(parts.volumes).toEqual([{ name: OWNER_AUTHZ_VOLUME }]);
+
+    const init = parts.containers[0]!;
+    expect(init.essential).toBe(false);
+    expect(init.image).toBe(initImage);
+    expect(init.mountPoints).toEqual([
+      { sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: false },
+    ]);
+    // github has no emails file.
+    expect(envMap(init.environment)).not.toHaveProperty('OWNER_AUTHZ_EMAILS');
+
+    const sidecar = sidecarOf(parts);
+    expect(envMap(sidecar.environment).OAUTH2_PROXY_COOKIE_SECRET_FILE).toBe(OWNER_AUTHZ_COOKIE_SECRET_PATH);
+    // cookie_secret wins over cookie_secret_file when both are set.
+    expect(sidecar.secrets?.map((s) => s.name)).toEqual(['OAUTH2_PROXY_CLIENT_ID', 'OAUTH2_PROXY_CLIENT_SECRET']);
+    expect(sidecar.mountPoints).toEqual([
+      { sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: true },
+    ]);
+    expect(sidecar.dependsOn).toEqual([
+      { containerName: 'vscode', condition: 'HEALTHY' },
+      { containerName: OWNER_AUTHZ_INIT_CONTAINER, condition: 'SUCCESS' },
+    ]);
+  });
+
+  it('oidc + ownerOnly writes both the emails file and the cookie secret file with a single init container', () => {
+    const o = buildOwnerAuthorization(
+      { provider: 'oidc', allowedUsers: [], ownerOnly: true, adminUsers: ['ops@example.com'] },
+      'owner@example.com',
+      { ...opts, initImage },
+    );
+    expect(o.volumes).toEqual([{ name: OWNER_AUTHZ_VOLUME }]);
+    const script = o.initContainer!.command!.join(' ');
+    expect(script).toContain(OWNER_AUTHZ_EMAILS_PATH);
+    expect(script).toContain(OWNER_AUTHZ_COOKIE_SECRET_PATH);
+    expect(o.sidecarDependsOn).toEqual([{ containerName: OWNER_AUTHZ_INIT_CONTAINER, condition: 'SUCCESS' }]);
+    const env = envMap(o.sidecarEnvironment);
+    expect(env.OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE).toBe(OWNER_AUTHZ_EMAILS_PATH);
+    expect(env.OAUTH2_PROXY_COOKIE_SECRET_FILE).toBe(OWNER_AUTHZ_COOKIE_SECRET_PATH);
+  });
+
+  it('entra-id + ownerOnly: one init container, the emails file and COOKIE_SECRET_FILE, and no COOKIE_SECRET secret', () => {
+    const parts = buildBrowserAuthTaskParts(
+      {
+        provider: 'entra-id',
+        issuerUrl: 'https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0',
+        allowedUsers: [],
+        ownerOnly: true,
+        adminUsers: [],
+      },
+      'owner@example.com',
+      secretArns,
+      { ...opts, initImage },
+    );
+    expect(parts.containers.map((c) => c.name)).toEqual([OWNER_AUTHZ_INIT_CONTAINER, 'oauth2-proxy']);
+    expect(parts.volumes).toEqual([{ name: OWNER_AUTHZ_VOLUME }]);
+    const env = envMap(sidecarOf(parts).environment);
+    expect(env.OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE).toBe(OWNER_AUTHZ_EMAILS_PATH);
+    expect(env.OAUTH2_PROXY_COOKIE_SECRET_FILE).toBe(OWNER_AUTHZ_COOKIE_SECRET_PATH);
+    expect(sidecarOf(parts).secrets?.map((s) => s.name)).not.toContain('OAUTH2_PROXY_COOKIE_SECRET');
+  });
+});
+
+// Port of oauth2-proxy v7.15.5 pkg/encryption/utils.go SecretBytes: the file
+// content is used verbatim (no trimming) by Cookie.GetSecret.
+function secretBytes(secret: string): Buffer {
+  const trimmed = secret.replace(/=+$/, '');
+  if (/^[A-Za-z0-9_-]*$/.test(trimmed) && trimmed.length % 4 !== 1) {
+    const b = Buffer.from(trimmed, 'base64url');
+    if ([16, 24, 32].includes(b.length)) return b;
+  }
+  return Buffer.from(secret);
+}
+
+// Runs the init container's script for real, with the volume mapped to a tmpdir.
+function runInit(init: ContainerDefinition): string {
+  const dir = mkdtempSync(join(tmpdir(), 'owner-authz-'));
+  const script = init.command![0]!.split(OWNER_AUTHZ_DIR).join(dir);
+  execFileSync('sh', ['-c', script], {
+    env: { PATH: process.env.PATH, ...envMap(init.environment) } as NodeJS.ProcessEnv,
+  });
+  return dir;
+}
+
+describe('owner-authz init container script', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const fileIn = (dir: string, path: string) => join(dir, path.slice(OWNER_AUTHZ_DIR.length));
+
+  it('github: writes a valid oauth2-proxy cookie secret and no emails file', () => {
+    const o = buildOwnerAuthorization(
+      { provider: 'github', allowedUsers: [], ownerOnly: true, adminUsers: [] },
+      'carol',
+      { ...opts, initImage },
+    );
+    expect(o.initContainer?.entryPoint).toEqual(['sh', '-c']);
+    const dir = runInit(o.initContainer!);
+    dirs.push(dir);
+    const secret = readFileSync(fileIn(dir, OWNER_AUTHZ_COOKIE_SECRET_PATH), 'utf8');
+    expect(secret).not.toMatch(/\s/);
+    expect([16, 24, 32]).toContain(secretBytes(secret).length);
+    expect(existsSync(fileIn(dir, OWNER_AUTHZ_EMAILS_PATH))).toBe(false);
+  });
+
+  it('oidc: writes the emails file and a cookie secret', () => {
+    const o = buildOwnerAuthorization(
+      { provider: 'oidc', allowedUsers: [], ownerOnly: true, adminUsers: ['ops@example.com'] },
+      'owner@example.com',
+      { ...opts, initImage },
+    );
+    const dir = runInit(o.initContainer!);
+    dirs.push(dir);
+    expect(readFileSync(fileIn(dir, OWNER_AUTHZ_EMAILS_PATH), 'utf8')).toBe('owner@example.com\nops@example.com\n');
+    const secret = readFileSync(fileIn(dir, OWNER_AUTHZ_COOKIE_SECRET_PATH), 'utf8');
+    expect([16, 24, 32]).toContain(secretBytes(secret).length);
+  });
+
+  it('generates a different secret on every run', () => {
+    const o = buildOwnerAuthorization(
+      { provider: 'github', allowedUsers: [], ownerOnly: true, adminUsers: [] },
+      'carol',
+      { ...opts, initImage },
+    );
+    const a = runInit(o.initContainer!);
+    const b = runInit(o.initContainer!);
+    dirs.push(a, b);
+    expect(readFileSync(fileIn(a, OWNER_AUTHZ_COOKIE_SECRET_PATH), 'utf8')).not.toBe(
+      readFileSync(fileIn(b, OWNER_AUTHZ_COOKIE_SECRET_PATH), 'utf8'),
+    );
   });
 });
 
@@ -93,18 +244,18 @@ const KNOWN_ENV = new Set(
   [
     'provider', 'http_address', 'upstreams', 'reverse_proxy', 'pass_authorization_header',
     'cookie_secure', 'email_domains', 'github_org', 'github_users', 'allowed_groups',
-    'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
+    'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret', 'cookie_secret_file',
   ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
 );
 
 describe('owner-only sidecar env names', () => {
   it('are all settings oauth2-proxy actually reads', () => {
-    const github = buildBrowserAuthTaskParts(
+    const github = sidecarOf(buildBrowserAuthTaskParts(
       { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'], ownerOnly: true, adminUsers: ['ops'] },
       'carol',
       secretArns,
       { ...opts, initImage },
-    ).containers[0]!;
+    ));
     const oidc = buildOwnerAuthorization(
       { provider: 'oidc', allowedUsers: [], ownerOnly: true, adminUsers: [] },
       'owner@example.com',
@@ -114,6 +265,7 @@ describe('owner-only sidecar env names', () => {
       ...[...(github.environment ?? []), ...(github.secrets ?? [])].map((e) => e.name!),
       ...oidc.sidecarEnvironment.map((e) => e.name!),
       ...oidc.removeSidecarEnvironment,
+      ...oidc.removeSidecarSecrets,
     ];
     for (const name of names) expect(KNOWN_ENV.has(name), name).toBe(true);
   });
@@ -143,6 +295,8 @@ describe('buildOwnerAuthorization (oidc / entra-id)', () => {
 
       const env = envMap(o.sidecarEnvironment);
       expect(env.OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE).toBe(OWNER_AUTHZ_EMAILS_PATH);
+      expect(env.OAUTH2_PROXY_COOKIE_SECRET_FILE).toBe(OWNER_AUTHZ_COOKIE_SECRET_PATH);
+      expect(o.removeSidecarSecrets).toEqual(['OAUTH2_PROXY_COOKIE_SECRET']);
       // EMAIL_DOMAINS (even "*" or configured domains) is ORed with the file
       // by oauth2-proxy, so it must be removed.
       expect(o.removeSidecarEnvironment).toContain('OAUTH2_PROXY_EMAIL_DOMAINS');
@@ -163,6 +317,7 @@ describe('buildOwnerAuthorization (oidc / entra-id)', () => {
     expect(o.volumes).toEqual([]);
     expect(o.sidecarEnvironment).toEqual([]);
     expect(o.removeSidecarEnvironment).toEqual([]);
+    expect(o.removeSidecarSecrets).toEqual([]);
   });
 });
 
@@ -260,7 +415,7 @@ describe('registerTaskDef with owner authorization', () => {
     vi.unstubAllEnvs();
   });
 
-  async function register(): Promise<{ containerDefinitions: { name: string; environment?: { name?: string; value?: string }[] }[]; volumes: { name: string }[] }> {
+  async function register(): Promise<{ containerDefinitions: { name: string; environment?: { name?: string; value?: string }[]; secrets?: { name?: string }[] }[]; volumes: { name: string }[] }> {
     const { ECSClient } = await import('@aws-sdk/client-ecs');
     const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
     const sent: { input: unknown }[] = [];
@@ -303,11 +458,14 @@ describe('registerTaskDef with owner authorization', () => {
   it('ownerOnly true (github): sidecar gets the owner plus admins, org kept as an allowed group', async () => {
     vi.stubEnv('AUTH_BROWSER_OWNER_ONLY', 'true');
     const input = await register();
-    expect(input.containerDefinitions.map((c) => c.name)).toEqual(['vscode', 'oauth2-proxy']);
-    const env = envMap(input.containerDefinitions[1]!.environment);
+    expect(input.containerDefinitions.map((c) => c.name)).toEqual(['vscode', OWNER_AUTHZ_INIT_CONTAINER, 'oauth2-proxy']);
+    const sidecar = input.containerDefinitions[2]!;
+    expect(sidecar.secrets?.map((s) => s.name)).not.toContain('OAUTH2_PROXY_COOKIE_SECRET');
+    const env = envMap(sidecar.environment);
+    expect(env.OAUTH2_PROXY_COOKIE_SECRET_FILE).toBe(OWNER_AUTHZ_COOKIE_SECRET_PATH);
     expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('carol,ops');
     expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
-    expect(input.volumes.map((v) => v.name)).toEqual(['workspace']);
+    expect(input.volumes.map((v) => v.name)).toEqual(['workspace', OWNER_AUTHZ_VOLUME]);
   });
 });
