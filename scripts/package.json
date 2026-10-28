@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.1152.0",
-    "@aws-sdk/client-lambda": "^3.1152.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1156.0",
+    "@aws-sdk/client-lambda": "^3.1156.0",
     "@clack/prompts": "^1.8.1",
     "minimatch": "^10.2.6",
     "smol-toml": "^1.9.0",
