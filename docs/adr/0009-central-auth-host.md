@@ -58,6 +58,20 @@ The shared cookie is set with `cookie_domains=.<base>` (`pkg/apis/options/cookie
 
 So central-host mode requires a `domain.baseDomain` that holds only cloud-dev-pods records: `auth.<base>` and the pod hosts. A dedicated subdomain such as `pods.example.com` meets this, and it is what `config/config.example.yaml:48` already shows. An apex like `example.com` that also serves other hosts does not. #144 documents this precondition and states it in the synth guard's error text.
 
+### The vscode container must not be able to sniff the sidecar's traffic
+
+The pod owner is effectively root in the vscode container. The `gitpod/openvscode-server` base image grants passwordless `sudo`, and the runtime image keeps that user (repo `runtime/vscode-browser/Dockerfile:27`). Both containers share one task network namespace (repo `infra/lambda/pod-manager/aws.ts:332`, `networkMode: 'awsvpc'`). The ALB reaches the sidecar over plaintext HTTP on port 4180 (repo `aws.ts:435-436`). No Linux capabilities are dropped today (no `linuxParameters` in `infra/lambda` or `infra/lib`). Per AWS's Fargate documentation, that leaves Docker's default set in place, including `CAP_NET_RAW`.
+
+So a pod owner can capture raw packets on port 4180 and read the `Cookie` header of **any visitor** to their pod. That header arrives before the sidecar refuses the request with a 403. Here is the attack:
+
+1. The attacker sends an allowlisted user a link to `https://<attacker-pod>.<base>`.
+2. The visitor's browser sends the shared cookie, and the attacker captures it.
+3. The cookie stays valid for `cookie_expire` (168h by default, `pkg/apis/options/cookie.go:38`). The attacker replays it on the victim's own pods, where the victim's email passes the emails file (`oauthproxy.go:1176`).
+
+Today none of this works, because each cookie is host-only and sealed with a per-task secret (repo `owner-authz.ts:15-19`).
+
+So central-host mode requires the browser task definition to drop `NET_RAW` from the vscode container (`linuxParameters.capabilities.drop`), and preferably `ALL` if the runtime image still works without it. Without `CAP_NET_RAW`, even root cannot open the `AF_PACKET` / raw sockets that packet capture needs. A stronger alternative is to encrypt the ALB-to-sidecar hop. Either way, the threat model is: **the owner is root in a container that shares the sidecar's network namespace.**
+
 ### No admins in central-host mode
 
 With a shared cookie, a session cookie that works on any pod reaches the pod owner's code. oauth2-proxy forwards the request to VS Code (repo `oauth2-proxy.ts:110`) with the browser's `Cookie` header intact. Before the upstream, the only header removal is the strip step for injected headers marked `PreserveRequestValue: false` (`pkg/middleware/headers.go:28-34`, `:54-66`). The legacy options never inject a `Cookie` header (`legacy_options.go:309-364`). In `pkg/upstream/http.go:29-41`, `Cookie` appears only in the request-signing list. VS Code runs as the same user as the owner's terminal (repo `runtime/vscode-browser/Dockerfile:27`, `runtime/vscode-browser/entrypoint.sh:5-8`), so the owner can read every request header that reaches it. That also includes the `Authorization` header, which carries the ID token for `entra-id` / `oidc` (repo `oauth2-proxy.ts:112`). The ID token cannot be replayed as a session while `skip_jwt_bearer_tokens` stays off (scope change 5).
@@ -69,7 +83,7 @@ So in central-host mode, **`auth.browser.adminUsers` must be empty**, enforced b
 - recreate the pod with a new `owner` **and a fresh workspace** (no `keepWorkspace`). Code the previous owner planted in `/workspace` runs as the same user, could rebind port 3000, and could read the new owner's cookie.
 - turn `centralAuthHost` off, which brings back per-task cookie secrets
 
-Allowing admins again would need the sidecar to strip its session cookie before the upstream. v7.15.5 can probably do that only through alpha config: an `injectRequestHeaders` entry named `Cookie` with `preserveRequestValue: false` and no values is stripped (`headers.go:28-34`, `:54-66`), and header validation does not require values (`pkg/validation/header.go:20-40`). That means moving the sidecar to `--alpha-config`, and checking at runtime that openvscode-server works without its own cookies. That is follow-up work, not part of #144.
+Allowing admins again would need the sidecar to strip its session cookie before the upstream, on top of the `NET_RAW` drop above, which stops the cookie being captured before the sidecar sees it. v7.15.5 can probably do that only through alpha config: an `injectRequestHeaders` entry named `Cookie` with `preserveRequestValue: false` and no values is stripped (`headers.go:28-34`, `:54-66`), and header validation does not require values (`pkg/validation/header.go:20-40`). That means moving the sidecar to `--alpha-config`, and checking at runtime that openvscode-server works without its own cookies. That is follow-up work, not part of #144.
 
 ### Shared cookie secret only with `ownerOnly: true`
 
@@ -133,6 +147,7 @@ No other github path writes the session email:
 
 - One OAuth callback URL serves every browser pod when `centralAuthHost` is on, for all three providers. CLAUDE.md rule 6 and step 3d can drop the "pick the pod name now" constraint in that mode ([#143](https://github.com/foolswithtools/cloud-dev-pods/issues/143)).
 - For github in central-host mode, `pod-up -f owner=` takes an email address: the account's verified primary email on GitHub. If the owner changes their GitHub primary email, they lose access until the pod is recreated with the new owner. A GitHub account with no verified primary email cannot sign in at all, which is also true today (`validator.go:90-91`).
+- **Visiting someone else's pod is safe only with `NET_RAW` dropped from the vscode container** (see "The vscode container must not be able to sniff the sidecar's traffic"). Without that drop, the pod's owner can capture the visitor's cookie off the wire.
 - **A 403 on another owner's pod signs the user out of every pod.** When the per-request check fails, oauth2-proxy clears the session cookie (`oauthproxy.go:1188-1194`). With `cookie_domains=.<base>` that cookie is the shared one. The user then signs in again at `auth.<base>`. That is safe, but #144's human checklist and its docs should expect "403, then signed out everywhere", not only a 403.
 - **`baseDomain` must hold only cloud-dev-pods hosts.** The shared cookie goes to every host under it.
 - **No `adminUsers` in central-host mode.** Break-glass access to someone else's pod goes away while `centralAuthHost` is on (see "No admins in central-host mode"). Deployments that need it keep `centralAuthHost` off.
@@ -159,20 +174,24 @@ Apply these to #144's body. Where they conflict with it, this ADR wins.
    - Skip the `allowedUsers` membership check (repo `owner-authz.ts:98-105`) in that mode, since it compares logins and both login paths enforce `allowedUsers` (item 2). Do not apply the `allowedEmailDomains` check to github owners: the github central host never enforces that setting (it emits `EMAIL_DOMAINS=*`, repo `oauth2-proxy.ts:43`), so a pod-up-only check would make the config look stricter than it is.
    - Update the refusal messages and the `pod-up.yml` `owner` input description to say "verified primary GitHub email" in this mode.
    - The default owner fails closed: `pod-cli.ts` falls back to `GITHUB_ACTOR` (repo `scripts/pod-cli.ts:65`), which is a login. In central-host github mode every pod-up needs an explicit email `owner=`, and the refusal message should say so.
-4. **Central host container.** Build it with `buildOauth2ProxyContainer` and `ownerOnly` off, using the three shared secrets. Add `OAUTH2_PROXY_REDIRECT_URL=https://auth.<base>/oauth2/callback`, `OAUTH2_PROXY_COOKIE_DOMAINS=.<base>` and `OAUTH2_PROXY_WHITELIST_DOMAINS=.<base>`. Keep the default cookie name on the central host and on every sidecar. The central host proxies to nothing, so override the inherited `OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:3000` (repo `oauth2-proxy.ts:110`) with a static upstream such as `static://202` (`legacy_options.go:122`).
+4. **Central host container.** Build it with `buildOauth2ProxyContainer` and `ownerOnly` off, using the three shared secrets. Add `OAUTH2_PROXY_REDIRECT_URL=https://auth.<base>/oauth2/callback`, `OAUTH2_PROXY_COOKIE_DOMAINS=.<base>` and `OAUTH2_PROXY_WHITELIST_DOMAINS=.<base>`. Use one **non-default** cookie name, the same on the central host and on every sidecar (for example `OAUTH2_PROXY_COOKIE_NAME=_cdp_central`). Browsers still hold host-only `_oauth2_proxy` cookies from the per-pod setup. oauth2-proxy would read the first cookie with the default name, fail to decode it, and clear only the `.<base>` cookie (`pkg/middleware/stored_session.go:119-125`), which can leave the user in a sign-in loop. Set `OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST=true` (default false, `cookie.go:43`), so that concurrent logins from different pods do not overwrite one shared CSRF cookie. The central host proxies to nothing, so override the inherited `OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:3000` (repo `oauth2-proxy.ts:110`) with a static upstream such as `static://202` (`legacy_options.go:122`).
 5. **Pod sidecars** keep the shared `OAUTH2_PROXY_COOKIE_SECRET` and skip the per-task secret file (the three bypass points already listed in #144). They must not set any of these, each of which lets a request past the per-request check (Q1 caveats):
    - `skip_jwt_bearer_tokens` or an htpasswd file (empty-email sessions)
    - `skip_auth_routes`, `skip_auth_regex`, `trusted_ips` or `skip_auth_preflight` (allowed requests skip all checks, `oauthproxy.go:1168-1170`)
+   - `pass_access_token` (default false, `legacy_options.go:216`), which would forward the user's IdP access token to the owner's VS Code
+
+   The browser task definition also drops `NET_RAW` (or `ALL`) from the vscode container's `linuxParameters.capabilities` whenever `centralAuthHost` is on. Today's task definition has no `linuxParameters` (repo `aws.ts:283`, the vscode container).
 6. **Tests** (`infra/test/owner-authz.test.ts`), for each of `github`, `entra-id` and `oidc` under `centralAuthHost`:
    - the sidecar has `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE`
    - no `OAUTH2_PROXY_EMAIL_DOMAINS` is set; for github, a test that fails if `EMAIL_DOMAINS=*` survives
    - for github, `OAUTH2_PROXY_GITHUB_USERS` / `GITHUB_ORG` equal the deployment-wide values and never contain the owner
    - `OAUTH2_PROXY_COOKIE_SECRET` is present and no cookie-secret file is written or mounted
-   - none of `OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS`, `OAUTH2_PROXY_HTPASSWD_FILE`, `OAUTH2_PROXY_SKIP_AUTH_ROUTES`, `OAUTH2_PROXY_SKIP_AUTH_REGEX`, `OAUTH2_PROXY_TRUSTED_IPS` or `OAUTH2_PROXY_SKIP_AUTH_PREFLIGHT` is set
+   - the vscode container's `linuxParameters.capabilities.drop` contains `NET_RAW` or `ALL`, in the registered task definition test for `aws.ts`
+   - none of `OAUTH2_PROXY_PASS_ACCESS_TOKEN`, `OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS`, `OAUTH2_PROXY_HTPASSWD_FILE`, `OAUTH2_PROXY_SKIP_AUTH_ROUTES`, `OAUTH2_PROXY_SKIP_AUTH_REGEX`, `OAUTH2_PROXY_TRUSTED_IPS` or `OAUTH2_PROXY_SKIP_AUTH_PREFLIGHT` is set
    - `validateOwnerAuthorization` accepts an email and rejects a login for github in this mode
 
    And in `infra/test/central-auth-host.test.ts`: synth fails when `centralAuthHost: true` and `adminUsers` is non-empty.
-7. **Human checklist.** Change the cross-pod item to "receives HTTP 403 on pod B and is then signed out of pod A too (shared cookie cleared)".
+7. **Human checklist.** Add: on a smoke-fork pod, `sudo tcpdump -i any port 4180` and `sudo python3 -c 'import socket; socket.socket(socket.AF_PACKET, socket.SOCK_RAW)'` both fail with a permission error. Change the cross-pod item to "receives HTTP 403 on pod B and is then signed out of pod A too (shared cookie cleared)".
 8. **Docs.** `docs/choosing-auth-and-access.md` (via #143) states four things for central-host mode: `baseDomain` must be dedicated to cloud-dev-pods, github owners are emails, `adminUsers` is refused (and why, including the fresh-workspace break-glass), and owners must also pass the deployment-wide allowlist. The synth guard's error text (item 1) repeats the dedicated-`baseDomain` precondition.
 9. **Reserved name.** Unchanged from #144: refuse `up` for `podName: auth` unconditionally, and keep `down` / `status` accepting it.
 10. **`oidc`.** Unchanged dependency: #180 must merge first, because the sidecar builder throws for `oidc` until then (repo `oauth2-proxy.ts:72`).
