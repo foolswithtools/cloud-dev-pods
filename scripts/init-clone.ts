@@ -841,13 +841,15 @@ function runNonInteractive(argv: string[]): number {
     usageError(r.error);
     return 2;
   }
-  if (existsSync(r.out) && !r.force) {
-    usageError(`${r.out} already exists; pass --force to overwrite it.`);
-    return 2;
-  }
   try {
-    writeFileSync(r.out, renderConfigYaml(r.answers));
+    // 'wx' fails with EEXIST instead of a separate exists check, so there's
+    // no window between checking for the file and writing it.
+    writeFileSync(r.out, renderConfigYaml(r.answers), { flag: r.force ? 'w' : 'wx' });
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      usageError(`${r.out} already exists; pass --force to overwrite it.`);
+      return 2;
+    }
     usageError(`could not write ${r.out}: ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
