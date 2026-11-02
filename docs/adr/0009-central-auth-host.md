@@ -139,7 +139,7 @@ No other github path writes the session email:
 - **Redirect back to the pod.** The central host must set `whitelist_domains=.<base>` (`pkg/apis/options/options.go:142`). Otherwise an absolute redirect to the pod's URL is replaced with `/` (`oauthproxy.go:977-979`). That is necessary but not enough. The sidecar picks the return address with these getters, in order (`pkg/app/redirect/director.go:59-65`):
   1. an `rd` parameter (`getters.go:16-21`)
   2. an `X-Auth-Request-Redirect` header (`:25-30`)
-  3. `X-Forwarded-Host`-based reconstruction (`:35-54`), which needs a forwarded host
+  3. `X-Forwarded-Host`-based reconstruction (`:35-54`), which needs a forwarded host (`pkg/requests/util/util.go:30-36`, `:91-94`)
   4. the bare request path (`:60-72`)
 
   Per AWS documentation, the ALB does not send `X-Forwarded-Host` (not verified against a live ALB). Without it, the state carries a **relative** path, and the central host's callback redirects to `https://auth.<base>/...` (`oauthproxy.go:994`), not to the pod. So #144 must make the sidecar send an absolute `rd`. The candidate mechanism is a custom sign-in template (`custom_templates_dir`) that sets the form's `rd` field from `window.location.href`. #144 verifies this on a smoke fork.
@@ -211,4 +211,4 @@ Apply these to #144's body. Where they conflict with it, this ADR wins.
     - add tests:
       - `pod-up` onto an existing access point with a different owner under `centralAuthHost` is refused and creates no task
       - after `pod-down keep_workspace=false`, a `pod-up` of the same name uses a different `RootDirectory.Path`
-    - assumption: this relies on per-access-point isolation on EFS. Whether a root user in one pod can reach other pods' directories with a raw NFS client is a separate, pre-existing question (no file-system policy today, repo `infra/lib/stacks/cluster-stack.ts:60-70`), tracked as a follow-up.
+    - assumption: this relies on per-access-point isolation on EFS. Whether a root user in one pod can reach other pods' directories with a raw NFS client is a separate, pre-existing question (no file-system policy today, repo `infra/lib/stacks/cluster-stack.ts:60-70`), listed as a follow-up in PR #186's completion report.
