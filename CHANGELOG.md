@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.3](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.2...v0.4.3) (2026-11-02)
+
+
+### Features
+
+* **auth:** generic OIDC browser provider (provider: oidc) ([#199](https://github.com/foolswithtools/cloud-dev-pods/issues/199)) ([cd7560d](https://github.com/foolswithtools/cloud-dev-pods/commit/cd7560da6d023bd85c3ab54d71a9705a27e9eb49))
+* **init:** GitHub/Entra provider, ownerOnly and tunnel-provider prompts with non-interactive mode ([#204](https://github.com/foolswithtools/cloud-dev-pods/issues/204)) ([95c9e4a](https://github.com/foolswithtools/cloud-dev-pods/commit/95c9e4aed1c1bbd296e375f2f0cb47e22cc577b9))
+* **remote-access:** ssh pod mode, remote.backend config and ssh IAM roles ([#184](https://github.com/foolswithtools/cloud-dev-pods/issues/184)) ([27b3e9b](https://github.com/foolswithtools/cloud-dev-pods/commit/27b3e9ba388b83acc6fa2d20084943cc30c06639)), closes [#145](https://github.com/foolswithtools/cloud-dev-pods/issues/145)
+* **remote-access:** sshd and POD_MODE dispatch in the tunnel runtime image ([#190](https://github.com/foolswithtools/cloud-dev-pods/issues/190)) ([3830fab](https://github.com/foolswithtools/cloud-dev-pods/commit/3830fabb4a6470e125163c5118cf5a34e08da27c)), closes [#181](https://github.com/foolswithtools/cloud-dev-pods/issues/181)
+
+
+### Bug Fixes
+
+* **config:** make config.smoke.example.yaml pass the schema and test every example config ([#200](https://github.com/foolswithtools/cloud-dev-pods/issues/200)) ([d183dc2](https://github.com/foolswithtools/cloud-dev-pods/commit/d183dc2f1aeb925ccf8271ed9413cecbb43f2e4a)), closes [#195](https://github.com/foolswithtools/cloud-dev-pods/issues/195)
+* **init:** write auth.browser.* instead of deprecated github.oauthAllowed* keys ([#189](https://github.com/foolswithtools/cloud-dev-pods/issues/189)) ([b3294ec](https://github.com/foolswithtools/cloud-dev-pods/commit/b3294ece72def8a55ea397ef884015f2c86de0a2)), closes [#170](https://github.com/foolswithtools/cloud-dev-pods/issues/170)
+* **pod-manager:** bind retained workspaces to their owner and give released workspaces a fresh path ([#203](https://github.com/foolswithtools/cloud-dev-pods/issues/203)) ([1d6d6bb](https://github.com/foolswithtools/cloud-dev-pods/commit/1d6d6bb60d4430074afc090df0cb34ed6dbb5e27)), closes [#191](https://github.com/foolswithtools/cloud-dev-pods/issues/191)
+* **tunnel:** log code tunnel unregister on SIGTERM ([#201](https://github.com/foolswithtools/cloud-dev-pods/issues/201)) ([43968d4](https://github.com/foolswithtools/cloud-dev-pods/commit/43968d44ded7533a7b73e93bebcf9cbf21823444)), closes [#192](https://github.com/foolswithtools/cloud-dev-pods/issues/192)
+
 ## [0.4.2](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.1...v0.4.2) (2026-10-23)
 
 
