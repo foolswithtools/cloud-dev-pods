@@ -199,6 +199,24 @@ To temporarily disable idle-reap on a specific pod (e.g., for long builds):
 gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=0
 ```
 
+## cluster-down refuses: pod pre-flight failed
+
+**Symptom:** the `Pre-flight — check and drain pods` step of `cluster-down.yml` fails, the job stops before `cdk destroy`, and the step summary reads "Pod pre-flight refused cluster-down".
+
+**Cause:** `scripts/cluster-drain.ts` only lets the teardown continue when it can prove no pods are registered. It fails closed, because destroying `CloudDevPods-PodManager` while a pod is still registered orphans that pod's ALB rule and EFS access point with nothing left to clean them up. The reason it prints tells you which check failed:
+
+| Reason | What it means | What to do |
+| --- | --- | --- |
+| `N pod(s) still registered: a, b. Re-run cluster-down with force=true ...` | Pods are registered and `force` was off. | `pod-down` each pod, or re-run `cluster-down` with `force=true` to stop them (workspaces are kept). |
+| `Pod pre-flight failed: invoking the pod-manager Lambda failed: ...` | The `list` call never reached the Lambda, or the Lambda raised an error. `Function not found` / `ResourceNotFoundException` means the `CloudDevPods-PodManager` stack is already gone (see below). `AccessDenied` means the deployer role can't invoke it. | Read the error text. For a missing Lambda, see "PodManager stack already gone" below. |
+| `Pod pre-flight failed: the pod-manager Lambda returned ok: false (status ...): ...` | The Lambda ran but couldn't list pods (for example, the registry table scan failed). | Check the Lambda's logs (`aws logs tail /aws/lambda/pod-manager --since 30m`), fix the cause, re-run. |
+| `Pod pre-flight failed: ... missing or invalid "pods"` / `invalid "pods" entry` / `non-object response` | The Lambda's response wasn't the shape `cluster-drain.ts` expects. Usually a pod-manager Lambda that is older or newer than the workflow. | Re-run `cluster-up` so the Lambda matches this checkout, then `cluster-down` again. |
+| `Forced drain failed to stop N pod(s): a, b ...` | With `force=true`, the `down` call failed for those pods. The drain still tried every pod, so the rest may be stopped. | Read the per-pod `Failed to stop` lines in the step log, run `pod-down` for each named pod, then re-run `cluster-down`. |
+| `Post-drain pod check failed: ...` | Every `down` succeeded, but the confirming `list` failed. | Same as the matching `Pod pre-flight failed` row, then re-run. |
+| `N pod(s) still registered after the drain: a ...` | Every `down` reported success, but the registry still lists those pods. | Run `pod-list`, then `pod-down` each one still listed, then re-run `cluster-down`. |
+
+**PodManager stack already gone (partial teardown).** If an earlier `cluster-down` got as far as destroying `CloudDevPods-PodManager` and then failed, the pre-flight can't list or drain pods any more: the drain only stops pods through the pod-manager Lambda (it never stops ECS tasks directly, per CLAUDE.md hard rule 2). Re-run `cluster-up` to restore the stacks, including the Lambda, then run `cluster-down` again (with `force=true` if pods are still registered).
+
 ## `cluster-up` fails with "log group already exists" or "Table already exists"
 
 **Cause:** an older deployment had `RemovalPolicy.RETAIN` on the VPC flow-logs CW log group (`/cloud-dev-pods/<env>/vpc-flow-logs`) or the DynamoDB `cloud-dev-pods-registry` table, so `cluster-down` left them behind. The next `cluster-up` then fails because CFN refuses to create a resource whose name is already taken.
