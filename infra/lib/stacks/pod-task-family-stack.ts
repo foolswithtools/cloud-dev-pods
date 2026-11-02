@@ -16,7 +16,7 @@ export interface PodTaskFamilyStackProps extends StackProps {
 }
 
 /**
- * Two reusable Fargate task definition families: browser and tunnel.
+ * Three reusable Fargate task definition families: browser, tunnel and ssh.
  *
  * The CDK-defined revisions use a placeholder image tag that the pod-manager
  * Lambda overrides by registering a fresh task-definition revision per pod-up
@@ -28,9 +28,12 @@ export interface PodTaskFamilyStackProps extends StackProps {
 export class PodTaskFamilyStack extends Stack {
   public readonly browserTaskDef: ecs.FargateTaskDefinition;
   public readonly tunnelTaskDef: ecs.FargateTaskDefinition;
+  public readonly sshTaskDef: ecs.FargateTaskDefinition;
   public readonly executionRole: iam.Role;
+  public readonly sshExecutionRole: iam.Role;
   public readonly browserTaskRole: iam.Role;
   public readonly tunnelTaskRole: iam.Role;
+  public readonly sshTaskRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: PodTaskFamilyStackProps) {
     super(scope, id, props);
@@ -66,8 +69,8 @@ export class PodTaskFamilyStack extends Stack {
       'cloud-dev-pods/vscode-tunnel',
     );
 
-    // Single execution role (pulls images, writes logs, reads secrets).
-    // Reused by both task definitions.
+    // Shared execution role (pulls images, writes logs, reads oauth secrets).
+    // Used by the browser and tunnel task definitions; ssh has its own below.
     this.executionRole = new iam.Role(this, 'ExecutionRole', {
       roleName: 'CloudDevPodsTaskExecutionRole',
       path: '/cloud-dev-pods/',
@@ -108,16 +111,24 @@ export class PodTaskFamilyStack extends Stack {
       description: 'Pod task role for tunnel-mode pods.',
       inlinePolicies: { default: taskRolePolicyDoc('tunnel') },
     });
+    // ssh pods (issue #145). Backends (#146-#148) add their own policies.
+    this.sshTaskRole = new iam.Role(this, 'SshTaskRole', {
+      roleName: 'CloudDevPodsSshTaskRole',
+      path: '/cloud-dev-pods/',
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: 'Pod task role for ssh-mode pods.',
+      inlinePolicies: { default: taskRolePolicyDoc('ssh') },
+    });
     // Per-pod log streams need a wildcard suffix; the pod name is part of
     // the stream path. Bounded to this log group + mode-specific prefix.
     acknowledgeNag(
-      [this.browserTaskRole, this.tunnelTaskRole],
+      [this.browserTaskRole, this.tunnelTaskRole, this.sshTaskRole],
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
-            'Per-pod CloudWatch log streams are wildcarded by pod name. Bounded to the cluster pods log group and the mode-specific stream prefix (browser/* or tunnel/*).',
-          appliesTo: ['browser', 'tunnel'].map(
+            'Per-pod CloudWatch log streams are wildcarded by pod name. Bounded to the cluster pods log group and the mode-specific stream prefix (browser/*, tunnel/* or ssh/*).',
+          appliesTo: ['browser', 'tunnel', 'ssh'].map(
             (modeName) =>
               `Resource::arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${nagImportRef(cluster, 'ExportsOutputRefPodsLogGroup17520DC50F223430')}:log-stream:${modeName}/*`,
           ),
@@ -212,6 +223,52 @@ export class PodTaskFamilyStack extends Stack {
       readOnly: false,
     });
 
+    // ssh execution role: image pull and logs only. Deliberately separate
+    // from the shared role so the per-pod backend secrets #147 grants on
+    // /cloud-dev-pods/remote/pods/* never reach browser or tunnel pods.
+    // No Secrets Manager statements in this slice.
+    this.sshExecutionRole = new iam.Role(this, 'SshExecutionRole', {
+      roleName: 'CloudDevPodsSshTaskExecutionRole',
+      path: '/cloud-dev-pods/',
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: 'Pulls runtime images from ECR and writes pod logs for ssh-mode pods.',
+    });
+    this.sshExecutionRole.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+    );
+
+    // ssh: the tunnel image (sshd added by #181), single container, no ALB
+    // target. Placeholder revision like the others; pod-manager registers the
+    // real one per pod-up with port 2222, health check and env.
+    this.sshTaskDef = new ecs.FargateTaskDefinition(this, 'SshTaskDef', {
+      family: 'cloud-dev-pods-ssh',
+      cpu: config.pods.defaultCpu,
+      memoryLimitMiB: config.pods.defaultMemory,
+      executionRole: this.sshExecutionRole,
+      taskRole: this.sshTaskRole,
+      volumes: [efsVolume],
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.X86_64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+      },
+    });
+
+    const sshVscode = this.sshTaskDef.addContainer('vscode-ssh', {
+      containerName: 'vscode-ssh',
+      image: ecs.ContainerImage.fromEcrRepository(tunnelRepo, 'replaced-by-pod-manager'),
+      essential: true,
+      logging: ecs.LogDrivers.awsLogs({
+        logGroup: cluster.podsLogGroup,
+        streamPrefix: 'ssh/vscode-ssh',
+      }),
+      stopTimeout: Duration.seconds(30),
+    });
+    sshVscode.addMountPoints({
+      sourceVolume: 'workspace',
+      containerPath: '/workspace',
+      readOnly: false,
+    });
+
     new ssm.StringParameter(this, 'BrowserTaskDefArnParam', {
       parameterName: ssmParamPath(config, 'pod-task-family/browser-arn'),
       stringValue: this.browserTaskDef.taskDefinitionArn,
@@ -232,6 +289,18 @@ export class PodTaskFamilyStack extends Stack {
       parameterName: ssmParamPath(config, 'pod-task-family/execution-role-arn'),
       stringValue: this.executionRole.roleArn,
     });
+    new ssm.StringParameter(this, 'SshTaskDefArnParam', {
+      parameterName: ssmParamPath(config, 'pod-task-family/ssh-arn'),
+      stringValue: this.sshTaskDef.taskDefinitionArn,
+    });
+    new ssm.StringParameter(this, 'SshTaskRoleArnParam', {
+      parameterName: ssmParamPath(config, 'pod-task-family/ssh-task-role-arn'),
+      stringValue: this.sshTaskRole.roleArn,
+    });
+    new ssm.StringParameter(this, 'SshExecutionRoleArnParam', {
+      parameterName: ssmParamPath(config, 'pod-task-family/ssh-execution-role-arn'),
+      stringValue: this.sshExecutionRole.roleArn,
+    });
 
     acknowledgeNag(
       this.executionRole,
@@ -248,6 +317,29 @@ export class PodTaskFamilyStack extends Stack {
           id: 'AwsSolutions-IAM5',
           reason:
             'Wildcards come from the AWS-managed AmazonECSTaskExecutionRolePolicy and from Secrets Manager grants that key on /cloud-dev-pods/oauth/*. Both are required for ECS task launch.',
+          appliesTo: [
+            'Resource::*',
+            'Action::ecr:*',
+            'Action::logs:*',
+          ],
+        },
+      ],
+    );
+    acknowledgeNag(
+      this.sshExecutionRole,
+      [
+        {
+          id: 'AwsSolutions-IAM4',
+          reason:
+            'AmazonECSTaskExecutionRolePolicy is the AWS-recommended baseline for pulling images and writing logs. The ssh execution role carries nothing else in this slice.',
+          appliesTo: [
+            'Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason:
+            'Wildcards come from the AWS-managed AmazonECSTaskExecutionRolePolicy and the CDK image-pull grant (ecr:GetAuthorizationToken has no resource scope). Both are required for ECS task launch.',
           appliesTo: [
             'Resource::*',
             'Action::ecr:*',

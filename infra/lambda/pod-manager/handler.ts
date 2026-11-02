@@ -4,11 +4,16 @@
 import { z } from 'zod';
 import { podDown, podList, podStatus, podUp } from './actions';
 
+// One OpenSSH public key line (issue #145). It becomes the SSH_AUTHORIZED_KEYS
+// container env var, so no newlines and no spaces beyond the comment separator.
+export const SSH_PUBLIC_KEY_RE =
+  /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|ssh-rsa) [A-Za-z0-9+/]+={0,3}( [\x21-\x7e]{1,100})?$/;
+
 const PodEventSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('up'),
     podName: z.string().regex(/^[a-z0-9-]{1,30}$/),
-    mode: z.enum(['browser', 'tunnel']),
+    mode: z.enum(['browser', 'tunnel', 'ssh']),
     cpu: z.number().int().optional(),
     memory: z.number().int().optional(),
     imageTag: z.string().optional(),
@@ -18,6 +23,8 @@ const PodEventSchema = z.discriminatedUnion('action', [
     owner: z.string().regex(/^[\p{L}\p{N}+\-=._:/@]{1,256}$/u).optional(),
     // Per-pod override of auth.tunnel.provider; ignored for browser pods.
     tunnelProvider: z.enum(['github', 'microsoft']).optional(),
+    // Required for ssh pods, rejected for browser and tunnel (checked in podUp).
+    sshPublicKey: z.string().max(2048).regex(SSH_PUBLIC_KEY_RE).optional(),
   }),
   z.object({
     action: z.literal('down'),
@@ -40,6 +47,8 @@ export interface PodResult {
   url?: string;
   tunnelName?: string;
   tunnelProvider?: 'github' | 'microsoft';
+  // ssh pods: the config remote.backend the pod was launched with.
+  remoteBackend?: string;
   podName?: string;
   owner?: string;
   // Non-fatal notice for the caller, e.g. the tunnel cap warning.
