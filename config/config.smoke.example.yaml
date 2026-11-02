@@ -16,7 +16,10 @@ aws:
 github:
   org: foolswithtools
   repo: cloud-dev-pods
-  oauthAllowedUsers: foolswithtools-bot   # or a real user; tunnel mode doesn't use this
+
+auth:
+  browser:
+    allowedUsers: [foolswithtools-bot]   # or a real user; tunnel mode doesn't use this
 
 domain:
   strategy: alb-default

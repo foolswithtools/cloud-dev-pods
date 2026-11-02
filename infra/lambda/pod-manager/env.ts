@@ -44,6 +44,13 @@ export const env = {
   browserTaskRoleArn: req('BROWSER_TASK_ROLE_ARN'),
   tunnelTaskRoleArn: req('TUNNEL_TASK_ROLE_ARN'),
   executionRoleArn: req('EXECUTION_ROLE_ARN'),
+  // ssh mode (issue #145): own family, task role, and execution role, so
+  // per-pod backend secrets never reach the shared execution role.
+  sshTaskDefFamily: req('SSH_TASK_DEF_FAMILY'),
+  sshTaskRoleArn: req('SSH_TASK_ROLE_ARN'),
+  sshExecutionRoleArn: req('SSH_EXECUTION_ROLE_ARN'),
+  // config remote.backend; '' when unset (ssh pods then refuse to launch).
+  remoteBackend: oneOf('REMOTE_BACKEND', ['', 'ssm', 'cloudflare', 'tailscale'], ''),
   podsLogGroupName: req('PODS_LOG_GROUP_NAME'),
   vpcId: req('VPC_ID'),
   privateSubnetIds: req('PRIVATE_SUBNET_IDS').split(',').filter(Boolean),

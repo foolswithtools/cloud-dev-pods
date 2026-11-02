@@ -7,7 +7,7 @@
  * pretty-prints the response.
  *
  * Usage:
- *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>] [--owner <login-or-email>] [--tunnel-provider github|microsoft]
+ *   tsx scripts/pod-cli.ts up   --pod <name> --mode browser|tunnel|ssh [--cpu 1024] [--memory 2048] [--idle 60] [--image-tag <sha>] [--owner <login-or-email>] [--tunnel-provider github|microsoft] [--ssh-public-key <key>]
  *   tsx scripts/pod-cli.ts down --pod <name> [--keep-workspace]
  *   tsx scripts/pod-cli.ts list
  *   tsx scripts/pod-cli.ts status --pod <name>
@@ -16,6 +16,7 @@
  * has `lambda:InvokeFunction` on `pod-manager` (ADR 0003).
  */
 
+import { fileURLToPath } from 'node:url';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
 interface CliArgs {
@@ -23,7 +24,7 @@ interface CliArgs {
   flags: Map<string, string | true>;
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const [action = '', ...rest] = argv;
   const flags = new Map<string, string | true>();
   for (let i = 0; i < rest.length; i++) {
@@ -41,7 +42,7 @@ function parseArgs(argv: string[]): CliArgs {
   return { action, flags };
 }
 
-function buildEvent(action: string, flags: Map<string, string | true>): Record<string, unknown> {
+export function buildEvent(action: string, flags: Map<string, string | true>): Record<string, unknown> {
   const get = (key: string) => flags.get(key);
   const getStr = (key: string) => {
     const v = get(key);
@@ -64,6 +65,8 @@ function buildEvent(action: string, flags: Map<string, string | true>): Record<s
         idleMinutes: getNum('idle'),
         owner: getStr('owner') ?? process.env.GITHUB_ACTOR,
         tunnelProvider: getStr('tunnel-provider'),
+        // ssh mode only; the Lambda validates the key and the mode pairing.
+        sshPublicKey: getStr('ssh-public-key'),
       };
     case 'down':
       return {
@@ -120,7 +123,18 @@ async function main() {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+// Only run main() when invoked as a CLI (not when imported by tests).
+function isInvokedAsCli(): boolean {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsCli()) {
+  main().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}

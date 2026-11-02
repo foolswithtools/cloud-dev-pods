@@ -146,6 +146,48 @@ describe('auth config resolution', () => {
   });
 });
 
+// remote block (issue #145): every backend stays rejected until its issue lands.
+describe('remote config block', () => {
+  function withRemote(remote: unknown) {
+    return { ...baseConfig({ auth: { browser: { allowedOrg: 'acme' } } }), remote };
+  }
+
+  it('config without remote resolves with config.remote nullish', () => {
+    const { config } = resolveConfig(baseConfig({ auth: { browser: { allowedOrg: 'acme' } } }));
+    expect(config.remote ?? null).toBeNull();
+  });
+
+  it('a bare `remote:` key (YAML null) resolves with config.remote nullish', () => {
+    const { config } = resolveConfig(withRemote(null));
+    expect(config.remote ?? null).toBeNull();
+  });
+
+  it.each([
+    ['ssm', '#146'],
+    ['cloudflare', '#147'],
+    ['tailscale', '#148'],
+  ])('rejects remote.backend "%s" with a message naming %s', (backend, issue) => {
+    let issues: Array<{ path: unknown[]; message: string }> = [];
+    try {
+      resolveConfig(withRemote({ backend }));
+    } catch (err) {
+      issues = (err as { issues: typeof issues }).issues;
+    }
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.path).toEqual(['remote', 'backend']);
+    expect(issues[0]!.message).toMatch(new RegExp(`^remote\\.backend "${backend}" is not supported yet; it lands with`));
+    expect(issues[0]!.message).toContain(issue);
+  });
+
+  it('rejects an unknown backend through the enum', () => {
+    expect(() => resolveConfig(withRemote({ backend: 'wireguard' }))).toThrow(/backend/);
+  });
+
+  it('remote block present without a backend is rejected (no default)', () => {
+    expect(() => resolveConfig(withRemote({}))).toThrow(/backend/);
+  });
+});
+
 describe('PodManager Lambda auth environment', () => {
   it('a legacy-only config yields the resolved auth.browser values', () => {
     const { config } = resolveConfig(
@@ -202,6 +244,9 @@ describe('pod-manager env.ts auth parsing', () => {
     TUNNEL_TASK_DEF_FAMILY: 't',
     BROWSER_TASK_ROLE_ARN: 'r',
     TUNNEL_TASK_ROLE_ARN: 'r',
+    SSH_TASK_DEF_FAMILY: 's',
+    SSH_TASK_ROLE_ARN: 'r',
+    SSH_EXECUTION_ROLE_ARN: 'r',
     EXECUTION_ROLE_ARN: 'r',
     PODS_LOG_GROUP_NAME: 'l',
     VPC_ID: 'v',

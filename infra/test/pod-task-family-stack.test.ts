@@ -65,3 +65,84 @@ describe('PodTaskFamilyStack', () => {
 
   it.todo('mounts EFS at /workspace via per-pod access point');
 });
+
+// ssh mode (issue #145): separate task and execution roles so per-pod
+// backend secrets (#147) never touch the shared execution role.
+describe('PodTaskFamilyStack ssh roles and family', () => {
+  type Res = { Type: string; Properties: Record<string, unknown> };
+  const roleId = (name: string): string => {
+    const roles = template.findResources('AWS::IAM::Role', { Properties: { RoleName: name } });
+    const ids = Object.keys(roles);
+    expect(ids, `role ${name}`).toHaveLength(1);
+    return ids[0]!;
+  };
+  // AWS::IAM::Policy resources whose Roles list references the logical ID.
+  const policiesFor = (logicalId: string): Res[] =>
+    Object.values(template.findResources('AWS::IAM::Policy') as Record<string, Res>).filter((p) =>
+      JSON.stringify(p.Properties.Roles).includes(`"${logicalId}"`),
+    );
+
+  it('CloudDevPodsSshTaskRole: only inline policy is the ssh/* log-stream statement', () => {
+    const id = roleId('CloudDevPodsSshTaskRole');
+    const role = template.toJSON().Resources[id] as Res;
+    expect(role.Properties.ManagedPolicyArns).toBeUndefined();
+    const inline = role.Properties.Policies as Array<{ PolicyDocument: { Statement: Array<Record<string, unknown>> } }>;
+    expect(inline).toHaveLength(1);
+    const stmts = inline[0]!.PolicyDocument.Statement;
+    expect(stmts).toHaveLength(1);
+    expect(stmts[0]!.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
+    expect(JSON.stringify(stmts[0]!.Resource)).toMatch(/:log-stream:ssh\/\*"/);
+    expect(policiesFor(id)).toEqual([]);
+  });
+
+  it('CloudDevPodsSshTaskExecutionRole: ECS managed policy and no secretsmanager actions', () => {
+    const id = roleId('CloudDevPodsSshTaskExecutionRole');
+    const role = template.toJSON().Resources[id] as Res;
+    expect(role.Properties.Path).toBe('/cloud-dev-pods/');
+    expect(JSON.stringify(role.Properties.AssumeRolePolicyDocument)).toContain('ecs-tasks.amazonaws.com');
+    expect(JSON.stringify(role.Properties.ManagedPolicyArns)).toContain(
+      'service-role/AmazonECSTaskExecutionRolePolicy',
+    );
+    expect(JSON.stringify(role.Properties.Policies ?? [])).not.toContain('secretsmanager:');
+    for (const p of policiesFor(id)) {
+      expect(JSON.stringify(p.Properties.PolicyDocument)).not.toContain('secretsmanager:');
+    }
+  });
+
+  it('shared CloudDevPodsTaskExecutionRole policy still reads exactly the three oauth secrets', () => {
+    const id = roleId('CloudDevPodsTaskExecutionRole');
+    const policies = policiesFor(id);
+    const smStatements = policies.flatMap((p) =>
+      (p.Properties.PolicyDocument as { Statement: Array<{ Action: unknown; Resource: unknown }> }).Statement,
+    ).filter((s) => JSON.stringify(s.Action).includes('secretsmanager:'));
+    const resources = JSON.stringify(smStatements.map((s) => s.Resource));
+    for (const name of ['client-id', 'client-secret', 'cookie-secret']) {
+      expect(resources).toContain(`/cloud-dev-pods/oauth/${name}`);
+    }
+    // Nothing from Secrets Manager outside /cloud-dev-pods/oauth/.
+    const secretPaths = resources.match(/secret:[^"]+/g) ?? [];
+    expect(secretPaths).toHaveLength(3);
+    for (const p of secretPaths) expect(p).toMatch(/^secret:\/cloud-dev-pods\/oauth\/(client-id|client-secret|cookie-secret)-\?{6}$/);
+  });
+
+  it('registers cloud-dev-pods-ssh family with a single vscode-ssh container on the ssh roles', () => {
+    const defs = template.findResources('AWS::ECS::TaskDefinition', {
+      Properties: { Family: 'cloud-dev-pods-ssh' },
+    });
+    const [td] = Object.values(defs) as Res[];
+    expect(td).toBeDefined();
+    const containers = td!.Properties.ContainerDefinitions as Array<{ Name: string; Image: unknown }>;
+    expect(containers.map((c) => c.Name)).toEqual(['vscode-ssh']);
+    expect(JSON.stringify(containers[0]!.Image)).toContain('cloud-dev-pods/vscode-tunnel');
+    expect(JSON.stringify(td!.Properties.TaskRoleArn)).toContain(roleId('CloudDevPodsSshTaskRole'));
+    expect(JSON.stringify(td!.Properties.ExecutionRoleArn)).toContain(roleId('CloudDevPodsSshTaskExecutionRole'));
+  });
+
+  it('exports the ssh family and role ARNs as SSM params', () => {
+    for (const suffix of ['ssh-arn', 'ssh-task-role-arn', 'ssh-execution-role-arn']) {
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: Match.stringLikeRegexp(`pod-task-family/${suffix}$`),
+      });
+    }
+  });
+});

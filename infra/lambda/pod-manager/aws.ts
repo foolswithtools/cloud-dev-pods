@@ -70,9 +70,11 @@ export async function resolveSecretArn(secretName: string): Promise<string> {
 
 // ---- Registry (DynamoDB) ----
 
+export type PodMode = 'browser' | 'tunnel' | 'ssh';
+
 export interface PodRecord {
   podName: string;
-  mode: 'browser' | 'tunnel';
+  mode: PodMode;
   taskArn?: string;
   taskDefArn: string;
   accessPointId: string;
@@ -85,6 +87,8 @@ export interface PodRecord {
   idleMinutes: number;
   url?: string;
   imageTag: string;
+  // ssh pods only: the public key installed as SSH_AUTHORIZED_KEYS.
+  sshPublicKey?: string;
 }
 
 export async function registryGet(podName: string): Promise<PodRecord | undefined> {
@@ -257,15 +261,24 @@ export interface TaskDefArgs {
   podName: string;
   cpu: string;
   memory: string;
-  mode: 'browser' | 'tunnel';
+  mode: PodMode;
   // Tunnel login account type; the entrypoint defaults to github when unset.
   tunnelProvider?: 'github' | 'microsoft';
+  // ssh pods only: validated OpenSSH public key line (handler.ts).
+  sshPublicKey?: string;
   // Pod owner identity; only read when auth.browser.ownerOnly is true.
   owner: string;
 }
 
 export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
-  const taskRoleArn = args.mode === 'browser' ? env.browserTaskRoleArn : env.tunnelTaskRoleArn;
+  const taskRoleArn = {
+    browser: env.browserTaskRoleArn,
+    tunnel: env.tunnelTaskRoleArn,
+    ssh: env.sshTaskRoleArn,
+  }[args.mode];
+  // ssh pods get their own execution role so per-pod backend secrets (#147)
+  // never reach the shared role that browser and tunnel pods use.
+  const executionRoleArn = args.mode === 'ssh' ? env.sshExecutionRoleArn : env.executionRoleArn;
 
   const containerDefs: ContainerDefinition[] = [];
   const extraVolumes: Volume[] = [];
@@ -309,6 +322,31 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
     );
     containerDefs.push(...authParts.containers);
     extraVolumes.push(...authParts.volumes);
+  } else if (args.mode === 'ssh') {
+    // Container contract shared with the runtime image (#181): name, port,
+    // log prefix and env names must change on both sides together. The log
+    // prefix must match the ssh task role's `ssh/*` log-stream policy.
+    if (!args.sshPublicKey) throw new Error('ssh task definition needs sshPublicKey');
+    containerDefs.push({
+      name: 'vscode-ssh',
+      image: args.imageUri,
+      essential: true,
+      portMappings: [{ containerPort: 2222, protocol: 'tcp' }],
+      mountPoints: [{ sourceVolume: 'workspace', containerPath: '/workspace', readOnly: false }],
+      logConfiguration: logConfig(`ssh/${args.podName}/vscode-ssh`),
+      // ECS ignores the Dockerfile HEALTHCHECK; only this one counts.
+      healthCheck: {
+        command: ['CMD-SHELL', 'pgrep -x sshd >/dev/null || exit 1'],
+        interval: 30, timeout: 5, retries: 3, startPeriod: 30,
+      },
+      stopTimeout: 30,
+      environment: [
+        { name: 'POD_NAME', value: args.podName },
+        { name: 'POD_MODE', value: 'ssh' },
+        { name: 'REMOTE_BACKEND', value: env.remoteBackend },
+        { name: 'SSH_AUTHORIZED_KEYS', value: args.sshPublicKey },
+      ],
+    });
   } else {
     containerDefs.push({
       name: 'vscode-tunnel',
@@ -332,7 +370,7 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
     networkMode: 'awsvpc',
     requiresCompatibilities: ['FARGATE'],
     runtimePlatform: { cpuArchitecture: 'X86_64', operatingSystemFamily: 'LINUX' },
-    executionRoleArn: env.executionRoleArn,
+    executionRoleArn,
     taskRoleArn,
     volumes: [{
       name: 'workspace',

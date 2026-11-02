@@ -29,8 +29,10 @@ aws:
 github:
   org: <your-github-login-or-org>
   repo: cloud-dev-pods
-  oauthAllowedUsers: <your-github-login>   # solo
-  # OR oauthAllowedOrg: <your-org>          # team
+auth:
+  browser:
+    allowedUsers: [<your-github-login>]   # solo
+    # OR allowedOrg: <your-org>           # team
 domain:
   strategy: byo                              # use "alb-default" for tunnel-only
   baseDomain: pods.<your-domain>

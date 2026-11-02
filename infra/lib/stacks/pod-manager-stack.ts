@@ -81,6 +81,11 @@ export class PodManagerStack extends Stack {
         BROWSER_TASK_ROLE_ARN: taskFamily.browserTaskRole.roleArn,
         TUNNEL_TASK_ROLE_ARN: taskFamily.tunnelTaskRole.roleArn,
         EXECUTION_ROLE_ARN: taskFamily.executionRole.roleArn,
+        SSH_TASK_DEF_FAMILY: taskFamily.sshTaskDef.family,
+        SSH_TASK_ROLE_ARN: taskFamily.sshTaskRole.roleArn,
+        SSH_EXECUTION_ROLE_ARN: taskFamily.sshExecutionRole.roleArn,
+        // ssh-mode transport; '' makes ssh pods refuse to launch (issue #145).
+        REMOTE_BACKEND: config.remote?.backend ?? '',
         PODS_LOG_GROUP_NAME: cluster.podsLogGroup.logGroupName,
         VPC_ID: network.vpc.vpcId,
         PRIVATE_SUBNET_IDS: network.vpc.privateSubnets.map((s) => s.subnetId).join(','),
@@ -167,6 +172,8 @@ export class PodManagerStack extends Stack {
           taskFamily.executionRole.roleArn,
           taskFamily.browserTaskRole.roleArn,
           taskFamily.tunnelTaskRole.roleArn,
+          taskFamily.sshTaskRole.roleArn,
+          taskFamily.sshExecutionRole.roleArn,
         ],
         conditions: {
           StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' },

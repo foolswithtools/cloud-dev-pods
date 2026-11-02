@@ -97,6 +97,33 @@ export const AuthTunnelSchema = z.object({
 export type AuthBrowser = z.infer<typeof AuthBrowserSchema>;
 export type AuthTunnel = z.infer<typeof AuthTunnelSchema>;
 
+// Transport and identity for ssh-mode pods (issue #145). Each backend issue
+// adds its keys to its own sub-object and deletes its value from the
+// rejection below: #146 ssm, #147 cloudflare, #148 tailscale.
+export const REMOTE_BACKENDS = ['ssm', 'cloudflare', 'tailscale'] as const;
+export type RemoteBackend = (typeof REMOTE_BACKENDS)[number];
+// Backends with no runtime support yet. Each backend issue deletes its value.
+const UNSUPPORTED_REMOTE_BACKENDS: readonly RemoteBackend[] = ['ssm', 'cloudflare', 'tailscale'];
+
+export const RemoteSchema = z
+  .object({
+    backend: z.enum(REMOTE_BACKENDS),
+    ssm: z.object({}).optional(),
+    cloudflare: z.object({}).optional(),
+    tailscale: z.object({}).optional(),
+  })
+  .superRefine((r, ctx) => {
+    if (UNSUPPORTED_REMOTE_BACKENDS.includes(r.backend)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['backend'],
+        message: `remote.backend "${r.backend}" is not supported yet; it lands with #146 (ssm), #147 (cloudflare) or #148 (tailscale).`,
+      });
+    }
+  });
+
+export type Remote = z.infer<typeof RemoteSchema>;
+
 export const ConfigSchema = z.object({
   project: z.object({
     name: z.string().default('cloud-dev-pods'),
@@ -123,6 +150,9 @@ export const ConfigSchema = z.object({
       tunnel: AuthTunnelSchema.nullish(),
     })
     .nullish(),
+  // ssh-mode transport (issue #145). nullish like `auth`: a bare `remote:`
+  // key parses as null. Pods in ssh mode refuse to launch without it.
+  remote: RemoteSchema.nullish(),
   domain: z.object({
     strategy: z.enum(['byo', 'alb-default']).default('alb-default'),
     baseDomain: z.string().optional(),
