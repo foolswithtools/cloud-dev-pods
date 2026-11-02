@@ -1,5 +1,7 @@
 # Tunnel-mode pod runtime: VS Code CLI dialing out to Microsoft's tunnel broker.
 # No inbound port; auth via device-code flow surfaced through CloudWatch Logs.
+# The same image serves ssh-mode pods (POD_MODE=ssh): the entrypoint starts a
+# non-root sshd on 2222 instead of `code tunnel`. See entrypoint.sh.
 
 FROM ubuntu:26.04
 
@@ -17,8 +19,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       curl ca-certificates tar git bash sudo \
       python3 nodejs npm \
-      procps \
- && rm -rf /var/lib/apt/lists/*
+      procps openssh-server \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -f /etc/ssh/ssh_host_* \
+ && mkdir -p /run/sshd
 
 RUN useradd -ms /bin/bash vscode \
  && echo 'vscode ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
@@ -39,6 +43,15 @@ ENV PATH=/opt/vscode-cli:$PATH
 COPY entrypoint.sh /usr/local/bin/cloud-dev-pods-entrypoint
 RUN chmod +x /usr/local/bin/cloud-dev-pods-entrypoint
 
+# ssh-mode sshd config. The package's install-time host keys were deleted
+# above so no private key ships in the image; each pod gets its own key.
+# Modes are set by RUN, not COPY --chmod, which would also apply 0644 to the
+# directory it creates and make it untraversable for vscode.
+COPY sshd_config /etc/ssh/cloud-dev-pods/sshd_config
+RUN chown -R root:root /etc/ssh/cloud-dev-pods \
+ && chmod 0755 /etc/ssh/cloud-dev-pods \
+ && chmod 0644 /etc/ssh/cloud-dev-pods/sshd_config
+
 LABEL org.opencontainers.image.source="https://github.com/foolswithtools/cloud-dev-pods"
 LABEL org.opencontainers.image.description="VS Code (remote tunnel) cloud-dev-pods runtime image"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
@@ -46,8 +59,10 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 USER vscode
 WORKDIR /workspace
 
-# Tunnel mode has no inbound port. Healthcheck just verifies the agent is alive.
+# Healthcheck just verifies the mode's agent is alive: sshd in ssh mode, the
+# VS Code CLI otherwise. ECS ignores this (the task definition carries its own
+# check); it keeps local `docker run` health honest.
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
-  CMD pgrep -x code >/dev/null || exit 1
+  CMD if [ "${POD_MODE:-}" = ssh ]; then pgrep -x sshd; else pgrep -x code; fi >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/cloud-dev-pods-entrypoint"]

@@ -1,0 +1,27 @@
+# sshd config for ssh-mode pods (POD_MODE=ssh). The entrypoint starts sshd as
+# the unprivileged `vscode` user, so nothing here may need root:
+#   - Port 2222: a non-root process can't bind ports below 1024.
+#   - Host key and pid file live under /home/vscode, which vscode owns. The
+#     entrypoint copies the host key there from the pod's EFS workspace
+#     (/workspace/.cloud-dev-pods/ssh/), because sshd refuses a host key that
+#     the running uid doesn't own, and EFS files show the access point's uid.
+#   - UsePAM no: PAM session setup needs root.
+# A non-root sshd can only authenticate the user it runs as. AllowUsers and
+# PermitRootLogin restate that so `sshd -T` can assert it.
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /home/vscode/.ssh/sshd/ssh_host_ed25519_key
+PidFile /home/vscode/.ssh/sshd/sshd.pid
+AuthorizedKeysFile /home/vscode/.ssh/authorized_keys
+AllowUsers vscode
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+StrictModes yes
+# VS Code Remote-SSH forwards a local port to the server it starts in the pod.
+AllowTcpForwarding local
+X11Forwarding no
+PrintMotd no
+Subsystem sftp internal-sftp
