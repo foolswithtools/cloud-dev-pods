@@ -72,6 +72,20 @@ domain:
   hostedZoneId: Z01234567ABCDEFGHIJK
 ```
 
+### Generate it with `npm run init`
+
+`npm run init` (`scripts/init-clone.ts`) writes this file for you. It prompts, in order, for: AWS account ID and region, GitHub owner and repo, the browser sign-in provider (`github` or `entra-id`), the domain strategy (skipped for `entra-id`, which needs `byo`) and hosted zone, the provider's sign-in restriction (GitHub users and/or org, or the Entra tenant ID and optional group IDs), `ownerOnly`, the tunnel provider (`github` or `microsoft`), VPC CIDR, pod size and idle minutes. It then pushes the repo Variables and offers to create the bootstrap IAM user; skip those with `--no-push` and `--no-iam`.
+
+For scripts and CI, `--non-interactive` takes every answer from flags, writes only the config file (`--out`, default `config/config.yaml`; add `--force` to overwrite), and runs no `gh`, `aws` or `git` command:
+
+```bash
+npm run init -- --non-interactive \
+  --aws-account-id 111122223333 --github-owner clostaunau --github-repo cloud-dev-pods \
+  --allowed-users clostaunau
+```
+
+Other flags: `--aws-region`, `--browser-provider`, `--domain-strategy`, `--hosted-zone-id` and `--base-domain` (both required with `byo`), `--allowed-org`, `--entra-tenant-id` (required with `entra-id`), `--entra-groups`, `--owner-only`, `--tunnel-provider`, `--vpc-cidr`, `--pod-size` and `--idle-minutes`. It exits `2`, writing nothing, on a missing or invalid flag.
+
 Then:
 
 ```bash
