@@ -12,6 +12,11 @@
  * arguments. When `$GITHUB_STEP_SUMMARY` is set, the outcome is appended to
  * it either way.
  *
+ * Exit 0 alone is not proof: if `main()` never runs (the `isInvokedAsCli`
+ * class of bug, #194), the process also exits 0. So on `proceed: true`, and
+ * only then, it appends `proceed=true` to `$GITHUB_OUTPUT`. `cluster-down.yml`
+ * gates `cdk destroy` on that output and fails the job without it (#211).
+ *
  * Draining only ever calls the pod-manager Lambda's `down` action: the
  * Lambda owns the ALB rule and EFS access-point cleanup (CLAUDE.md hard
  * rule 2), so this never stops ECS tasks itself.
@@ -178,6 +183,16 @@ function writeStepSummary(result: DrainResult): void {
   appendFileSync(path, lines.join('\n'));
 }
 
+/**
+ * Appends `proceed=true` to the step-output file (`$GITHUB_OUTPUT` by
+ * default) when the drain decided to proceed. Writes nothing otherwise, so a
+ * missing marker always means "do not destroy".
+ */
+export function writeProceedOutput(result: DrainResult, outputPath: string | undefined = process.env.GITHUB_OUTPUT): void {
+  if (!result.proceed || !outputPath) return;
+  appendFileSync(outputPath, 'proceed=true\n');
+}
+
 async function main() {
   // Arguments are parsed before anything touches AWS.
   const parsed = parseDrainArgs(process.argv.slice(2));
@@ -194,6 +209,7 @@ async function main() {
   });
   writeStepSummary(result);
   if (result.proceed) {
+    writeProceedOutput(result);
     console.log(result.reason);
   } else {
     // Workflow commands are one line: escape so a multi-line Lambda error stays in the annotation.

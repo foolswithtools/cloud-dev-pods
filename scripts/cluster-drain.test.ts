@@ -1,7 +1,11 @@
-import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { drainForClusterDown } from './cluster-drain.js';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { drainForClusterDown, writeProceedOutput, type DrainResult } from './cluster-drain.js';
 import type { InvokeOutcome } from './pod-cli.js';
 
 // A fake pod-manager invoke: answers each call from a scripted queue and
@@ -163,5 +167,114 @@ describe('cluster-drain CLI', () => {
     expect(r.stderr).toContain('Usage: cluster-drain [--force]');
     expect(r.stderr).toContain('--bogus');
     expect(r.stdout).toBe('');
+  });
+});
+
+describe('writeProceedOutput', () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'drain-output-')));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const result = (proceed: boolean): DrainResult => ({ proceed, reason: 'r', podNames: [] });
+
+  it('writes proceed=true when the drain decided to proceed', () => {
+    const out = join(dir, 'proceed');
+    writeProceedOutput(result(true), out);
+    expect(readFileSync(out, 'utf8')).toBe('proceed=true\n');
+  });
+
+  it('writes nothing when the drain refused', () => {
+    const out = join(dir, 'refused');
+    writeProceedOutput(result(false), out);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('does nothing when no output path is set', () => {
+    expect(() => writeProceedOutput(result(true), undefined)).not.toThrow();
+  });
+});
+
+// End-to-end: run the real script through a symlinked repo root (the #194
+// shape) against a fake pod-manager Lambda on localhost. Nothing reaches AWS.
+describe('cluster-drain CLI proceed marker (symlinked path, fake Lambda)', () => {
+  const repoRoot = resolve(import.meta.dirname, '..');
+  let tmp: string;
+  let linkRoot: string;
+  let server: Server;
+  let port: number;
+  let listPayload: unknown;
+
+  beforeAll(async () => {
+    tmp = realpathSync(mkdtempSync(join(tmpdir(), 'drain-cli-')));
+    linkRoot = join(tmp, 'repo');
+    symlinkSync(repoRoot, linkRoot, 'dir');
+    // Every Invoke gets the current list payload; the SDK reads the body as the Lambda Payload.
+    server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(listPayload));
+      });
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    // Unlink the repo-root symlink before removing the dir, so rmSync can never recurse into the checkout.
+    try {
+      unlinkSync(linkRoot);
+    } catch {
+      // already gone
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    await new Promise<void>((done) => server.close(() => done()));
+  });
+
+  // Async spawn (not spawnSync): the fake Lambda lives in this process's event loop.
+  function runCli(outputFile: string): Promise<{ status: number | null; stdout: string; stderr: string }> {
+    const tsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
+    return new Promise((done, fail) => {
+      const child = spawn(tsx, [join(linkRoot, 'scripts', 'cluster-drain.ts')], {
+        env: {
+          PATH: process.env.PATH,
+          AWS_REGION: 'us-west-2',
+          AWS_ENDPOINT_URL_LAMBDA: `http://127.0.0.1:${port}`,
+          AWS_ACCESS_KEY_ID: 'test',
+          AWS_SECRET_ACCESS_KEY: 'test',
+          AWS_EC2_METADATA_DISABLED: 'true',
+          GITHUB_OUTPUT: outputFile,
+        },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
+      child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+      child.on('error', fail);
+      child.on('close', (status) => done({ status, stdout, stderr }));
+    });
+  }
+
+  it('writes proceed=true to $GITHUB_OUTPUT when no pods are registered', { timeout: 60_000 }, async () => {
+    listPayload = { ok: true, status: 'ok', pods: [] };
+    const out = join(tmp, 'output-proceed');
+    const r = await runCli(out);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('No pods registered');
+    expect(readFileSync(out, 'utf8')).toBe('proceed=true\n');
+  });
+
+  it('writes no marker when a pod is registered and force is off', { timeout: 60_000 }, async () => {
+    listPayload = { ok: true, status: 'ok', pods: [{ podName: 'alpha', mode: 'tunnel' }] };
+    const out = join(tmp, 'output-refused');
+    const r = await runCli(out);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('alpha');
+    expect(existsSync(out) ? readFileSync(out, 'utf8') : '').not.toContain('proceed');
   });
 });
