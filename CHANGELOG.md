@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.4](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.3...v0.4.4) (2026-11-02)
+
+
+### Bug Fixes
+
+* **cluster-down:** fail closed when the pod pre-flight list fails or a forced drain leaves pods ([#210](https://github.com/foolswithtools/cloud-dev-pods/issues/210)) ([716dfbf](https://github.com/foolswithtools/cloud-dev-pods/commit/716dfbf4b7534d6b6eefdd72521509e312f60882)), closes [#209](https://github.com/foolswithtools/cloud-dev-pods/issues/209)
+* **cluster-down:** require positive proof from cluster-drain before cdk destroy ([#213](https://github.com/foolswithtools/cloud-dev-pods/issues/213)) ([8357466](https://github.com/foolswithtools/cloud-dev-pods/commit/83574663a7d7fbaa0eae7a5ccd9c507419a7be8f)), closes [#211](https://github.com/foolswithtools/cloud-dev-pods/issues/211)
+* **scripts:** resolve symlinks in the isInvokedAsCli guard so main() runs from a symlinked path ([#207](https://github.com/foolswithtools/cloud-dev-pods/issues/207)) ([424f3a6](https://github.com/foolswithtools/cloud-dev-pods/commit/424f3a690c23b77296a418968add1ac4a29d6890)), closes [#194](https://github.com/foolswithtools/cloud-dev-pods/issues/194)
+* **smoke-test:** drain pods via cluster-drain.ts before cdk destroy ([#214](https://github.com/foolswithtools/cloud-dev-pods/issues/214)) ([04bb260](https://github.com/foolswithtools/cloud-dev-pods/commit/04bb260484a9fb4a6796d9325000437faaf69fb0)), closes [#212](https://github.com/foolswithtools/cloud-dev-pods/issues/212)
+
 ## [0.4.3](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.2...v0.4.3) (2026-11-02)
 
 
