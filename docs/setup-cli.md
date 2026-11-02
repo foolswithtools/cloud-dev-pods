@@ -61,7 +61,7 @@ pods: { defaultCpu: 1024, defaultMemory: 2048, spotPercentage: 100, idleMinutes:
 naming: { prefix: CloudDevPods }
 ```
 
-`auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); `provider: github` (the default) and `provider: entra-id` (see [`setup-entra.md`](setup-entra.md)) are supported. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
+`auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); `provider: github` (the default), `provider: entra-id` (see [`setup-entra.md`](setup-entra.md)) and `provider: oidc` (any other OpenID Connect IdP; see the commented `oidc` block in [`config/config.example.yaml`](../config/config.example.yaml)) are supported. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
 
 Not sure which provider or tunnel account to use? See [Choosing sign-in and access](choosing-auth-and-access.md).
 
@@ -76,7 +76,7 @@ domain:
 
 ### Generate it with `npm run init`
 
-`npm run init` (`scripts/init-clone.ts`) writes this file for you. It prompts, in order, for: AWS account ID and region, GitHub owner and repo, the browser sign-in provider (`github` or `entra-id`), the domain strategy (skipped for `entra-id`, which needs `byo`) and hosted zone, the provider's sign-in restriction (GitHub users and/or org, or the Entra tenant ID and optional group IDs), `ownerOnly`, the tunnel provider (`github` or `microsoft`), VPC CIDR, pod size and idle minutes. It then pushes the repo Variables and offers to create the bootstrap IAM user; skip those with `--no-push` and `--no-iam`.
+`npm run init` (`scripts/init-clone.ts`) writes this file for you. It prompts, in order, for: AWS account ID and region, GitHub owner and repo, the browser sign-in provider (`github` or `entra-id`), the domain strategy (skipped for `entra-id`, which needs `byo`) and hosted zone, the provider's sign-in restriction (GitHub users and/or org, or the Entra tenant ID and optional group IDs), `ownerOnly`, the tunnel provider (`github` or `microsoft`), VPC CIDR, pod size and idle minutes. It then pushes the repo Variables and offers to create the bootstrap IAM user; skip those with `--no-push` and `--no-iam`. Init prompts only for `github` and `entra-id`; to use `oidc`, edit `config/config.yaml` by hand afterwards.
 
 For scripts and CI, `--non-interactive` takes every answer from flags, writes only the config file (`--out`, default `config/config.yaml`; add `--force` to overwrite), and runs no `gh`, `aws` or `git` command:
 
