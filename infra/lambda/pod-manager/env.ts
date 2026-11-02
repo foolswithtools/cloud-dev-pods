@@ -30,6 +30,21 @@ function oneOf<T extends string>(name: string, allowed: readonly T[], fallback: 
   return v as T;
 }
 
+// '' (or unset) means "not configured"; kept apart from an explicit value.
+function optionalString(name: string): string | undefined {
+  return process.env[name] || undefined;
+}
+
+// 'true' / 'false' / '' -> true / false / undefined. Unlike `=== 'true'`,
+// this keeps "unset" distinct from an explicit false.
+function optionalBool(name: string): boolean | undefined {
+  const v = process.env[name] ?? '';
+  if (v === '') return undefined;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  throw new Error(`Env var ${name} must be "true", "false", or empty; got "${v}"`);
+}
+
 export const env = {
   region: process.env.AWS_REGION ?? 'us-west-2',
   accountId: req('AWS_ACCOUNT_ID'),
@@ -61,9 +76,9 @@ export const env = {
   tunnelRepoUri: req('TUNNEL_REPO_URI'),
   browserRepoName: req('BROWSER_REPO_NAME'),
   tunnelRepoName: req('TUNNEL_REPO_NAME'),
-  // Resolved provider-neutral auth config (ADR 0008). Providers "github" and
-  // "entra-id" are wired at runtime so far. Both the oauth2-proxy sidecar builder and the
-  // browser auth guard (auth-guard.ts) read this.
+  // Resolved provider-neutral auth config (ADR 0008). Providers "github",
+  // "entra-id" and "oidc" are wired at runtime. Both the oauth2-proxy sidecar
+  // builder and the browser auth guard (auth-guard.ts) read this.
   auth: {
     browser: {
       provider: oneOf('AUTH_BROWSER_PROVIDER', ['github', 'entra-id', 'oidc'], 'github'),
@@ -76,9 +91,18 @@ export const env = {
       ownerOnly: process.env.AUTH_BROWSER_OWNER_ONLY === 'true',
       adminUsers: jsonList('AUTH_BROWSER_ADMIN_USERS'),
       entraGroupOverage: process.env.AUTH_BROWSER_ENTRA_GROUP_OVERAGE === 'true',
+      // oidc only; undefined when unset (the sidecar builder applies defaults).
+      scope: optionalString('AUTH_BROWSER_SCOPE'),
+      groupsClaim: optionalString('AUTH_BROWSER_GROUPS_CLAIM'),
+      insecureAllowUnverifiedEmail: optionalBool('AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL'),
     },
     tunnel: {
       provider: oneOf('AUTH_TUNNEL_PROVIDER', ['github', 'microsoft'], 'github'),
     },
   },
 };
+
+// ADR 0009 / #191: 'true' when auth.browser.centralAuthHost is on (#144 sets
+// it from CDK). pod-up then refuses to reuse a retained workspace whose
+// recorded owner differs or is missing. Unset or any other value: off.
+export const centralAuthHostEnabled = process.env.AUTH_BROWSER_CENTRAL_AUTH_HOST === 'true';

@@ -63,6 +63,8 @@ naming: { prefix: CloudDevPods }
 
 `auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); `provider: github` (the default) and `provider: entra-id` (see [`setup-entra.md`](setup-entra.md)) are supported. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
 
+Not sure which provider or tunnel account to use? See [Choosing sign-in and access](choosing-auth-and-access.md).
+
 Browser mode adds:
 
 ```yaml
