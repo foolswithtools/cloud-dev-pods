@@ -7,7 +7,7 @@
 
 project:
   name: cloud-dev-pods
-  env: smoke
+  env: dev   # a smoke fork is its own account; workflows hardcode /cloud-dev-pods/dev/ paths
 
 aws:
   accountId: "<sandbox-account-id>"
