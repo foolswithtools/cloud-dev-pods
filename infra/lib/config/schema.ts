@@ -22,7 +22,7 @@ export const AuthBrowserSchema = z
     entraGroupOverage: z.boolean().default(false),
     // oidc only. No schema defaults: the builder applies them, so "unset"
     // stays distinguishable from an explicit value (#138 relies on this).
-    scope: z.string().optional(),
+    scope: z.string().min(1).optional(),
     groupsClaim: z.string().optional(),
     insecureAllowUnverifiedEmail: z.boolean().optional(),
   })
@@ -38,21 +38,15 @@ export const AuthBrowserSchema = z
         }
       }
     }
-    if (b.provider === 'oidc') {
-      refineOidc(b, ctx);
-      return;
+    if (b.provider !== 'entra-id' && b.entraGroupOverage) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['entraGroupOverage'],
+        message: 'auth.browser.entraGroupOverage only applies to provider "entra-id".',
+      });
     }
-    if (b.provider !== 'entra-id') {
-      if (b.entraGroupOverage) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['entraGroupOverage'],
-          message: 'auth.browser.entraGroupOverage only applies to provider "entra-id".',
-        });
-      }
-      return;
-    }
-    refineEntraId(b, ctx);
+    if (b.provider === 'oidc') refineOidc(b, ctx);
+    if (b.provider === 'entra-id') refineEntraId(b, ctx);
   });
 
 const OIDC_ONLY_KEYS = ['scope', 'groupsClaim', 'insecureAllowUnverifiedEmail'] as const;

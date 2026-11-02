@@ -186,6 +186,16 @@ describe('auth config resolution', () => {
       expect(issue?.message).toMatch(/oidc/);
     });
 
+    it('fails with entraGroupOverage', () => {
+      const issues = issuesOf(oidcConfig({ issuerUrl: 'https://acme.okta.com', entraGroupOverage: true }));
+      expect(issues.map((i) => i.path.join('.'))).toContain('auth.browser.entraGroupOverage');
+    });
+
+    it('fails with an empty scope', () => {
+      const issues = issuesOf(oidcConfig({ issuerUrl: 'https://acme.okta.com', scope: '' }));
+      expect(issues.map((i) => i.path.join('.'))).toContain('auth.browser.scope');
+    });
+
     it('fails with domain.strategy alb-default, naming byo', () => {
       expect(() => resolveConfig(oidcConfig({ issuerUrl: 'https://acme.okta.com' }, {}))).toThrow(
         /domain\.strategy "byo"/,
