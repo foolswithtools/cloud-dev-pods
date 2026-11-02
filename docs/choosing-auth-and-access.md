@@ -43,7 +43,7 @@ With either account, the pod signs in with a device code on every `pod-up`, and 
 ## Not shipped yet
 
 - **WorkOS** (via the `oidc` browser provider): [#138](https://github.com/foolswithtools/cloud-dev-pods/issues/138).
-- **Generic OIDC** (Okta, Auth0, Google Workspace, Keycloak): [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139). Until then, `provider: oidc` fails validation.
+- **Generic OIDC** (`provider: oidc`): [#180](https://github.com/foolswithtools/cloud-dev-pods/issues/180). Until it ships, `provider: oidc` fails validation. Setup recipes for Okta, Auth0, Google Workspace and Keycloak follow in [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139).
 - **Central auth host** (one callback URL for every browser pod): [#144](https://github.com/foolswithtools/cloud-dev-pods/issues/144).
 - **SSH pods with VS Code Remote-SSH.** The `ssh` pod mode exists, but every `remote.backend` is refused until its backend ships: AWS Session Manager [#146](https://github.com/foolswithtools/cloud-dev-pods/issues/146), Cloudflare Tunnel and Access [#147](https://github.com/foolswithtools/cloud-dev-pods/issues/147), Tailscale [#148](https://github.com/foolswithtools/cloud-dev-pods/issues/148).
 - **Deferred options** are collected in the parking lot, [#151](https://github.com/foolswithtools/cloud-dev-pods/issues/151).
