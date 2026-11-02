@@ -37,9 +37,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { minimatch } from 'minimatch';
 import { parse as parseToml } from 'smol-toml';
+import { isInvokedAsCli } from './lib/cli-entry.js';
 
 const REPO_ROOT = process.cwd();
 const TOML_PATH = join(REPO_ROOT, '.upstream-sync.toml');
@@ -373,15 +373,7 @@ async function main(): Promise<void> {
 }
 
 // Only run main() when invoked as a CLI (not when imported by tests).
-function isInvokedAsCli(): boolean {
-  try {
-    return fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-}
-
-if (isInvokedAsCli()) {
+if (isInvokedAsCli(import.meta.url)) {
   main().catch((err: unknown) => {
     process.stderr.write(`sync-upstream: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
     process.exit(1);

@@ -16,8 +16,8 @@
  * has `lambda:InvokeFunction` on `pod-manager` (ADR 0003).
  */
 
-import { fileURLToPath } from 'node:url';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { isInvokedAsCli } from './lib/cli-entry.js';
 
 interface CliArgs {
   action: string;
@@ -124,15 +124,7 @@ async function main() {
 }
 
 // Only run main() when invoked as a CLI (not when imported by tests).
-function isInvokedAsCli(): boolean {
-  try {
-    return fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-}
-
-if (isInvokedAsCli()) {
+if (isInvokedAsCli(import.meta.url)) {
   main().catch((err: unknown) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

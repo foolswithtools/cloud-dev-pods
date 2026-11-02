@@ -29,8 +29,8 @@ import * as clack from '@clack/prompts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
+import { isInvokedAsCli } from './lib/cli-entry.js';
 
 const REPO_ROOT = process.cwd();
 const CONFIG_PATH = join(REPO_ROOT, 'config', 'config.yaml');
@@ -927,15 +927,7 @@ async function main(argv: string[]): Promise<void> {
 }
 
 // Only run main() when invoked as a CLI (not when imported by tests).
-function isInvokedAsCli(): boolean {
-  try {
-    return fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-}
-
-if (isInvokedAsCli()) {
+if (isInvokedAsCli(import.meta.url)) {
   main(process.argv.slice(2)).catch((err: unknown) => {
     process.stderr.write(`init-clone: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
     process.exit(1);
