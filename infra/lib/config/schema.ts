@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { ENTRA_GUID, ENTRA_ISSUER_HINT, parseEntraIssuer } from '../../lambda/pod-manager/entra-id';
-
-// Providers the schema knows about vs. the ones wired at runtime today. The
-// rest arrive with later slices of the pluggable-identity epic.
-const EPIC_POINTER =
-  'foolswithtools/cloud-dev-pods#129 (docs/specs/pluggable-identity-remote-access.md)';
+import { OIDC_ISSUER_HINT } from '../../lambda/pod-manager/oauth2-proxy';
 
 const stringList = z.array(z.string()).default([]);
 
@@ -24,14 +20,27 @@ export const AuthBrowserSchema = z
     // entra-id only: request User.Read so oauth2-proxy can read group
     // memberships from Microsoft Graph for users in more than 200 groups.
     entraGroupOverage: z.boolean().default(false),
+    // oidc only. No schema defaults: the builder applies them, so "unset"
+    // stays distinguishable from an explicit value (#138 relies on this).
+    scope: z.string().optional(),
+    groupsClaim: z.string().optional(),
+    insecureAllowUnverifiedEmail: z.boolean().optional(),
   })
   .superRefine((b, ctx) => {
+    if (b.provider !== 'oidc') {
+      for (const key of OIDC_ONLY_KEYS) {
+        if (b[key] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: `auth.browser.${key} only applies to provider "oidc".`,
+          });
+        }
+      }
+    }
     if (b.provider === 'oidc') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['provider'],
-        message: `auth.browser.provider "${b.provider}" is not supported yet; only "github" and "entra-id" are wired at runtime. Other providers land with the pluggable identity epic, ${EPIC_POINTER}.`,
-      });
+      refineOidc(b, ctx);
+      return;
     }
     if (b.provider !== 'entra-id') {
       if (b.entraGroupOverage) {
@@ -45,6 +54,36 @@ export const AuthBrowserSchema = z
     }
     refineEntraId(b, ctx);
   });
+
+const OIDC_ONLY_KEYS = ['scope', 'groupsClaim', 'insecureAllowUnverifiedEmail'] as const;
+
+// Rules for provider oidc (spec A3). The issuer is kept verbatim: oauth2-proxy
+// requires the IdP discovery document's "issuer" to equal it exactly, and
+// IdPs differ on the trailing slash (Auth0 has one, Okta does not).
+function refineOidc(
+  b: { issuerUrl?: string; allowedOrg?: string; allowedUsers: string[]; allowedTenants: string[] },
+  ctx: z.RefinementCtx,
+): void {
+  // Settings that do nothing for oidc; refuse them rather than let a config
+  // look stricter than the sidecar enforces.
+  for (const key of ['allowedOrg', 'allowedUsers', 'allowedTenants'] as const) {
+    const v = b[key];
+    if (Array.isArray(v) ? v.length > 0 : Boolean(v?.trim())) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `auth.browser.${key} does not apply to provider "oidc"; use allowedEmailDomains, allowedGroups, or ownerOnly.`,
+      });
+    }
+  }
+  if (!b.issuerUrl?.startsWith('https://')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['issuerUrl'],
+      message: `${OIDC_ISSUER_HINT}; got ${b.issuerUrl === undefined ? 'nothing' : `"${b.issuerUrl}"`}.`,
+    });
+  }
+}
 
 // Rules for provider entra-id (spec A2, docs/setup-entra.md).
 function refineEntraId(
@@ -200,11 +239,19 @@ export type Config = Omit<RawConfig, 'auth'> & {
  */
 export function resolveConfig(input: unknown): { config: Config; warnings: string[] } {
   const raw = ConfigSchema.parse(input);
-  // Entra accepts only https redirect URIs (localhost aside), and the
-  // alb-default strategy serves pods over plain HTTP.
-  if (raw.auth?.browser?.provider === 'entra-id' && raw.domain.strategy !== 'byo') {
+  // The alb-default strategy serves pods over plain HTTP. Entra accepts only
+  // https redirect URIs (localhost aside); for oidc the session cookie would
+  // travel unencrypted, and several IdPs (Google among them) also reject
+  // non-localhost http:// redirect URIs.
+  const provider = raw.auth?.browser?.provider;
+  if (provider === 'entra-id' && raw.domain.strategy !== 'byo') {
     throw new Error(
       'auth.browser.provider "entra-id" requires domain.strategy "byo": Entra ID only accepts https redirect URIs, and "alb-default" serves pods over HTTP. See docs/setup-entra.md.',
+    );
+  }
+  if (provider === 'oidc' && raw.domain.strategy !== 'byo') {
+    throw new Error(
+      'auth.browser.provider "oidc" requires domain.strategy "byo": "alb-default" serves pods over HTTP, so the session cookie would travel unencrypted, and many IdPs reject http:// redirect URIs.',
     );
   }
   const { oauthAllowedOrg, oauthAllowedUsers } = raw.github;

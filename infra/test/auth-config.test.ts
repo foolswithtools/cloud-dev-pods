@@ -114,10 +114,83 @@ describe('auth config resolution', () => {
     expect(authLambdaEnvironment(config).AUTH_BROWSER_ENTRA_GROUP_OVERAGE).toBe('true');
   });
 
-  it('rejection: provider oidc fails validation with a message naming the epic', () => {
-    expect(() =>
-      resolveConfig(baseConfig({ auth: { browser: { provider: 'oidc' } } })),
-    ).toThrow(/pluggable-identity-remote-access/);
+  describe('provider oidc (#180)', () => {
+    const BYO = { strategy: 'byo', baseDomain: 'pods.example.com', hostedZoneId: 'Z123' };
+    const oidcConfig = (browser: Record<string, unknown>, domain: Record<string, unknown> = BYO) => ({
+      ...baseConfig({ auth: { browser: { provider: 'oidc', ...browser } } }),
+      domain,
+    });
+    const issuesOf = (input: unknown): Array<{ path: unknown[]; message: string }> => {
+      try {
+        resolveConfig(input);
+      } catch (err) {
+        return (err as { issues: Array<{ path: unknown[]; message: string }> }).issues;
+      }
+      throw new Error('expected validation to fail');
+    };
+
+    it('a valid oidc config resolves, issuer kept verbatim and new keys unset', () => {
+      const { config } = resolveConfig(
+        oidcConfig({ issuerUrl: 'https://acme.us.auth0.com/', allowedEmailDomains: ['acme.com'] }),
+      );
+      expect(config.auth.browser.provider).toBe('oidc');
+      expect(config.auth.browser.issuerUrl).toBe('https://acme.us.auth0.com/');
+      // No schema default: #138 tells "unset" apart from an explicit value.
+      expect(config.auth.browser.scope).toBeUndefined();
+      expect(config.auth.browser.groupsClaim).toBeUndefined();
+      expect(config.auth.browser.insecureAllowUnverifiedEmail).toBeUndefined();
+    });
+
+    it('accepts scope, groupsClaim and insecureAllowUnverifiedEmail', () => {
+      const { config } = resolveConfig(
+        oidcConfig({
+          issuerUrl: 'https://acme.okta.com',
+          scope: 'openid email profile groups',
+          groupsClaim: 'roles',
+          insecureAllowUnverifiedEmail: false,
+        }),
+      );
+      expect(config.auth.browser.scope).toBe('openid email profile groups');
+      expect(config.auth.browser.groupsClaim).toBe('roles');
+      expect(config.auth.browser.insecureAllowUnverifiedEmail).toBe(false);
+    });
+
+    it('fails without issuerUrl', () => {
+      const issues = issuesOf(oidcConfig({}));
+      expect(issues.map((i) => i.path.join('.'))).toContain('auth.browser.issuerUrl');
+    });
+
+    it('fails with an http:// issuer, naming https', () => {
+      const issues = issuesOf(oidcConfig({ issuerUrl: 'http://acme.okta.com' }));
+      const issue = issues.find((i) => i.path.join('.') === 'auth.browser.issuerUrl');
+      expect(issue?.message).toMatch(/https:\/\//);
+    });
+
+    it.each([
+      ['allowedOrg', 'acme'],
+      ['allowedUsers', ['alice']],
+      ['allowedTenants', ['11111111-2222-3333-4444-555555555555']],
+    ])('fails with %s', (key, value) => {
+      const issues = issuesOf(oidcConfig({ issuerUrl: 'https://acme.okta.com', [key]: value }));
+      expect(issues.map((i) => i.path.join('.'))).toContain(`auth.browser.${key}`);
+    });
+
+    it.each([
+      ['scope', 'openid'],
+      ['groupsClaim', 'groups'],
+      ['insecureAllowUnverifiedEmail', true],
+      ['insecureAllowUnverifiedEmail', false],
+    ])('fails with %s on provider github', (key, value) => {
+      const issues = issuesOf(baseConfig({ auth: { browser: { allowedOrg: 'acme', [key]: value } } }));
+      const issue = issues.find((i) => i.path.join('.') === `auth.browser.${key}`);
+      expect(issue?.message).toMatch(/oidc/);
+    });
+
+    it('fails with domain.strategy alb-default, naming byo', () => {
+      expect(() => resolveConfig(oidcConfig({ issuerUrl: 'https://acme.okta.com' }, {}))).toThrow(
+        /domain\.strategy "byo"/,
+      );
+    });
   });
 
   it('ownerOnly true is accepted now that owner authorization is enforced (#133)', () => {
@@ -204,8 +277,34 @@ describe('PodManager Lambda auth environment', () => {
       AUTH_BROWSER_OWNER_ONLY: 'false',
       AUTH_BROWSER_ADMIN_USERS: '[]',
       AUTH_BROWSER_ENTRA_GROUP_OVERAGE: 'false',
+      AUTH_BROWSER_SCOPE: '',
+      AUTH_BROWSER_GROUPS_CLAIM: '',
+      AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL: '',
       AUTH_TUNNEL_PROVIDER: 'github',
     });
+  });
+
+  it('carries the oidc keys when set', () => {
+    const { config } = resolveConfig({
+      ...baseConfig({
+        auth: {
+          browser: {
+            provider: 'oidc',
+            issuerUrl: 'https://acme.okta.com',
+            scope: 'openid email profile groups',
+            groupsClaim: 'roles',
+            insecureAllowUnverifiedEmail: true,
+          },
+        },
+      }),
+      domain: { strategy: 'byo', baseDomain: 'pods.example.com', hostedZoneId: 'Z123' },
+    });
+    const vars = authLambdaEnvironment(config);
+    expect(vars.AUTH_BROWSER_PROVIDER).toBe('oidc');
+    expect(vars.AUTH_BROWSER_ISSUER_URL).toBe('https://acme.okta.com');
+    expect(vars.AUTH_BROWSER_SCOPE).toBe('openid email profile groups');
+    expect(vars.AUTH_BROWSER_GROUPS_CLAIM).toBe('roles');
+    expect(vars.AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL).toBe('true');
   });
 
   it('a new-keys config drives every AUTH_BROWSER_* var', () => {
@@ -289,6 +388,9 @@ describe('pod-manager env.ts auth parsing', () => {
         ownerOnly: true,
         adminUsers: [],
         entraGroupOverage: false,
+        scope: undefined,
+        groupsClaim: undefined,
+        insecureAllowUnverifiedEmail: undefined,
       },
       tunnel: { provider: 'github' },
     });
@@ -302,6 +404,30 @@ describe('pod-manager env.ts auth parsing', () => {
     expect(env.auth.browser.allowedUsers).toEqual([]);
     expect(env.auth.browser.ownerOnly).toBe(false);
     expect(env.auth.tunnel.provider).toBe('github');
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['', undefined],
+  ])('parses AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL=%j as %j', async (raw, parsed) => {
+    const env = await loadEnv({ AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL: raw });
+    expect(env.auth.browser.insecureAllowUnverifiedEmail).toBe(parsed);
+  });
+
+  it('round-trips the oidc keys, with "" parsed back to undefined', async () => {
+    const set = await loadEnv({ AUTH_BROWSER_SCOPE: 'openid groups', AUTH_BROWSER_GROUPS_CLAIM: 'roles' });
+    expect(set.auth.browser.scope).toBe('openid groups');
+    expect(set.auth.browser.groupsClaim).toBe('roles');
+    const unset = await loadEnv({ AUTH_BROWSER_SCOPE: '', AUTH_BROWSER_GROUPS_CLAIM: '' });
+    expect(unset.auth.browser.scope).toBeUndefined();
+    expect(unset.auth.browser.groupsClaim).toBeUndefined();
+  });
+
+  it('rejects an AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL value other than true, false, or empty', async () => {
+    await expect(loadEnv({ AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL: 'yes' })).rejects.toThrow(
+      /AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL/,
+    );
   });
 
   it('rejects an unknown browser provider value', async () => {
