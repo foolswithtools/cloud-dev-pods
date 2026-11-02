@@ -17,9 +17,9 @@ github:
 
 # Provider-neutral identity config (ADR 0008). Replaces github.oauthAllowed*.
 # When auth.browser is set, the github.oauthAllowed* keys are ignored.
-# Browser: providers "github" and "entra-id" are supported ("oidc" fails
-# validation until the pluggable identity epic, #129, wires it). Entra ID
-# setup, including the keys below, is in docs/setup-entra.md.
+# Browser: providers "github", "entra-id" and "oidc" (any OpenID Connect
+# IdP) are supported. Entra ID setup, including the keys below, is in
+# docs/setup-entra.md. entra-id and oidc both require domain.strategy: byo.
 # Tunnel: github and microsoft (incl. Entra work/school) are both supported;
 # pod-up's tunnel_provider input overrides it per pod.
 auth:
@@ -29,12 +29,23 @@ auth:
     # allowedUsers: []          # GitHub logins, e.g. [alice, bob]
     # ownerOnly: false          # true: each browser pod admits only its owner + adminUsers
     # adminUsers: []            # break-glass access to every pod when ownerOnly is true
-    # # entra-id only (requires domain.strategy: byo):
+    # # entra-id (requires domain.strategy: byo); allowedGroups and
+    # # allowedEmailDomains also apply to oidc, below:
     # issuerUrl: https://login.microsoftonline.com/<tenant-id>/v2.0
     # allowedTenants: []        # tenant IDs; required with /common/, /organizations/, /consumers/
     # allowedGroups: []         # group object IDs
     # allowedEmailDomains: []   # e.g. [example.com]
     # entraGroupOverage: false  # true: request User.Read for users in > 200 groups
+    # # oidc (requires domain.strategy: byo; allowedOrg, allowedUsers and
+    # # allowedTenants are refused; scope, groupsClaim and
+    # # insecureAllowUnverifiedEmail are oidc-only). Restrict with allowedEmailDomains,
+    # # allowedGroups (case-sensitive) or ownerOnly.
+    # issuerUrl: https://acme.okta.com  # https:// only; must match the "issuer" in the
+    #                                   # IdP's /.well-known/openid-configuration exactly,
+    #                                   # trailing slash included (Auth0's ends in "/")
+    # scope: openid email profile       # default when unset; add e.g. "groups" if your IdP needs it
+    # groupsClaim: groups               # ID-token claim holding group names; oauth2-proxy defaults to "groups"
+    # insecureAllowUnverifiedEmail: false  # true: admit tokens with email_verified=false (avoid)
   # tunnel:
   #   provider: github          # github | microsoft
 

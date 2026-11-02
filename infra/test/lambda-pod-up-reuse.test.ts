@@ -152,7 +152,7 @@ describe('podUp access-point reuse (issue #30)', () => {
     expect(result.ok).toBe(true);
     expect(findExistingAccessPoint).toHaveBeenCalledWith('fresh');
     expect(allocatePosixUid).toHaveBeenCalledTimes(1);
-    expect(createAccessPoint).toHaveBeenCalledWith('fresh', 12345);
+    expect(createAccessPoint).toHaveBeenCalledWith('fresh', 12345, undefined);
   });
 
   it('rollback after reuse does NOT delete the persistent AP (issue #29 + #30 interaction)', async () => {
