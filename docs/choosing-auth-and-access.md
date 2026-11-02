@@ -1,6 +1,6 @@
 # Choosing sign-in and access
 
-This guide helps you pick how people reach their pods and which account they sign in with. It covers only what ships today: browser pods with GitHub or Microsoft Entra ID, and tunnel pods with a GitHub or Microsoft account. Options that haven't shipped are listed at the end with their issues.
+This guide helps you pick how people reach their pods and which account they sign in with. It covers only what ships today: browser pods with GitHub, Microsoft Entra ID or any other OpenID Connect identity provider, and tunnel pods with a GitHub or Microsoft account. Options that haven't shipped are listed at the end with their issues.
 
 For the general browser-vs-tunnel trade-offs (extensions, Settings Sync, shareable URLs), see the [use-case table in delivery modes](delivery-modes.md#when-to-use-which).
 
@@ -16,7 +16,8 @@ For the general browser-vs-tunnel trade-offs (extensions, Settings Sync, shareab
 3. **Browser pods: which identity provider does your team sign in with?**
    - GitHub accounts: `auth.browser.provider: github` (the default), restricted with `allowedUsers` or `allowedOrg`.
    - Microsoft 365 / Entra ID work or school accounts: `auth.browser.provider: entra-id`. It requires `domain.strategy: byo`.
-   - Should each pod admit only its owner? Set `auth.browser.ownerOnly: true` with either provider.
+   - Any other OpenID Connect identity provider (Okta, Auth0, Keycloak, Google Workspace and so on): `auth.browser.provider: oidc`. It requires `domain.strategy: byo`, and is restricted with `allowedEmailDomains`, `allowedGroups` or `ownerOnly`.
+   - Should each pod admit only its owner? Set `auth.browser.ownerOnly: true` with any provider.
 4. **Tunnel pods: which account will the pod and your laptop sign in with?**
    - GitHub account: `auth.tunnel.provider: github` (the default).
    - Microsoft account (personal, or Entra work or school): `auth.tunnel.provider: microsoft`. Check the [Conditional Access caveat](delivery-modes.md#tunnel-account-github-or-microsoft) first if it is a work or school account.
@@ -28,8 +29,11 @@ For the general browser-vs-tunnel trade-offs (extensions, Settings Sync, shareab
 | --- | --- | --- | --- | --- | --- |
 | GitHub | Supported. Setup: [CLI walkthrough](setup-cli.md#browser-mode-only-register-the-oauth-app) | `byo`. Each pod needs a resolvable `https://<pod>.<base-domain>` | A GitHub OAuth App accepts one callback URL, so one registered callback per pod today: the app's callback must name the pod's hostname | Supported: matches GitHub logins. See [per-pod owner authorization](operating.md#per-pod-owner-authorization) | No charge for the OAuth App. The ALB is in the cluster's idle cost either way (see [cost controls](cost-controls.md)) |
 | Microsoft Entra ID | Supported. Setup: [Entra ID setup](setup-entra.md) | `byo` is required: Entra accepts only `https` redirect URIs, and synth refuses `entra-id` with `alb-default` | One redirect URI per pod, each registered on the app by hand; Entra caps an app at 256 (100 if it also admits personal accounts). See [the redirect URI ceiling](setup-entra.md#the-redirect-uri-ceiling) | Supported: matches the `email` claim, which needs a mailbox. Across several tenants, read [owner-only across tenants](setup-entra.md#multi-tenant-apps) | No AWS cost beyond the cluster's idle cost. The Entra app registration and its client secret need an Entra tenant; secrets expire after at most 24 months |
+| Generic OIDC | Supported. Setup: the commented `oidc` block in [`config/config.example.yaml`](../config/config.example.yaml); per-IdP recipes are coming in [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139) | `byo` is required: synth refuses `oidc` with `alb-default`, which serves pods over HTTP | One redirect URI per pod, `https://<pod>.<base-domain>/oauth2/callback`, each registered at the IdP | Supported: matches the `email` claim | No AWS cost beyond the cluster's idle cost |
 
-Both providers refuse a browser `pod-up` until at least one sign-in restriction is set. The keys that count differ by provider; see [troubleshooting](troubleshooting.md#browser-pod-up-fails-with-refusing-browser-mode-pod-up-authbrowserprovider--has-no-sign-in-restriction).
+Every provider refuses a browser `pod-up` until at least one sign-in restriction is set. The keys that count differ by provider; see [troubleshooting](troubleshooting.md#browser-pod-up-fails-with-refusing-browser-mode-pod-up-authbrowserprovider--has-no-sign-in-restriction).
+
+With `provider: oidc`, synth refuses `allowedOrg`, `allowedUsers` and `allowedTenants`, because they do nothing for a generic IdP. `scope`, `groupsClaim` and `insecureAllowUnverifiedEmail` are oidc-only: synth refuses them with `github` or `entra-id`.
 
 ## Tunnel pods
 
@@ -43,7 +47,7 @@ With either account, the pod signs in with a device code on every `pod-up`, and 
 ## Not shipped yet
 
 - **WorkOS** (via the `oidc` browser provider): [#138](https://github.com/foolswithtools/cloud-dev-pods/issues/138).
-- **Generic OIDC** (`provider: oidc`): [#180](https://github.com/foolswithtools/cloud-dev-pods/issues/180). Until it ships, `provider: oidc` fails validation. Setup recipes for Okta, Auth0, Google Workspace and Keycloak follow in [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139).
+- **Per-IdP setup recipes** for the `oidc` provider (Okta, Auth0, Google Workspace, Keycloak): [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139). The provider itself ships; see [Browser pods](#browser-pods).
 - **Central auth host** (one callback URL for every browser pod): [#144](https://github.com/foolswithtools/cloud-dev-pods/issues/144).
 - **SSH pods with VS Code Remote-SSH.** The `ssh` pod mode exists, but every `remote.backend` is refused until its backend ships: AWS Session Manager [#146](https://github.com/foolswithtools/cloud-dev-pods/issues/146), Cloudflare Tunnel and Access [#147](https://github.com/foolswithtools/cloud-dev-pods/issues/147), Tailscale [#148](https://github.com/foolswithtools/cloud-dev-pods/issues/148).
 - **Deferred options** are collected in the parking lot, [#151](https://github.com/foolswithtools/cloud-dev-pods/issues/151).
