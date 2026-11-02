@@ -80,7 +80,7 @@ For the owner's own cookie this does not matter, because the owner's cookie open
 
 So in central-host mode, **`auth.browser.adminUsers` must be empty**, enforced by #144's synth guard. Break-glass in that mode means one of these:
 
-- recreate the pod with a new `owner` **and a fresh workspace** (no `keepWorkspace`). Code the previous owner planted in `/workspace` runs as the same user, could rebind port 3000, and could read the new owner's cookie.
+- recreate the pod with a new `owner` **and a fresh workspace**. Code the previous owner planted in `/workspace` runs as the same user, could rebind port 3000, and could read the new owner's cookie. Today `keep_workspace=false` does not give a fresh workspace: it deletes only the access point, the files under `/pods/<podName>` stay, and the next access point reuses that path (scope change 11).
 - turn `centralAuthHost` off, which brings back per-task cookie secrets
 
 Allowing admins again would need the sidecar to strip its session cookie before the upstream, on top of the `NET_RAW` drop above, which stops the cookie being captured before the sidecar sees it. v7.15.5 can probably do that only through alpha config: an `injectRequestHeaders` entry named `Cookie` with `preserveRequestValue: false` and no values is stripped (`headers.go:28-34`, `:54-66`), and header validation does not require values (`pkg/validation/header.go:20-40`). That means moving the sidecar to `--alpha-config`, and checking at runtime that openvscode-server works without its own cookies. That is follow-up work, not part of #144.
@@ -94,7 +94,7 @@ A shared cookie secret across pods is acceptable **only** when `auth.browser.own
 The proposed default from #174 is confirmed:
 
 - The `auth.<base>` oauth2-proxy uses the existing shared `/cloud-dev-pods/oauth/{client-id,client-secret,cookie-secret}` secrets. The single OAuth app's callback becomes `https://auth.<base>/oauth2/callback`.
-- It enforces the deployment-wide allowlist: the provider settings `buildOauth2ProxyContainer` emits with `ownerOnly` off (repo `oauth2-proxy.ts:34-73`). A user outside the deployment never gets a cookie, provided the deployment allowlist is non-empty. #144's synth guard applies the same restriction check pod-up uses today (repo `infra/lambda/pod-manager/auth-guard.ts:47`) to the central host. Owner checks stay in each pod sidecar.
+- It enforces the deployment-wide allowlist: the provider settings `buildOauth2ProxyContainer` emits with `ownerOnly` off (repo `oauth2-proxy.ts:34-73`). A user outside the deployment never gets a cookie, provided the deployment allowlist is non-empty. #144's synth guard enforces that it is non-empty (scope change 1). The guard cannot reuse pod-up's check as-is (repo `infra/lambda/pod-manager/auth-guard.ts:47`), because that check counts `ownerOnly` as a restriction (`auth-guard.ts:26-32`), and central-host mode always has `ownerOnly` on. Owner checks stay in each pod sidecar.
 
 ### Verdicts on the other options
 
@@ -168,7 +168,7 @@ No other github path writes the session email:
 
 Apply these to #144's body. Where they conflict with it, this ADR wins.
 
-1. **Synth guard.** Keep "`centralAuthHost: true` requires `ownerOnly: true` and `domain.strategy: byo`". Add: it also requires `auth.browser.adminUsers` to be empty. No provider is refused. It also applies the existing browser-auth restriction check (repo `auth-guard.ts:47`) to the central host's settings, so `auth.<base>` never runs with an empty allowlist. Name ADR 0009 in the error message.
+1. **Synth guard.** Keep "`centralAuthHost: true` requires `ownerOnly: true` and `domain.strategy: byo`". Add: it also requires `auth.browser.adminUsers` to be empty. No provider is refused. It also runs the browser-auth restriction check (repo `auth-guard.ts:47`) on the central host's **effective** settings, `{ ...auth, ownerOnly: false }`. Run on the raw config, the check always passes, because it counts `ownerOnly` as a restriction (`auth-guard.ts:26-32`). So `auth.<base>` never runs with an empty allowlist. Tests (`infra/test/central-auth-host.test.ts`): synth fails, naming the missing restriction, when `centralAuthHost` and `ownerOnly` are on with no restriction. That covers github with no `allowedOrg` / `allowedUsers`, and `entra-id` / `oidc` with no tenant, group or domain restriction. Name ADR 0009 in the error message.
 2. **github sidecar under `centralAuthHost`** (`buildOwnerAuthorization`, repo `owner-authz.ts:158-166`). Use the emails-file path for `github` too:
    - add `OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE` and the `WRITE_EMAILS` init step, with the owner lowercased (as at repo `owner-authz.ts:171`)
    - remove `OAUTH2_PROXY_EMAIL_DOMAINS`
@@ -186,6 +186,7 @@ Apply these to #144's body. Where they conflict with it, this ADR wins.
    - `skip_jwt_bearer_tokens` or an htpasswd file (empty-email sessions)
    - `skip_auth_routes`, `skip_auth_regex`, `trusted_ips` or `skip_auth_preflight` (allowed requests skip all checks, `oauthproxy.go:1168-1170`)
    - `pass_access_token` (default false, `legacy_options.go:216`), which would forward the user's IdP access token to the owner's VS Code
+   - task-level `pidMode: task`, which would let the owner read the sidecar's `/proc/<pid>/environ` and with it `OAUTH2_PROXY_COOKIE_SECRET`. Today no `pidMode` is set in `infra/`.
 
    The browser task definition also drops `NET_RAW` (or `ALL`) from the vscode container's `linuxParameters.capabilities` whenever `centralAuthHost` is on. Today's task definition has no `linuxParameters` (repo `aws.ts:283`, the vscode container).
 6. **Tests** (`infra/test/owner-authz.test.ts`), for each of `github`, `entra-id` and `oidc` under `centralAuthHost`:
@@ -206,4 +207,8 @@ Apply these to #144's body. Where they conflict with it, this ADR wins.
 11. **Bind retained workspaces to their owner.** Today an EFS access point is tagged only with `Project` and `Pod` (repo `infra/lambda/pod-manager/aws.ts:161-163`). `pod-up` reuses an existing access point by pod name, with no owner check (repo `actions.ts:80-86`). `pod-down` keeps the workspace by default (repo `.github/workflows/pod-down.yml:13-17`). Under `centralAuthHost`:
     - record the owner on the access point (an `Owner` tag) or in the registry
     - refuse a `pod-up` whose owner differs from the recorded owner of a retained workspace, with `invalid-input`. The message tells the operator to `pod-down` with `keep_workspace=false` first. An access point with no recorded owner, such as one created before #144, counts as a different owner.
-    - add a test: `pod-up` onto an existing access point with a different owner under `centralAuthHost` is refused and creates no task
+    - make `keep_workspace=false` actually release the files. Today it only deletes the access point (repo `actions.ts:218-221`, `aws.ts:170-172`). The directory `/pods/<podName>` (repo `aws.ts:158`) keeps its files. The UID is freed (`actions.ts:221`), and the lowest free UID is handed out again (`aws.ts:128-135`). So the next `pod-up` of that name can land on the old owner's files with the old owner's UID, and the owner check above never runs. Under `centralAuthHost`, give every new access point a unique root path (for example `/pods/<podName>-<random suffix>`), so a released workspace is never reachable again. The other route is to delete the directory's contents on `pod-down`. Until one of these lands, the `pod-down` message should stop saying "EFS workspace deleted" (`actions.ts:229`).
+    - add tests:
+      - `pod-up` onto an existing access point with a different owner under `centralAuthHost` is refused and creates no task
+      - after `pod-down keep_workspace=false`, a `pod-up` of the same name uses a different `RootDirectory.Path`
+    - assumption: this relies on per-access-point isolation on EFS. Whether a root user in one pod can reach other pods' directories with a raw NFS client is a separate, pre-existing question (no file-system policy today, repo `infra/lib/stacks/cluster-stack.ts:60-70`), tracked as a follow-up.
