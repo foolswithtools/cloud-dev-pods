@@ -15,15 +15,27 @@ export const OAUTH2_PROXY_IMAGE =
 
 export interface Oauth2ProxyAuthConfig {
   provider: 'github' | 'entra-id' | 'oidc';
+  // github only.
   allowedOrg?: string;
   allowedUsers: readonly string[];
-  // entra-id only.
+  // entra-id and oidc.
   issuerUrl?: string;
   allowedGroups?: readonly string[];
   allowedEmailDomains?: readonly string[];
+  // entra-id only.
   allowedTenants?: readonly string[];
   entraGroupOverage?: boolean;
+  // oidc only. Unset means "use the default"; see providerEnvironment.
+  scope?: string;
+  groupsClaim?: string;
+  insecureAllowUnverifiedEmail?: boolean;
 }
+
+export const OIDC_ISSUER_HINT =
+  'auth.browser.issuerUrl must be an https:// URL that matches the "issuer" in your IdP\'s ' +
+  '/.well-known/openid-configuration exactly, including any trailing slash';
+
+const DEFAULT_OIDC_SCOPE = 'openid email profile';
 
 type EnvVar = { name: string; value: string };
 
@@ -69,7 +81,31 @@ function providerEnvironment(auth: Oauth2ProxyAuthConfig): EnvVar[] {
       { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: list(auth.allowedEmailDomains) || '*' },
     ];
   }
-  throw new Error(`oauth2-proxy provider "${auth.provider}" is not wired yet; only "github" and "entra-id" are supported.`);
+  if (auth.provider === 'oidc') {
+    // The schema enforces this too; re-checked so a bad Lambda env can never
+    // produce a sidecar with no issuer or a plain-http one. The issuer is
+    // passed verbatim: oauth2-proxy compares it to the discovery document's
+    // "issuer" character for character.
+    if (!auth.issuerUrl?.startsWith('https://')) {
+      throw new Error(`oauth2-proxy oidc: ${OIDC_ISSUER_HINT}; got "${auth.issuerUrl ?? ''}".`);
+    }
+    // OIDC group names are case-sensitive, so no lowercasing (unlike Entra).
+    const groups = list(auth.allowedGroups);
+    return [
+      { name: 'OAUTH2_PROXY_OIDC_ISSUER_URL', value: auth.issuerUrl },
+      // Always explicit: with allowed groups and no scope, oauth2-proxy
+      // requests a "groups" scope that many IdPs do not have.
+      { name: 'OAUTH2_PROXY_SCOPE', value: auth.scope ?? DEFAULT_OIDC_SCOPE },
+      { name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: list(auth.allowedEmailDomains) || '*' },
+      ...(groups ? [{ name: 'OAUTH2_PROXY_ALLOWED_GROUPS', value: groups }] : []),
+      ...(auth.groupsClaim ? [{ name: 'OAUTH2_PROXY_OIDC_GROUPS_CLAIM', value: auth.groupsClaim }] : []),
+      ...((auth.insecureAllowUnverifiedEmail ?? false)
+        ? [{ name: 'OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL', value: 'true' }]
+        : []),
+    ];
+  }
+  // Exhaustiveness guard: the provider type admits nothing else.
+  throw new Error(`oauth2-proxy: unknown provider "${(auth as { provider: string }).provider}".`);
 }
 
 export interface Oauth2ProxySecretArns {
