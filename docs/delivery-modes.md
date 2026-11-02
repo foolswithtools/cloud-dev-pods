@@ -101,6 +101,8 @@ If traffic must not pass through a third party, tunnel mode isn't suitable. For 
 
 ## When to use which
 
+To choose the browser identity provider and the tunnel account as well, see [Choosing sign-in and access](choosing-auth-and-access.md).
+
 | Use case | Pick |
 |---|---|
 | Shared dev environment for a team review | Browser |
@@ -108,3 +110,6 @@ If traffic must not pass through a third party, tunnel mode isn't suitable. For 
 | Locked-down laptop, can't install VS Code Desktop | Browser |
 | Want to use VS Code Settings Sync seamlessly | Tunnel |
 | Traffic must not transit a third party | Browser (editor traffic stays on your ALB; sign-in still goes to your identity provider), or for VS Code Desktop the planned Remote-SSH over AWS Session Manager in the remote-access alternatives epic [#129](https://github.com/foolswithtools/cloud-dev-pods/issues/129) (Wave 4). Not tunnel: see [Data path, limits and egress](#data-path-limits-and-egress) |
+| No DNS domain you control | Tunnel, with `domain.strategy: alb-default`. Browser pods need a resolvable hostname per pod |
+| Team signs in with Microsoft 365 / Entra ID | Browser with `auth.browser.provider: entra-id` (needs `domain.strategy: byo`; see [Entra ID setup](setup-entra.md)), or tunnel with `auth.tunnel.provider: microsoft` |
+| Entra tenant blocks the device code flow | Browser with `entra-id`, or tunnel with a GitHub account. Not a tunnel with a work or school Microsoft account: see the [Conditional Access caveat](#tunnel-account-github-or-microsoft) |

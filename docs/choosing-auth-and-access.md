@@ -1,0 +1,49 @@
+# Choosing sign-in and access
+
+This guide helps you pick how people reach their pods and which account they sign in with. It covers only what ships today: browser pods with GitHub or Microsoft Entra ID, and tunnel pods with a GitHub or Microsoft account. Options that haven't shipped are listed at the end with their issues.
+
+For the general browser-vs-tunnel trade-offs (extensions, Settings Sync, shareable URLs), see the [use-case table in delivery modes](delivery-modes.md#when-to-use-which).
+
+## Questions to answer first
+
+1. **Do you control a DNS domain with a Route53 hosted zone?**
+   - No: use **tunnel** pods and `domain.strategy: alb-default`. Browser pods need each pod's hostname to resolve, and `alb-default` serves plain HTTP for non-production use.
+   - Yes: browser and tunnel are both open to you. Set `domain.strategy: byo`.
+2. **Will people use a web browser or VS Code Desktop?**
+   - Browser: go to question 3.
+   - VS Code Desktop: use **tunnel** pods and go to question 4.
+   - Both: you can run both kinds of pod in one cluster. Answer questions 3 and 4.
+3. **Browser pods: which identity provider does your team sign in with?**
+   - GitHub accounts: `auth.browser.provider: github` (the default), restricted with `allowedUsers` or `allowedOrg`.
+   - Microsoft 365 / Entra ID work or school accounts: `auth.browser.provider: entra-id`. It requires `domain.strategy: byo`.
+   - Should each pod admit only its owner? Set `auth.browser.ownerOnly: true` with either provider.
+4. **Tunnel pods: which account will the pod and your laptop sign in with?**
+   - GitHub account: `auth.tunnel.provider: github` (the default).
+   - Microsoft account (personal, or Entra work or school): `auth.tunnel.provider: microsoft`. Check the [Conditional Access caveat](delivery-modes.md#tunnel-account-github-or-microsoft) first if it is a work or school account.
+5. **Must editor traffic stay off third-party networks?** Then don't use tunnel pods: their traffic goes through Microsoft's dev tunnels relay. Browser pods keep editor traffic on your own ALB. See [Data path, limits and egress](delivery-modes.md#data-path-limits-and-egress).
+
+## Browser pods
+
+| Provider | Status | Domain strategy | Callback URLs | `ownerOnly` | Cost |
+| --- | --- | --- | --- | --- | --- |
+| GitHub | Supported. Setup: [CLI walkthrough](setup-cli.md#browser-mode-only-register-the-oauth-app) | `byo`. Each pod needs a resolvable `https://<pod>.<base-domain>` | A GitHub OAuth App accepts one callback URL, so one registered callback per pod today: the app's callback must name the pod's hostname | Supported: matches GitHub logins. See [per-pod owner authorization](operating.md#per-pod-owner-authorization) | No charge for the OAuth App. The ALB is in the cluster's idle cost either way (see [cost controls](cost-controls.md)) |
+| Microsoft Entra ID | Supported. Setup: [Entra ID setup](setup-entra.md) | `byo` is required: Entra accepts only `https` redirect URIs, and synth refuses `entra-id` with `alb-default` | One redirect URI per pod, each registered on the app by hand; Entra caps an app at 256 (100 if it also admits personal accounts). See [the redirect URI ceiling](setup-entra.md#the-redirect-uri-ceiling) | Supported: matches the `email` claim, which needs a mailbox. Across several tenants, read [owner-only across tenants](setup-entra.md#multi-tenant-apps) | No AWS cost beyond the cluster's idle cost. The Entra app registration and its client secret need an Entra tenant; secrets expire after at most 24 months |
+
+Both providers refuse a browser `pod-up` until at least one sign-in restriction is set. The keys that count differ by provider; see [troubleshooting](troubleshooting.md#browser-pod-up-fails-with-refusing-browser-mode-pod-up-authbrowserprovider--has-no-sign-in-restriction).
+
+## Tunnel pods
+
+| Account | Status | Data path | Limits | Conditional Access |
+| --- | --- | --- | --- | --- |
+| GitHub | Supported (the default). Setup: [tunnel account](delivery-modes.md#tunnel-account-github-or-microsoft) | Editor traffic goes through Microsoft's dev tunnels relay, end-to-end encrypted; forwarded-port `*.devtunnels.ms` URLs terminate TLS at Microsoft. See [data path](delivery-modes.md#data-path-limits-and-egress) | Per account, monthly: 5 GB bandwidth, 10 tunnels. Free preview with no SLA. See [tunnel slots](delivery-modes.md#tunnel-slots-the-10-tunnel-cap) | Not affected |
+| Microsoft (personal or Entra work or school) | Supported. Setup: [tunnel account](delivery-modes.md#tunnel-account-github-or-microsoft) | Same relay as GitHub | Same limits as GitHub | Work or school accounts: tenants that block the device code flow refuse the pod's sign-in, and the pod stops when the code expires. Ask your Entra administrator for an exception or use GitHub. Personal Microsoft accounts are not affected |
+
+With either account, the pod signs in with a device code on every `pod-up`, and your local VS Code Desktop must sign in to Remote Tunnels with the same account. Tunnel pods ignore `auth.browser`, including `ownerOnly`, and the idle reaper doesn't stop them.
+
+## Not shipped yet
+
+- **WorkOS** (via the `oidc` browser provider): [#138](https://github.com/foolswithtools/cloud-dev-pods/issues/138).
+- **Generic OIDC** (`provider: oidc`): [#180](https://github.com/foolswithtools/cloud-dev-pods/issues/180). Until it ships, `provider: oidc` fails validation. Setup recipes for Okta, Auth0, Google Workspace and Keycloak follow in [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139).
+- **Central auth host** (one callback URL for every browser pod): [#144](https://github.com/foolswithtools/cloud-dev-pods/issues/144).
+- **SSH pods with VS Code Remote-SSH.** The `ssh` pod mode exists, but every `remote.backend` is refused until its backend ships: AWS Session Manager [#146](https://github.com/foolswithtools/cloud-dev-pods/issues/146), Cloudflare Tunnel and Access [#147](https://github.com/foolswithtools/cloud-dev-pods/issues/147), Tailscale [#148](https://github.com/foolswithtools/cloud-dev-pods/issues/148).
+- **Deferred options** are collected in the parking lot, [#151](https://github.com/foolswithtools/cloud-dev-pods/issues/151).
