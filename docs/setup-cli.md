@@ -61,7 +61,7 @@ pods: { defaultCpu: 1024, defaultMemory: 2048, spotPercentage: 100, idleMinutes:
 naming: { prefix: CloudDevPods }
 ```
 
-`auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); only `provider: github` (the default) is supported today. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
+`auth.browser` is the provider-neutral identity block (see [ADR 0008](adr/0008-pluggable-browser-idp.md)); `provider: github` (the default) and `provider: entra-id` (see [`setup-entra.md`](setup-entra.md)) are supported. The older `github.oauthAllowedUsers` and `github.oauthAllowedOrg` keys are deprecated. They still work when `auth.browser` is absent, but synth prints a deprecation warning. When `auth.browser` is set, they are ignored.
 
 Browser mode adds:
 

@@ -20,6 +20,7 @@ import * as clack from '@clack/prompts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = process.cwd();
 const CONFIG_PATH = join(REPO_ROOT, 'config', 'config.yaml');
@@ -35,7 +36,7 @@ interface Defaults {
   hostedZones: { name: string; id: string }[];
 }
 
-interface Answers {
+export interface Answers {
   awsAccountId: string;
   awsRegion: string;
   githubOwner: string;
@@ -43,8 +44,8 @@ interface Answers {
   domainStrategy: 'byo' | 'alb-default';
   baseDomain: string;
   hostedZoneId: string;
-  oauthAllowedUsers: string;
-  oauthAllowedOrg: string;
+  allowedUsers: string[];
+  allowedOrg: string;
   vpcCidr: string;
   cpu: number;
   memory: number;
@@ -258,16 +259,16 @@ async function prompt(defaults: Defaults): Promise<Answers> {
     ],
   });
   checkOrExit(allowKind, 'Allowlist kind');
-  a.oauthAllowedUsers = '';
-  a.oauthAllowedOrg = '';
+  a.allowedUsers = [];
+  a.allowedOrg = '';
   if (allowKind === 'user' || allowKind === 'both') {
     const users = await clack.text({
       message: 'Comma-separated GitHub usernames',
       initialValue: defaults.githubOwner ?? '',
-      validate: v((s) => (s.length > 0 ? undefined : 'Required.')),
+      validate: v((s) => (parseUserList(s).length > 0 ? undefined : 'Required.')),
     });
     checkOrExit(users, 'Allowed users');
-    a.oauthAllowedUsers = users;
+    a.allowedUsers = parseUserList(users);
   }
   if (allowKind === 'org' || allowKind === 'both') {
     const org = await clack.text({
@@ -275,7 +276,7 @@ async function prompt(defaults: Defaults): Promise<Answers> {
       placeholder: defaults.githubOwner ?? 'foolswithtools',
     });
     checkOrExit(org, 'Allowed org');
-    a.oauthAllowedOrg = org;
+    a.allowedOrg = org.trim();
   }
 
   const cidr = await clack.text({
@@ -320,11 +321,29 @@ async function prompt(defaults: Defaults): Promise<Answers> {
   return a as Answers;
 }
 
-function renderConfigYaml(a: Answers): string {
-  const oauthLines: string[] = [];
-  if (a.oauthAllowedUsers) oauthLines.push(`  oauthAllowedUsers: ${a.oauthAllowedUsers}`);
-  if (a.oauthAllowedOrg) oauthLines.push(`  oauthAllowedOrg: ${a.oauthAllowedOrg}`);
+/** Split the comma-separated users answer: trim each entry, drop empties. */
+export function parseUserList(csv: string): string[] {
+  return csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
+// The `auth.browser` allowlist block, or '' when there's no allowlist (tunnel
+// only), so the output never has a bare `auth:` / `browser:` key. Values are
+// double-quoted (JSON strings are valid YAML) so a login like `123` or `yes`
+// stays a string.
+function renderAuthBlock(a: Answers): string {
+  const lines: string[] = [];
+  if (a.allowedUsers.length > 0) {
+    lines.push('    allowedUsers:', ...a.allowedUsers.map((u) => `      - ${JSON.stringify(u)}`));
+  }
+  if (a.allowedOrg) lines.push(`    allowedOrg: ${JSON.stringify(a.allowedOrg)}`);
+  if (lines.length === 0) return '';
+  return ['auth:', '  browser:', ...lines].join('\n') + '\n\n';
+}
+
+export function renderConfigYaml(a: Answers): string {
   const domainBlock =
     a.domainStrategy === 'byo'
       ? `domain:
@@ -348,9 +367,8 @@ aws:
 github:
   org: ${a.githubOwner}
   repo: ${a.githubRepo}
-${oauthLines.join('\n')}
 
-${domainBlock}
+${renderAuthBlock(a)}${domainBlock}
 
 network:
   vpcCidr: "${a.vpcCidr}"
@@ -550,7 +568,18 @@ async function main(): Promise<void> {
   clack.outro('Init complete.');
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`init-clone: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Only run main() when invoked as a CLI (not when imported by tests).
+function isInvokedAsCli(): boolean {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsCli()) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`init-clone: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}

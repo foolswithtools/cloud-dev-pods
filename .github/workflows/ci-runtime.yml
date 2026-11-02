@@ -36,6 +36,12 @@ jobs:
           set -euo pipefail
           docker build -t "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" "runtime/${{ matrix.image }}"
 
+      - name: SSH-mode smoke test
+        # Non-root sshd (POD_MODE=ssh): key-only login, health, host-key
+        # persistence on a workspace volume, clean SIGTERM exit.
+        if: matrix.image == 'vscode-tunnel'
+        run: bash runtime/vscode-tunnel/test/ssh-smoke.sh "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}"
+
       - name: Print VS Code CLI version
         if: matrix.image == 'vscode-tunnel'
         run: docker run --rm --entrypoint code "cloud-dev-pods/${{ matrix.image }}:ci-${GITHUB_SHA::7}" --version
