@@ -20,6 +20,9 @@ beforeEach(() => {
   process.env.TUNNEL_TASK_DEF_FAMILY = 't';
   process.env.BROWSER_TASK_ROLE_ARN = 'arn:aws:iam::123456789012:role/B';
   process.env.TUNNEL_TASK_ROLE_ARN = 'arn:aws:iam::123456789012:role/T';
+  process.env.SSH_TASK_DEF_FAMILY = 'cloud-dev-pods-ssh';
+  process.env.SSH_TASK_ROLE_ARN = 'arn:aws:iam::123456789012:role/S';
+  process.env.SSH_EXECUTION_ROLE_ARN = 'arn:aws:iam::123456789012:role/SE';
   process.env.EXECUTION_ROLE_ARN = 'arn:aws:iam::123456789012:role/E';
   process.env.PODS_LOG_GROUP_NAME = '/cloud-dev-pods/dev/pods';
   process.env.VPC_ID = 'vpc-x';
@@ -92,6 +95,25 @@ describe('handler input validation', () => {
     expect(r.status).toBe('ok');
     expect(r.pods).toEqual([]);
     vi.doUnmock('../lambda/pod-manager/actions');
+  });
+
+  it('accepts up with mode ssh and passes sshPublicKey through (issue #145)', async () => {
+    const podUp = vi.fn(async () => ({ ok: true, status: 'ok' as const }));
+    vi.doMock('../lambda/pod-manager/actions', () => ({
+      podUp,
+      podDown: vi.fn(),
+      podList: vi.fn(),
+      podStatus: vi.fn(),
+    }));
+    try {
+      const { handler } = await import('../lambda/pod-manager/handler');
+      const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl a@b';
+      const r = await handler({ action: 'up', podName: 'ok', mode: 'ssh', sshPublicKey: key });
+      expect(r.status).toBe('ok');
+      expect(podUp).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ssh', sshPublicKey: key }));
+    } finally {
+      vi.doUnmock('../lambda/pod-manager/actions');
+    }
   });
 });
 

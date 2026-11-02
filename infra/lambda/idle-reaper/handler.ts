@@ -42,7 +42,8 @@ function required(name: string): string {
 
 interface PodRecord {
   podName: string;
-  mode: 'browser' | 'tunnel';
+  // Only browser pods are reaped (see the mode check in the reaper loop).
+  mode: 'browser' | 'tunnel' | 'ssh';
   taskArn?: string;
   targetGroupArn?: string;
   owner?: string;

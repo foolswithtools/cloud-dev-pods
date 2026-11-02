@@ -29,6 +29,22 @@ import {
 export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<PodResult> {
   const { podName, mode, owner = 'unknown', cpu = 1024, memory = 2048, idleMinutes = 60 } = e;
 
+  // Input pairing first: these need no AWS call (issue #145).
+  if (mode === 'ssh' && !e.sshPublicKey) {
+    return { ok: false, status: 'invalid-input', podName, message: 'sshPublicKey is required for ssh pods.' };
+  }
+  if (mode !== 'ssh' && e.sshPublicKey) {
+    return { ok: false, status: 'invalid-input', podName, message: `sshPublicKey only applies to ssh pods, not ${mode}.` };
+  }
+  if (mode === 'ssh' && !env.remoteBackend) {
+    return {
+      ok: false,
+      status: 'error',
+      podName,
+      message: 'ssh mode needs remote.backend in config/config.yaml; no backend is available yet (#146, #147, #148).',
+    };
+  }
+
   const existing = await registryGet(podName);
   if (existing) {
     return {
@@ -56,6 +72,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
 
   const warning = mode === 'tunnel' ? await tunnelCapWarning(owner) : undefined;
 
+  // ssh pods run the tunnel image (#181 adds sshd to it), so no new ECR repo.
   const repoName = mode === 'browser' ? env.browserRepoName : env.tunnelRepoName;
   const repoUri = mode === 'browser' ? env.browserRepoUri : env.tunnelRepoUri;
   const resolvedTag = e.imageTag ?? (await resolveLatestImageTag(repoName));
@@ -100,7 +117,11 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
 
   try {
     taskDefArn = await registerTaskDef({
-      family: mode === 'browser' ? env.browserTaskDefFamily : env.tunnelTaskDefFamily,
+      family: {
+        browser: env.browserTaskDefFamily,
+        tunnel: env.tunnelTaskDefFamily,
+        ssh: env.sshTaskDefFamily,
+      }[mode],
       imageUri,
       accessPointId,
       podName,
@@ -108,6 +129,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       memory: String(memory),
       mode,
       tunnelProvider,
+      sshPublicKey: e.sshPublicKey,
       owner,
     });
 
@@ -142,6 +164,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       idleMinutes,
       url,
       imageTag: resolvedTag,
+      sshPublicKey: e.sshPublicKey,
     });
 
     return {
@@ -152,10 +175,13 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       owner,
       tunnelName: mode === 'tunnel' ? podName : undefined,
       tunnelProvider,
+      remoteBackend: mode === 'ssh' ? env.remoteBackend : undefined,
       warning,
-      message: mode === 'browser'
-        ? `Pod is up at ${url}.`
-        : `Tunnel pod started; check CloudWatch Logs (/aws/lambda/pod-manager + /cloud-dev-pods/<env>/pods) for the device-code URL.`,
+      message: {
+        browser: `Pod is up at ${url}.`,
+        tunnel: `Tunnel pod started; check CloudWatch Logs (/aws/lambda/pod-manager + /cloud-dev-pods/<env>/pods) for the device-code URL.`,
+        ssh: `SSH pod started (remote backend: ${env.remoteBackend}). Connection instructions: see #182 (scripts/pod-connect.ts).`,
+      }[mode],
     };
   } catch (err) {
     // Best-effort rollback. NB: only delete the access point if we created
