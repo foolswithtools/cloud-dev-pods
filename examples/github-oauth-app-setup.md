@@ -13,13 +13,25 @@ cloud-dev-pods uses oauth2-proxy with a GitHub OAuth App to authenticate users b
 
 ## Wire it into the repo
 
-Either via `npm run init` (it'll prompt you) or manually:
+1. Store the credentials in AWS Secrets Manager. `bootstrap-aws.yml` creates both secrets with placeholder values; overwrite them:
 
-```bash
-gh variable set OAUTH_GITHUB_CLIENT_ID --body "<client-id>"
-gh secret set OAUTH_GITHUB_CLIENT_SECRET --env prod --body "<client-secret>"
-gh variable set OAUTH_ALLOWED_ORG --body "<your-github-org>"
-```
+   ```bash
+   aws secretsmanager update-secret --secret-id /cloud-dev-pods/oauth/client-id \
+     --secret-string "<client-id>"
+   aws secretsmanager update-secret --secret-id /cloud-dev-pods/oauth/client-secret \
+     --secret-string "<client-secret>"
+   ```
+
+   Leave `/cloud-dev-pods/oauth/cookie-secret` alone; bootstrap generated it.
+
+2. Set who may sign in, in `config/config.yaml`. Set `auth.browser.allowedOrg` for a team, or `auth.browser.allowedUsers` for a solo setup:
+
+   ```yaml
+   auth:
+     browser:
+       allowedOrg: <your-github-org>
+       # OR allowedUsers: [<your-github-login>]
+   ```
 
 ## Per-repo vs per-org
 
