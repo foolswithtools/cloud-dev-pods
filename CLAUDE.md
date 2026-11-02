@@ -79,10 +79,12 @@ OAuth values live in **AWS Secrets Manager**, not GitHub: `/cloud-dev-pods/oauth
 Three questions before the user runs anything:
 
 1. **Browser, tunnel, or both?**
-   - Browser → user accesses VS Code at `https://<pod>.<base-domain>` via GitHub OAuth.
-   - Tunnel → user connects from local VS Code Desktop via the device-code flow.
-2. **Do you own a domain?** Browser mode requires one (Route53 hosted zone). If no domain, default to tunnel-only.
-3. **Solo or org-restricted?** Sets `auth.browser.allowedUsers` (single user) or `auth.browser.allowedOrg` (a GitHub org) in `config/config.yaml` (the older `github.oauthAllowedUsers` / `oauthAllowedOrg` keys still work but are deprecated). **At least one must be set or browser pods refuse to launch** (see `docs/troubleshooting.md`).
+   - Browser → user accesses VS Code at `https://<pod>.<base-domain>` and signs in with GitHub (`auth.browser.provider: github`, the default) or Microsoft Entra ID (`provider: entra-id`, see `docs/setup-entra.md`).
+   - Tunnel → user connects from local VS Code Desktop via the device-code flow, signed in with a GitHub account (`auth.tunnel.provider: github`, the default) or a Microsoft account (`provider: microsoft`). Warn Entra work-or-school users that tenants which block the device code flow with Conditional Access refuse the tunnel sign-in (see `docs/delivery-modes.md`).
+2. **Do you own a domain?** Browser mode requires one (Route53 hosted zone). If no domain, default to tunnel-only. Entra ID browser pods also require `domain.strategy: byo`.
+3. **Solo or org-restricted?** For GitHub browser pods, sets `auth.browser.allowedUsers` (single user) or `auth.browser.allowedOrg` (a GitHub org) in `config/config.yaml` (the older `github.oauthAllowedUsers` / `oauthAllowedOrg` keys still work but are deprecated). For Entra ID, use `allowedTenants`, `allowedGroups` or `allowedEmailDomains`. `auth.browser.ownerOnly: true` (either provider) locks each pod to its owner. **At least one restriction must be set or browser pods refuse to launch** (see `docs/troubleshooting.md`).
+
+The full question flow and a provider matrix are in [`docs/choosing-auth-and-access.md`](docs/choosing-auth-and-access.md).
 
 ## 3. First-run sequence
 

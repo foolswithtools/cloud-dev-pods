@@ -59,7 +59,7 @@ On start the pod runs `code tunnel user login --provider <github|microsoft>`, th
 
 Microsoft dev tunnels allow 10 registered tunnels per account. Registering an eleventh makes the VS Code CLI delete a random unused tunnel, which can be another of your pods' tunnels.
 
-`pod-down` frees the slot. ECS sends the tunnel container `SIGTERM`, and the entrypoint stops `code tunnel` and runs `code tunnel unregister` (bounded to 20 seconds, inside the container's 30-second stop timeout), so the tunnel leaves your Remote Tunnels list straight away instead of at the 30-day inactivity expiry. A task that dies without `SIGTERM`, such as a crash or an out-of-memory kill, still leaves its tunnel registered until that expiry.
+`pod-down` frees the slot. ECS sends the tunnel container `SIGTERM`, and the entrypoint stops `code tunnel` and runs `code tunnel unregister` (bounded to 20 seconds, inside the container's 30-second stop timeout), so the tunnel leaves your Remote Tunnels list straight away instead of at the 30-day inactivity expiry. The pod's log stream shows `on_term: unregistering tunnel <pod>` followed by `on_term: code tunnel unregister exited <code>`; `exited 0` confirms the unregister succeeded. A task that dies without `SIGTERM`, such as a crash or an out-of-memory kill, still leaves its tunnel registered until that expiry.
 
 `pod-up` counts the registry's running tunnel pods with the same owner. At 10 or more it still launches the pod, but adds a cap warning to the result and the workflow summary. The count covers only this cluster's pods: tunnels the same account registered elsewhere aren't visible without the user's token.
 
@@ -101,6 +101,8 @@ If traffic must not pass through a third party, tunnel mode isn't suitable. For 
 
 ## When to use which
 
+To choose the browser identity provider and the tunnel account as well, see [Choosing sign-in and access](choosing-auth-and-access.md).
+
 | Use case | Pick |
 |---|---|
 | Shared dev environment for a team review | Browser |
@@ -108,3 +110,6 @@ If traffic must not pass through a third party, tunnel mode isn't suitable. For 
 | Locked-down laptop, can't install VS Code Desktop | Browser |
 | Want to use VS Code Settings Sync seamlessly | Tunnel |
 | Traffic must not transit a third party | Browser (editor traffic stays on your ALB; sign-in still goes to your identity provider), or for VS Code Desktop the planned Remote-SSH over AWS Session Manager in the remote-access alternatives epic [#129](https://github.com/foolswithtools/cloud-dev-pods/issues/129) (Wave 4). Not tunnel: see [Data path, limits and egress](#data-path-limits-and-egress) |
+| No DNS domain you control | Tunnel, with `domain.strategy: alb-default`. Browser pods need a resolvable hostname per pod |
+| Team signs in with Microsoft 365 / Entra ID | Browser with `auth.browser.provider: entra-id` (needs `domain.strategy: byo`; see [Entra ID setup](setup-entra.md)), or tunnel with `auth.tunnel.provider: microsoft` |
+| Entra tenant blocks the device code flow | Browser with `entra-id`, or tunnel with a GitHub account. Not a tunnel with a work or school Microsoft account: see the [Conditional Access caveat](#tunnel-account-github-or-microsoft) |

@@ -62,6 +62,7 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
         'cookie_secure', 'email_domains', 'github_org', 'github_users', 'allowed_groups',
         'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
         'oidc_issuer_url', 'entra_id_allowed_tenants', 'scope', 'insecure_oidc_skip_issuer_verification',
+        'oidc_groups_claim', 'insecure_oidc_allow_unverified_email',
       ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
     );
     const github = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] }, secretArns, opts);
@@ -78,7 +79,21 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
       secretArns,
       opts,
     );
-    for (const c of [github, entra]) for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
+    const oidc = buildOauth2ProxyContainer(
+      {
+        provider: 'oidc',
+        issuerUrl: 'https://acme.okta.com',
+        allowedUsers: [],
+        allowedGroups: ['Dev-Team'],
+        allowedEmailDomains: ['acme.com'],
+        scope: 'openid email profile groups',
+        groupsClaim: 'groups',
+        insecureAllowUnverifiedEmail: true,
+      },
+      secretArns,
+      opts,
+    );
+    for (const c of [github, entra, oidc]) for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
       expect(known.has(name), name).toBe(true);
     }
   });
@@ -92,10 +107,10 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
     expect(minor).toBeGreaterThanOrEqual(8);
   });
 
-  it('rejects provider oidc (not wired yet)', () => {
-    expect(() =>
-      buildOauth2ProxyContainer({ provider: 'oidc', allowedUsers: [] }, secretArns, opts),
-    ).toThrow(/oidc/);
+  it('builds an oidc container', () => {
+    const env = envOf({ provider: 'oidc', issuerUrl: 'https://acme.okta.com', allowedUsers: [] });
+    expect(env.OAUTH2_PROXY_PROVIDER).toBe('oidc');
+    expect(env.OAUTH2_PROXY_OIDC_ISSUER_URL).toBe('https://acme.okta.com');
   });
 
   // Golden copy of the definition registerTaskDef emitted before the builder
