@@ -11,11 +11,11 @@
  *   1 — invocation error (bad args, AWS API failure).
  */
 
-import { fileURLToPath } from 'node:url';
 import {
   CloudWatchLogsClient,
   FilterLogEventsCommand,
 } from '@aws-sdk/client-cloudwatch-logs';
+import { isInvokedAsCli } from './lib/cli-entry.js';
 
 interface Args {
   logGroup: string;
@@ -105,15 +105,7 @@ async function main(): Promise<void> {
 }
 
 // Only run main() when invoked as a CLI (not when imported by tests).
-function isInvokedAsCli(): boolean {
-  try {
-    return fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-}
-
-if (isInvokedAsCli()) {
+if (isInvokedAsCli(import.meta.url)) {
   main().catch((err: unknown) => {
     process.stderr.write(`tunnel-poll-logs: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
