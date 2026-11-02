@@ -1,6 +1,8 @@
 // AWS SDK v3 helpers used by the action handlers. All clients are singletons
 // initialized once per Lambda warm container.
 
+import { randomBytes } from 'node:crypto';
+
 import {
   DescribeImagesCommand,
   ECRClient,
@@ -154,17 +156,29 @@ export async function resolveLatestImageTag(repoName: string): Promise<string | 
 
 // ---- EFS ----
 
-export async function createAccessPoint(podName: string, uid: number): Promise<string> {
+/**
+ * Create a per-pod access point (#191).
+ *
+ * The root path gets a random suffix, `/pods/<podName>-<8 hex>`, so a
+ * workspace released by `pod-down keep_workspace=false` (which deletes only
+ * the access point; the Lambda does not mount EFS) is never reachable again:
+ * the next `pod-up` of the same name starts in an empty directory, even if it
+ * gets the same POSIX UID back. `owner` is recorded as an `Owner` tag only
+ * when pod-up received one explicitly; never pass the `'unknown'` fallback.
+ */
+export async function createAccessPoint(podName: string, uid: number, owner: string | undefined): Promise<string> {
+  const suffix = randomBytes(4).toString('hex');
   const r = await efs.send(new CreateAccessPointCommand({
     FileSystemId: env.efsFsId,
     PosixUser: { Uid: uid, Gid: uid },
     RootDirectory: {
-      Path: `/pods/${podName}`,
+      Path: `/pods/${podName}-${suffix}`,
       CreationInfo: { OwnerUid: uid, OwnerGid: uid, Permissions: '0700' },
     },
     Tags: [
       { Key: 'Project', Value: 'cloud-dev-pods' },
       { Key: 'Pod', Value: podName },
+      ...(owner ? [{ Key: 'Owner', Value: owner }] : []),
     ],
   }));
   if (!r.AccessPointId) throw new Error('CreateAccessPoint returned no id');
@@ -187,11 +201,19 @@ export async function deleteAccessPoint(apId: string): Promise<void> {
  *     (best-effort, errors logged not thrown — duplicates are recoverable
  *     state, not a failure mode for `pod-up`).
  *
- * Returns `undefined` if there is no usable AP for `podName`.
+ * Returns `undefined` if there is no usable AP for `podName`. `owner` is the
+ * AP's `Owner` tag (#191), or `undefined` when it has none (APs created
+ * before #191, or without an explicit owner).
  */
+export interface ExistingAccessPoint {
+  accessPointId: string;
+  posixUid: number;
+  owner?: string;
+}
+
 export async function findExistingAccessPoint(
   podName: string,
-): Promise<{ accessPointId: string; posixUid: number } | undefined> {
+): Promise<ExistingAccessPoint | undefined> {
   const all: AccessPointDescription[] = [];
   let nextToken: string | undefined;
   do {
@@ -249,6 +271,7 @@ export async function findExistingAccessPoint(
   return {
     accessPointId: newest.AccessPointId!,
     posixUid: Number(newest.PosixUser!.Uid),
+    owner: (newest.Tags ?? []).find((t) => t.Key === 'Owner')?.Value,
   };
 }
 

@@ -101,3 +101,8 @@ export const env = {
     },
   },
 };
+
+// ADR 0009 / #191: 'true' when auth.browser.centralAuthHost is on (#144 sets
+// it from CDK). pod-up then refuses to reuse a retained workspace whose
+// recorded owner differs or is missing. Unset or any other value: off.
+export const centralAuthHostEnabled = process.env.AUTH_BROWSER_CENTRAL_AUTH_HOST === 'true';
