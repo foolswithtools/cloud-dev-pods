@@ -55,6 +55,8 @@ Unassigned users see an Entra error (`AADSTS50105`) instead of a pod. Assignment
 
 ## 5. Configure `config/config.yaml`
 
+`npm run init` writes this block when you pick `entra-id`, including `issuerUrl` and `allowedTenants: [<tenant ID>]` (or non-interactively: `npm run init -- --non-interactive --browser-provider entra-id --entra-tenant-id <id> --hosted-zone-id <zone> --base-domain <domain> ...`, see [`setup-cli.md`](setup-cli.md#generate-it-with-npm-run-init)). Edit it by hand for the keys init doesn't ask about.
+
 ```yaml
 domain:
   strategy: byo
