@@ -156,7 +156,30 @@ jobs:
           role-to-assume: ${{ vars.SANDBOX_AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.SANDBOX_AWS_REGION }}
 
+      # Same gate as cluster-down.yml (#209, #211). The pod-cycle job's
+      # pod-down is best-effort, so a failed `down` could leave the smoke pod
+      # registered; destroying PodManager then would orphan its ALB rule and
+      # EFS access point. --force stops any leftover pod through the
+      # pod-manager Lambda and re-lists to confirm none remain. Exits non-zero
+      # (failing the job before cdk destroy) unless no pods remain, and writes
+      # proceed=true to $GITHUB_OUTPUT only when it is safe to destroy.
+      - name: Pre-flight — check and drain pods
+        id: drain
+        env:
+          AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+        run: npx tsx scripts/cluster-drain.ts --force
+
+      # Runs only when the drain step exited 0. Without the proceed=true marker
+      # the drain never decided anything (e.g. main() did not run, #194), so
+      # fail the job rather than let a skipped destroy read as a green run.
+      - name: Require pre-flight proof
+        if: steps.drain.outputs.proceed != 'true'
+        run: |
+          echo "::error::The pod pre-flight exited 0 but did not write proceed=true, so it never confirmed the cluster is safe to destroy. Not destroying. See \"cluster-down refuses: pod pre-flight failed\" in docs/troubleshooting.md."
+          exit 1
+
       - name: cdk destroy (everything except Bootstrap)
+        if: steps.drain.outputs.proceed == 'true'
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
