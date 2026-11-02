@@ -83,9 +83,22 @@ aws logs tail /cloud-dev-pods/pods --follow --since 10m
 ## Limits
 
 - **ALB listener rules: default 100 per listener.** With one rule per browser pod (host-based routing), this is the practical pod ceiling per cluster. Browser pods that fail with `PriorityInUse` after ~95 active pods are likely hitting it. Raise via Service Quotas (request `L-EAD7E5BC` → 1000) or shard pods across additional ALBs.
-- **EFS access points: 1000 per filesystem.** One per pod; the lifecycle is "create on first up, retain across down (default), delete on `pod-down --no-keep-workspace`". Watch out for accumulation if many pods are created/destroyed without `keepWorkspace=false`.
+- **EFS access points: 1000 per filesystem.** One per pod; the lifecycle is "create on first up, retain across down (default), delete the access point on `pod-down keep_workspace=false`". Watch out for accumulation if many pods are created/destroyed without `keep_workspace=false`.
 - **POSIX UIDs: 10000–65000.** ~55k unique pods over the lifetime of a cluster. UIDs aren't recycled while the pod is in the registry; once `pod-down` removes the entry, the UID is free.
 - **Fargate task quotas: 1000 tasks per region per account.** Default. Rarely a concern.
+
+## Released workspaces
+
+Each new access point gets its own root directory, `/pods/<podName>-<suffix>`, where the suffix is 8 random hex characters. Access points created before this change keep their `/pods/<podName>` path and are still reused by name. `pod-down keep_workspace=false` deletes the access point, so the next `pod-up` of the same name starts in an empty `/workspace`. It does **not** delete the files: the pod-manager Lambda doesn't mount EFS. Two side effects follow.
+
+- **Orphaned directories cost storage.** Every released workspace stays on EFS as an orphaned `/pods/<podName>-<suffix>` directory and is billed at EFS storage rates ($0.30/GB-month) until someone removes it. Nothing removes them automatically yet.
+- **Retained workspaces are bound to their owner once `auth.browser.centralAuthHost` is on** (ADR 0009, #144). New access points carry an `Owner` tag when `pod-up` gets an explicit `owner`. With the central auth host enabled, `pod-up` refuses to reuse a retained workspace whose `Owner` tag differs from the requested owner or is missing. Every retained workspace created before this change has no `Owner` tag, so it is refused. For each such pod, either run `pod-down` with `keep_workspace=false` and then `pod-up` again (fresh, empty workspace), or keep the files by tagging the access point by hand:
+
+  ```bash
+  aws efs tag-resource --resource-id <fsap-id> --tags Key=Owner,Value=<owner>
+  ```
+
+  The `Owner` value must equal the `owner` you pass to `pod-up` exactly (case-sensitive).
 
 ## Idle reaper behavior
 

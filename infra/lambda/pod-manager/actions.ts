@@ -1,7 +1,7 @@
 // Action handlers. The handler.ts dispatcher passes the validated event here.
 
 import type { PodEvent, PodResult } from './handler';
-import { env } from './env';
+import { centralAuthHostEnabled, env } from './env';
 import { assertBrowserAuthRestricted } from './auth-guard';
 import { validateOwnerAuthorization } from './owner-authz';
 import {
@@ -13,6 +13,7 @@ import {
   deleteListenerRule,
   deregisterAndDeleteTargetGroup,
   describeTasks,
+  type ExistingAccessPoint,
   findExistingAccessPoint,
   registerTarget,
   registerTaskDef,
@@ -96,6 +97,11 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
   let createdNewAp: boolean;
   const found = await findExistingAccessPoint(podName);
   if (found) {
+    // Before any task, rule or target group exists: nothing to roll back.
+    const ownerCheck = checkWorkspaceOwner(found, e.owner, centralAuthHostEnabled);
+    if (!ownerCheck.ok) {
+      return { ok: false, status: 'error', podName, message: ownerCheck.message };
+    }
     uid = found.posixUid;
     accessPointId = found.accessPointId;
     createdNewAp = false;
@@ -104,7 +110,8 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     );
   } else {
     uid = await allocatePosixUid();
-    accessPointId = await createAccessPoint(podName, uid);
+    // Raw e.owner: the 'unknown' fallback must never become an Owner tag.
+    accessPointId = await createAccessPoint(podName, uid, e.owner);
     createdNewAp = true;
   }
 
@@ -202,6 +209,33 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
   }
 }
 
+export type WorkspaceOwnerCheck = { ok: true } | { ok: false; message: string };
+
+/**
+ * ADR 0009 scope change 11 (#191). With a shared session cookie (central auth
+ * host), code left in a retained /workspace runs as the next owner's VS Code
+ * user and could read and replay their cookie. So, with `enforce` on, a
+ * retained workspace may only be reused by the owner recorded on its access
+ * point. A missing recorded owner (access points created before #191) or a
+ * missing `owner` input never matches. With `enforce` off, always allowed.
+ */
+export function checkWorkspaceOwner(
+  found: ExistingAccessPoint,
+  owner: string | undefined,
+  enforce: boolean,
+): WorkspaceOwnerCheck {
+  if (!enforce) return { ok: true };
+  if (owner && found.owner === owner) return { ok: true };
+  const recorded = found.owner === undefined ? 'no recorded owner' : `owner "${found.owner}"`;
+  const requested = owner ? `owner "${owner}"` : 'no owner';
+  return {
+    ok: false,
+    message: `Refusing pod-up: the retained workspace (access point ${found.accessPointId}) has ${recorded}, `
+      + `but this pod-up has ${requested}. With auth.browser.centralAuthHost on, a workspace is bound to `
+      + `the owner who created it. Run pod-down with keep_workspace=false first to release it, then pod-up again.`,
+  };
+}
+
 // Microsoft dev tunnels allow 10 registered tunnels per account; registering
 // an eleventh makes the CLI delete a random unused one, which may belong to
 // another of the owner's pods. The registry is the only count available
@@ -252,7 +286,7 @@ export async function podDown(e: Extract<PodEvent, { action: 'down' }>): Promise
     podName,
     message: keepWorkspace
       ? `Pod "${podName}" stopped; EFS workspace retained.`
-      : `Pod "${podName}" stopped and EFS workspace deleted.`,
+      : `Pod "${podName}" stopped; workspace released (the access point is deleted; its files stay on EFS until cleaned up).`,
   };
 }
 
