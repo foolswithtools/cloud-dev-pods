@@ -140,7 +140,12 @@ on_term() {
     kill -KILL "$child" 2>/dev/null || true
     wait "$child" 2>/dev/null || true
   fi
-  timeout -k 2 20 code tunnel unregister || true
+  # Best-effort: log the exit code (CloudWatch is the only evidence unregister
+  # ran) but exit 0 regardless.
+  echo "on_term: unregistering tunnel ${POD_NAME}"
+  local rc=0
+  timeout -k 2 20 code tunnel unregister || rc=$?
+  echo "on_term: code tunnel unregister exited ${rc}"
   exit 0
 }
 trap on_term TERM
