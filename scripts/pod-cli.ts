@@ -16,7 +16,7 @@
  * has `lambda:InvokeFunction` on `pod-manager` (ADR 0003).
  */
 
-import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { LambdaClient, InvokeCommand, type InvokeCommandInput } from '@aws-sdk/client-lambda';
 import { isInvokedAsCli } from './lib/cli-entry.js';
 
 interface CliArgs {
@@ -83,25 +83,49 @@ export function buildEvent(action: string, flags: Map<string, string | true>): R
   }
 }
 
-async function main() {
-  const { action, flags } = parseArgs(process.argv.slice(2));
-  if (!action) {
-    console.error('Usage: pod-cli <up|down|list|status> [flags]');
-    process.exit(2);
-  }
+/**
+ * Outcome of one pod-manager invoke. `ok: false` means the invoke itself
+ * failed (SDK error, or the Lambda raised a `FunctionError`); `error` is the
+ * text pod-cli prints to stderr. `ok: true` only means the Lambda returned:
+ * the payload can still be `{ ok: false, ... }`, which callers must check.
+ */
+export type InvokeOutcome = { ok: true; payload: unknown } | { ok: false; error: string };
 
-  const event = buildEvent(action, flags);
-  const region = process.env.AWS_REGION ?? 'us-west-2';
-  const fnName = process.env.POD_MANAGER_FN ?? 'pod-manager';
+/** The slice of `LambdaClient.send` that `invokePodManager` needs; injectable for tests. */
+export type InvokeSend = (input: InvokeCommandInput) => Promise<{ Payload?: Uint8Array; FunctionError?: string }>;
 
-  const client = new LambdaClient({ region });
-  const result = await client.send(
-    new InvokeCommand({
+export interface InvokeOptions {
+  /** Defaults to `$AWS_REGION`, then `us-west-2`. */
+  region?: string;
+  /** Defaults to `$POD_MANAGER_FN`, then `pod-manager`. */
+  functionName?: string;
+  /** Override the Lambda call (tests). Defaults to a real `LambdaClient`. */
+  send?: InvokeSend;
+}
+
+export async function invokePodManager(
+  event: Record<string, unknown>,
+  opts: InvokeOptions = {},
+): Promise<InvokeOutcome> {
+  const region = opts.region ?? process.env.AWS_REGION ?? 'us-west-2';
+  const fnName = opts.functionName ?? process.env.POD_MANAGER_FN ?? 'pod-manager';
+  const send: InvokeSend =
+    opts.send ??
+    ((input) => {
+      const client = new LambdaClient({ region });
+      return client.send(new InvokeCommand(input));
+    });
+
+  let result: Awaited<ReturnType<InvokeSend>>;
+  try {
+    result = await send({
       FunctionName: fnName,
       Payload: Buffer.from(JSON.stringify(event)),
       InvocationType: 'RequestResponse',
-    }),
-  );
+    });
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 
   const payload = result.Payload ? new TextDecoder().decode(result.Payload) : '{}';
   let parsed: unknown;
@@ -112,11 +136,26 @@ async function main() {
   }
 
   if (result.FunctionError) {
-    console.error(`Lambda error (${result.FunctionError}):`);
-    console.error(JSON.stringify(parsed, null, 2));
+    return { ok: false, error: `Lambda error (${result.FunctionError}):\n${JSON.stringify(parsed, null, 2)}` };
+  }
+  return { ok: true, payload: parsed };
+}
+
+async function main() {
+  const { action, flags } = parseArgs(process.argv.slice(2));
+  if (!action) {
+    console.error('Usage: pod-cli <up|down|list|status> [flags]');
+    process.exit(2);
+  }
+
+  const event = buildEvent(action, flags);
+  const outcome = await invokePodManager(event);
+  if (!outcome.ok) {
+    console.error(outcome.error);
     process.exit(1);
   }
 
+  const parsed = outcome.payload;
   console.log(JSON.stringify(parsed, null, 2));
   if (parsed && typeof parsed === 'object' && 'ok' in parsed && parsed.ok === false) {
     process.exit(1);

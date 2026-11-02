@@ -3,8 +3,12 @@ name: cluster-down
 # roles, ECR repos) is intentionally NOT destroyed — keep them around so you
 # don't have to re-bootstrap if you spin the cluster back up later.
 #
-# Pre-flight: refuses to run if any pods are registered, unless `force=true`
-# (then mass-stops them first).
+# Pre-flight: scripts/cluster-drain.ts must exit 0 before `cdk destroy` runs.
+# It refuses if any pods are registered, unless `force=true` (then it stops
+# each one through the pod-manager Lambda and re-lists to confirm none are
+# left). It fails closed: a failed pod list, a malformed response, a failed
+# `down`, or a pod still registered after the drain all stop the teardown.
+# See "cluster-down refuses: pod pre-flight failed" in docs/troubleshooting.md.
 
 on:
   workflow_dispatch:
@@ -55,36 +59,19 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Pre-flight — list running pods
-        id: pods
+      - name: Pre-flight — check and drain pods
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          RESULT=$(npx tsx scripts/pod-cli.ts list || true)
-          COUNT=$(echo "$RESULT" | jq -r '.pods | length // 0')
-          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
-          echo "$RESULT"
-
-      - name: Refuse if pods exist (without force)
-        if: steps.pods.outputs.count != '0' && inputs.force != true
-        run: |
-          echo "::error::${{ steps.pods.outputs.count }} pod(s) still registered. Re-run with force=true to mass-stop."
-          exit 1
-
-      - name: Mass-stop pods (force mode)
-        if: steps.pods.outputs.count != '0' && inputs.force == true
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-        run: |
-          set -euo pipefail
-          # Use jq directly on stored output
-          npx tsx scripts/pod-cli.ts list \
-            | jq -r '.pods[].podName' \
-            | while read -r p; do
-                echo "Stopping $p"
-                npx tsx scripts/pod-cli.ts down --pod "$p" --keep-workspace || true
-              done
+          args=()
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          # Exits non-zero (failing the job before cdk destroy) unless no pods
+          # remain registered. Writes its outcome to $GITHUB_STEP_SUMMARY.
+          npx tsx scripts/cluster-drain.ts "${args[@]}"
 
       - name: cdk destroy (everything except Bootstrap)
         working-directory: infra
