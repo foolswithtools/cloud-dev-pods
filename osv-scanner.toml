@@ -3,5 +3,24 @@
 # When the date passes the entry is enforced again, prompting a re-evaluation.
 # See https://google.github.io/osv-scanner/configuration/
 #
-# No advisories are currently ignored. When adding one, also add a row to the
+# When adding an entry, also add a row to the
 # "Time-bombed entries" table in docs/maintainer-runbook.md.
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2026-12-31
+reason = """
+minimatch DoS via globparts amplification (affected range < 11.0.1, published
+2026-10-30). Three copies are in the lockfile. scripts/node_modules/minimatch
+@10.2.6 is a direct dep of scripts/ and is cleared by the Dependabot bump to
+11.0.3 (#179). The other two are not fixable from here:
+node_modules/aws-cdk-lib/node_modules/minimatch@10.2.6 is bundled inside
+aws-cdk-lib's tarball (inBundle=true, npm overrides cannot reach it; 2.275.0,
+the latest release as of this entry, still depends on ^10.2.6), and the
+top-level dev copy (minimatch@10.2.5) is pinned to ^10 by eslint and
+@typescript-eslint/typescript-estree. All uses are synth-time, lint-time, or
+sync-upstream (.upstream-sync.toml) globbing over locally authored, trusted
+patterns -- no attacker-controlled
+glob reaches minimatch, and none of it ships in pod images. Re-evaluate when
+aws-cdk-lib and the eslint toolchain move to minimatch >= 11.0.1.
+"""

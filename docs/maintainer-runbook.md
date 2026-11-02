@@ -201,9 +201,8 @@ Rule of thumb: never treat a release-please PR as a normal feature branch. It's 
 
 Some maintenance items have a hard-coded date attached and will start failing CI or affecting users when that date passes. Track them here so they're discoverable from one place.
 
-No active entries. The last `osv-scanner.toml` suppressions (fast-uri, brace-expansion, esbuild, vite) were removed once aws-cdk-lib 2.273.0 stopped bundling the vulnerable copies and the dev toolchain resolved to fixed versions.
-
 | Date | Item | Action |
 |---|---|---|
+| 2026-12-31 | `osv-scanner.toml` ignores `GHSA-g3hv-75wg-m249` (minimatch < 11.0.1 DoS). Copies: 10.2.6 bundled inside aws-cdk-lib (`inBundle`, overrides can't reach; 2.275.0 still ships it) and dev-only 10.2.5 pinned `^10` by eslint / typescript-eslint (the `scripts/` direct-dep copy is cleared by #179). `scan` fails every PR after expiry. | Once aws-cdk-lib bundles minimatch ≥ 11.0.1 and the eslint toolchain resolves to ≥ 11.0.1, bump and remove the ignore; otherwise extend the date or escalate. |
 
 When you add a new time-bombed entry — a suppression with `ignoreUntil`, a hard-coded date in code, a deferred upstream issue, an ALB/Service Quotas raise that auto-expires — add a row here AND, for high-impact items, file a pinned issue with full context. The table is a quick scan; the issue is the action plan.
