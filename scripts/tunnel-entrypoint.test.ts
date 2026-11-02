@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // Runs runtime/vscode-tunnel/entrypoint.sh against a stub `code` binary on
 // PATH. The stub appends its argv to a log file; `tunnel user show` exits 1
 // ("not logged in", as the real CLI does) unless STUB_LOGGED_IN=1. With
-// STUB_BLOCK=1 the serving `code tunnel` blocks until it is signalled.
+// STUB_BLOCK=1 the serving `code tunnel` blocks until it is signalled, and
+// `tunnel unregister` exits STUB_UNREGISTER_RC (default 0).
 
 const ENTRYPOINT = resolve(import.meta.dirname, '../runtime/vscode-tunnel/entrypoint.sh');
 
@@ -29,7 +30,16 @@ fi
 if [ "$1 $2" = "tunnel --accept-server-license-terms" ] && [ "\${STUB_BLOCK:-0}" = "1" ]; then
   exec sleep 60
 fi
+if [ "$*" = "tunnel unregister" ]; then exit "\${STUB_UNREGISTER_RC:-0}"; fi
 exit 0
+`;
+
+// Stands in for GNU coreutils `timeout`, which macOS lacks: drops `-k N` and
+// the duration, then runs the rest. Keeps the SIGTERM tests host-independent.
+const TIMEOUT_STUB = `#!/usr/bin/env bash
+if [ "$1" = "-k" ]; then shift 2; fi
+shift
+exec "$@"
 `;
 
 // ssh-mode stubs log with a program-name prefix so they never collide with
@@ -73,6 +83,7 @@ beforeEach(() => {
   mkdirSync(workspace);
   for (const [name, body] of [
     ['code', STUB],
+    ['timeout', TIMEOUT_STUB],
     ['sshd', SSHD_STUB],
     ['ssh-keygen', SSH_KEYGEN_STUB],
   ] as const) {
@@ -153,7 +164,9 @@ describe('tunnel entrypoint', () => {
     expect(r.calls).toEqual([]);
   });
 
-  it('unregisters the tunnel on SIGTERM before exiting', async () => {
+  // Starts a logged-in, blocking tunnel, waits until it is serving (so the
+  // trap is installed), sends SIGTERM and returns the exit code and stdout.
+  async function runUntilSigterm(env: Record<string, string> = {}) {
     const child = spawn('bash', [ENTRYPOINT], {
       env: {
         PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -162,32 +175,48 @@ describe('tunnel entrypoint', () => {
         STUB_LOGGED_IN: '1',
         STUB_BLOCK: '1',
         POD_NAME: 'hello',
+        ...env,
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
-    const exited = new Promise<number | null>((res) => child.on('exit', (code) => res(code)));
-    const readCalls = (): string[] => {
-      try {
-        return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
-      } catch {
-        return [];
-      }
-    };
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => (stdout += chunk));
+    const exited = new Promise<number | null>((res) => child.on('close', (code) => res(code)));
 
-    // Wait until the serving tunnel is running, so the trap is installed.
     const deadline = Date.now() + 5000;
-    while (!readCalls().includes('tunnel --accept-server-license-terms --name hello')) {
-      if (Date.now() > deadline) throw new Error(`tunnel never started: ${readCalls().join(', ')}`);
+    while (!readCallsFrom(log).includes('tunnel --accept-server-license-terms --name hello')) {
+      if (Date.now() > deadline) {
+        child.kill('SIGKILL');
+        throw new Error(`tunnel never started: ${readCallsFrom(log).join(', ')}`);
+      }
       await new Promise((r) => setTimeout(r, 50));
     }
     child.kill('SIGTERM');
+    return { status: await exited, stdout, calls: readCallsFrom(log) };
+  }
 
-    expect(await exited).toBe(0);
-    expect(readCalls()).toEqual([
+  it('unregisters the tunnel on SIGTERM and logs the exit code before exiting', async () => {
+    const r = await runUntilSigterm();
+    expect(r.status, r.stdout).toBe(0);
+    expect(r.calls).toEqual([
       'tunnel user show',
       'tunnel --accept-server-license-terms --name hello',
       'tunnel unregister',
     ]);
+    const lines = r.stdout.split('\n');
+    const start = lines.indexOf('on_term: unregistering tunnel hello');
+    expect(start, r.stdout).toBeGreaterThanOrEqual(0);
+    expect(lines.indexOf('on_term: code tunnel unregister exited 0'), r.stdout).toBeGreaterThan(
+      start,
+    );
+  }, 15_000);
+
+  it('logs a failed unregister and still exits 0 on SIGTERM', async () => {
+    const r = await runUntilSigterm({ STUB_UNREGISTER_RC: '3' });
+    expect(r.status, r.stdout).toBe(0);
+    expect(r.calls.at(-1)).toBe('tunnel unregister');
+    expect(r.stdout).toContain('on_term: code tunnel unregister exited 3');
   }, 15_000);
 });
 
