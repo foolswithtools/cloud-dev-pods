@@ -3,11 +3,18 @@ name: cluster-down
 # roles, ECR repos) is intentionally NOT destroyed — keep them around so you
 # don't have to re-bootstrap if you spin the cluster back up later.
 #
-# Pre-flight: scripts/cluster-drain.ts must exit 0 before `cdk destroy` runs.
-# It refuses if any pods are registered, unless `force=true` (then it stops
-# each one through the pod-manager Lambda and re-lists to confirm none are
-# left). It fails closed: a failed pod list, a malformed response, a failed
-# `down`, or a pod still registered after the drain all stop the teardown.
+# Pre-flight: scripts/cluster-drain.ts (step id `drain`) decides whether
+# `cdk destroy` may run. It refuses if any pods are registered, unless
+# `force=true` (then it stops each one through the pod-manager Lambda and
+# re-lists to confirm none are left). It fails closed: a failed pod list, a
+# malformed response, a failed `down`, or a pod still registered after the
+# drain all stop the teardown.
+#
+# Exit 0 alone is not enough: if the script's main() never runs, it still
+# exits 0 (#194). So the drain writes the step output `proceed=true` only
+# when it decided to proceed. `cdk destroy` runs only when
+# `steps.drain.outputs.proceed == 'true'`, and the "Require pre-flight proof"
+# step fails the job when the drain exited 0 without writing it (#211).
 # See "cluster-down refuses: pod pre-flight failed" in docs/troubleshooting.md.
 
 on:
@@ -60,6 +67,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Pre-flight — check and drain pods
+        id: drain
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           FORCE: ${{ inputs.force }}
@@ -70,10 +78,21 @@ jobs:
             args+=(--force)
           fi
           # Exits non-zero (failing the job before cdk destroy) unless no pods
-          # remain registered. Writes its outcome to $GITHUB_STEP_SUMMARY.
+          # remain registered. Writes its outcome to $GITHUB_STEP_SUMMARY, and
+          # writes proceed=true to $GITHUB_OUTPUT only when it is safe to destroy.
           npx tsx scripts/cluster-drain.ts "${args[@]}"
 
+      # Runs only when the drain step exited 0. Without the proceed=true marker
+      # the drain never decided anything (e.g. main() did not run), so fail
+      # the job rather than let a skipped destroy read as a green run.
+      - name: Require pre-flight proof
+        if: steps.drain.outputs.proceed != 'true'
+        run: |
+          echo "::error::The pod pre-flight exited 0 but did not write proceed=true, so it never confirmed the cluster is safe to destroy. Not destroying. See \"cluster-down refuses: pod pre-flight failed\" in docs/troubleshooting.md."
+          exit 1
+
       - name: cdk destroy (everything except Bootstrap)
+        if: steps.drain.outputs.proceed == 'true'
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
