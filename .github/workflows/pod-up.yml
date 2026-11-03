@@ -2,7 +2,13 @@ name: pod-up
 # Spin up one pod via pod-manager Lambda.
 # Browser-mode: surfaces the URL.
 # Tunnel-mode: polls CW Logs for the device-code prompt and surfaces it.
-# SSH-mode: needs remote.backend in config (no backend is available yet).
+# SSH-mode: hidden until a remote-access backend ships (#228). Every
+# remote.backend is still refused by the config schema, so offering `ssh`
+# here only produced an opaque failure. The first backend PR (#146 SSM,
+# #147 Cloudflare; epic #129, connection docs #182) re-enables it: add
+# "ssh" back to the `mode` options, restore the `ssh_public_key` input,
+# and pass it to pod-cli as `--ssh-public-key` (the PR for #228 shows the
+# removed lines).
 
 on:
   workflow_dispatch:
@@ -16,7 +22,8 @@ on:
         required: true
         default: "browser"
         type: choice
-        options: ["browser", "tunnel", "ssh"]
+        # "ssh" is hidden until a remote-access backend ships; see the header comment.
+        options: ["browser", "tunnel"]
       cpu:
         description: "Fargate CPU units (256/512/1024/2048/4096)."
         required: false
@@ -48,11 +55,6 @@ on:
         default: "config"
         type: choice
         options: ["config", "github", "microsoft"]
-      ssh_public_key:
-        description: "SSH mode: your OpenSSH public key, one line (e.g. the contents of ~/.ssh/id_ed25519.pub)."
-        required: false
-        default: ""
-        type: string
 
 permissions: {}
 
@@ -97,7 +99,6 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           # Passed via env, not interpolated, so the value can't inject shell.
           POD_OWNER: ${{ inputs.owner }}
-          SSH_PUBLIC_KEY: ${{ inputs.ssh_public_key }}
         run: |
           set -euo pipefail
           IMG_FLAG=""
@@ -113,10 +114,6 @@ jobs:
           if [ -n "$POD_OWNER" ]; then
             OWNER_ARGS=(--owner "$POD_OWNER")
           fi
-          SSH_KEY_ARGS=()
-          if [ -n "$SSH_PUBLIC_KEY" ]; then
-            SSH_KEY_ARGS=(--ssh-public-key "$SSH_PUBLIC_KEY")
-          fi
           # shellcheck disable=SC2086
           RESULT=$(npx tsx scripts/pod-cli.ts up \
             --pod "${{ inputs.pod_name }}" \
@@ -124,7 +121,7 @@ jobs:
             --cpu "${{ inputs.cpu }}" \
             --memory "${{ inputs.memory }}" \
             --idle "${{ inputs.idle_minutes }}" \
-            $IMG_FLAG $PROVIDER_FLAG "${OWNER_ARGS[@]}" "${SSH_KEY_ARGS[@]}")
+            $IMG_FLAG $PROVIDER_FLAG "${OWNER_ARGS[@]}")
           echo "$RESULT"
           OK=$(echo "$RESULT" | jq -r '.ok')
           if [ "$OK" != "true" ]; then
@@ -204,6 +201,7 @@ jobs:
               echo ""
               echo "Open the URL and sign in (allowlist enforced by oauth2-proxy; with \`auth.browser.ownerOnly: true\`, only the owner and \`auth.browser.adminUsers\` get in)."
             elif [ "${{ inputs.mode }}" = "ssh" ]; then
+              # Unreachable while "ssh" is hidden from the mode options (#228).
               echo "- Remote backend: \`${POD_BACKEND:-unknown}\`"
               echo ""
               echo "Connection instructions: see #182 (scripts/pod-connect.ts)."
