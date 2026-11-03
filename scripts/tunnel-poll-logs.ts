@@ -4,7 +4,11 @@
  * the URL + code as JSON on stdout. Used by pod-up.yml's tunnel-mode path.
  *
  * Usage:
- *   tsx scripts/tunnel-poll-logs.ts --log-group <group> --stream-prefix <prefix> [--timeout 180]
+ *   tsx scripts/tunnel-poll-logs.ts --log-group <group> --pod <name> --task-arn <arn> [--timeout 180]
+ *
+ * Reads only the started task's own stream (see tunnelLogStreamName). The poller
+ * never matches on a stream prefix: any stream under tunnel/<pod>/ that this
+ * task didn't write is untrusted.
  *
  * Exit codes:
  *   0 — success (URL + code found, OR timeout reached without finding; emits empty JSON in the timeout case so callers can decide).
@@ -17,28 +21,40 @@ import {
 } from '@aws-sdk/client-cloudwatch-logs';
 import { isInvokedAsCli } from './lib/cli-entry.js';
 
-interface Args {
+export interface Args {
   logGroup: string;
-  streamPrefix: string;
+  logStream: string;
   timeoutSeconds: number;
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const get = (key: string): string | undefined => {
     const idx = argv.indexOf(`--${key}`);
     return idx >= 0 ? argv[idx + 1] : undefined;
   };
   const logGroup = get('log-group');
-  const streamPrefix = get('stream-prefix');
+  const pod = get('pod');
+  const taskArn = get('task-arn');
   const timeoutStr = get('timeout');
-  if (!logGroup || !streamPrefix) {
-    throw new Error('Required: --log-group <group> --stream-prefix <prefix>');
+  if (!logGroup || !pod || !taskArn) {
+    throw new Error('Required: --log-group <group> --pod <name> --task-arn <arn>');
   }
   return {
     logGroup,
-    streamPrefix,
+    logStream: tunnelLogStreamName(pod, taskArn),
     timeoutSeconds: timeoutStr ? Number(timeoutStr) : 180,
   };
+}
+
+// awslogs names a container's stream <awslogs-stream-prefix>/<container>/<task-id>.
+// pod-manager (infra/lambda/pod-manager/aws.ts) sets the tunnel prefix to
+// tunnel/<pod>/vscode-tunnel, and the container is named vscode-tunnel.
+const TASK_ARN_RE = /^arn:aws[a-z-]*:ecs:[a-z0-9-]+:\d{12}:task\/[A-Za-z0-9_-]+\/([a-f0-9]{32})$/;
+
+export function tunnelLogStreamName(podName: string, taskArn: string): string {
+  const taskId = TASK_ARN_RE.exec(taskArn)?.[1];
+  if (!taskId) throw new Error(`Not an ECS task ARN: "${taskArn}"`);
+  return `tunnel/${podName}/vscode-tunnel/vscode-tunnel/${taskId}`;
 }
 
 export interface DeviceCode {
@@ -79,7 +95,7 @@ async function main(): Promise<void> {
     try {
       const r = await client.send(new FilterLogEventsCommand({
         logGroupName: args.logGroup,
-        logStreamNamePrefix: args.streamPrefix,
+        logStreamNames: [args.logStream],
         filterPattern: FILTER_PATTERN,
         startTime,
       }));

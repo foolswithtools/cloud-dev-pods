@@ -104,6 +104,8 @@ describe('podUp access-point reuse (issue #30)', () => {
     });
 
     expect(result.ok).toBe(true);
+    // pod-up.yml reads the device code from this task's own log stream.
+    expect(result.taskArn).toBe('arn:aws:ecs:us-west-2:123456789012:task/c/t1');
     expect(findExistingAccessPoint).toHaveBeenCalledWith('hello');
     expect(allocatePosixUid).not.toHaveBeenCalled();
     expect(createAccessPoint).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractDeviceCode, FILTER_PATTERN } from './tunnel-poll-logs.js';
+import { extractDeviceCode, FILTER_PATTERN, parseArgs, tunnelLogStreamName } from './tunnel-poll-logs.js';
 
 // Verbatim prompt lines printed by VS Code CLI 1.143.0
 // (`code tunnel user login --provider <p>`), as quoted in tunnel-poll-logs.ts.
@@ -48,5 +48,41 @@ describe('FILTER_PATTERN', () => {
 
   it.each([GITHUB_LINE, MICROSOFT_LINE])('selects %s', (line) => {
     expect(terms.some((t) => line.includes(t))).toBe(true);
+  });
+});
+
+describe('tunnelLogStreamName', () => {
+  // awslogs names streams <prefix>/<container>/<task-id>; pod-manager sets the
+  // prefix to tunnel/<pod>/vscode-tunnel and the container is vscode-tunnel.
+  it('builds the exact stream for one task', () => {
+    expect(
+      tunnelLogStreamName('t1', 'arn:aws:ecs:us-west-2:123456789012:task/cloud-dev-pods/0123456789abcdef0123456789abcdef'),
+    ).toBe('tunnel/t1/vscode-tunnel/vscode-tunnel/0123456789abcdef0123456789abcdef');
+  });
+
+  it('rejects a value that is not an ECS task ARN', () => {
+    expect(() => tunnelLogStreamName('t1', 'not-an-arn')).toThrow();
+    expect(() => tunnelLogStreamName('t1', '')).toThrow();
+  });
+});
+
+describe('parseArgs', () => {
+  it('reads the exact stream of the given task', () => {
+    const arn = 'arn:aws:ecs:us-west-2:123456789012:task/cloud-dev-pods/0123456789abcdef0123456789abcdef';
+    expect(parseArgs(['--log-group', 'g', '--pod', 't1', '--task-arn', arn])).toEqual({
+      logGroup: 'g',
+      logStream: 'tunnel/t1/vscode-tunnel/vscode-tunnel/0123456789abcdef0123456789abcdef',
+      timeoutSeconds: 180,
+    });
+  });
+
+  it('requires the task ARN', () => {
+    expect(() => parseArgs(['--log-group', 'g', '--pod', 't1'])).toThrow(/--task-arn/);
+  });
+
+  it('no longer accepts a stream prefix', () => {
+    // A prefix matches streams any task could have written; only an exact
+    // stream is trusted.
+    expect(() => parseArgs(['--log-group', 'g', '--stream-prefix', 'tunnel/t1/'])).toThrow(/--task-arn/);
   });
 });

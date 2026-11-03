@@ -51,6 +51,9 @@ export interface PodResult {
   remoteBackend?: string;
   podName?: string;
   owner?: string;
+  // pod-up: the started task. pod-up.yml reads a tunnel pod's device code
+  // from this task's own log stream.
+  taskArn?: string;
   // Non-fatal notice for the caller, e.g. the tunnel cap warning.
   warning?: string;
   pods?: Array<Record<string, unknown>>;
