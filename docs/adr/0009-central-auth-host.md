@@ -216,4 +216,4 @@ Apply these to #144's body. Where they conflict with it, this ADR wins.
     - add tests:
       - `pod-up` onto an existing access point with a different owner under `centralAuthHost` is refused and creates no task
       - after `pod-down keep_workspace=false`, a `pod-up` of the same name uses a different `RootDirectory.Path`
-    - assumption: this relies on per-access-point isolation on EFS. Whether a root user in one pod can reach other pods' directories with a raw NFS client is a separate, pre-existing question (no file-system policy today, repo `infra/lib/stacks/cluster-stack.ts:60-70`), listed as a follow-up in PR #186's completion report.
+    - assumption: this relies on per-access-point isolation on EFS. Since #217, the file-system policy enforces it: every client mount must use TLS and go through an access point, and nothing is granted root access (repo `infra/lib/stacks/cluster-stack.ts`, ADR 0004 "File-system policy"). The task roles are still shared per mode, so the policy can't tell one pod's access point from another pod's of the same mode. Per-pod task roles are a separate decision.

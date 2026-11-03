@@ -4,6 +4,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as efs from 'aws-cdk-lib/aws-efs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
@@ -57,6 +58,36 @@ export class ClusterStack extends Stack {
     // next `cluster-up`. Flip `efs.retainOnClusterDown: true` in the
     // config to restore the v0.1.x RETAIN behavior for forks hosting
     // data they truly cannot afford to lose on an explicit teardown.
+    //
+    // File-system policy (issue #217, ADR 0004): standard EFS hardening.
+    // Every client mount must use TLS and go through an access point. The
+    // policy grants nothing itself, so a client without IAM authentication
+    // gets no access; each pod task role carries its own identity grant
+    // (PodTaskFamilyStack). Nothing here may reference PodTaskFamilyStack:
+    // that stack already depends on this one.
+    const clientActions = [
+      'elasticfilesystem:ClientMount',
+      'elasticfilesystem:ClientWrite',
+      'elasticfilesystem:ClientRootAccess',
+    ];
+    const fileSystemPolicy = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          sid: 'DenyWithoutTls',
+          effect: iam.Effect.DENY,
+          principals: [new iam.AnyPrincipal()],
+          actions: clientActions,
+          conditions: { Bool: { 'aws:SecureTransport': 'false' } },
+        }),
+        new iam.PolicyStatement({
+          sid: 'DenyWithoutAccessPoint',
+          effect: iam.Effect.DENY,
+          principals: [new iam.AnyPrincipal()],
+          actions: clientActions,
+          conditions: { Null: { 'elasticfilesystem:AccessPointArn': 'true' } },
+        }),
+      ],
+    });
     this.fileSystem = new efs.FileSystem(this, 'EfsFs', {
       vpc: network.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -68,6 +99,7 @@ export class ClusterStack extends Stack {
       removalPolicy: config.efs?.retainOnClusterDown
         ? RemovalPolicy.RETAIN
         : RemovalPolicy.DESTROY,
+      fileSystemPolicy,
     });
 
     // ALB (internet-facing). Per-pod target groups + listener rules added at runtime.
