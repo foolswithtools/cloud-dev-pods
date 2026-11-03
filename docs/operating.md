@@ -11,6 +11,12 @@ gh workflow run pod-list.yml
 gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing cost
 ```
 
+## One workflow at a time
+
+`cluster-up`, `cluster-down`, `pod-up` and `pod-down` share one GitHub Actions concurrency group (`cloud-dev-pods-cluster-<owner>/<repo>`), so only one of them runs at a time. That stops a `pod-up` from starting a pod while `cluster-down` is draining and destroying the cluster, and stops two `cluster-up` runs from colliding. `pod-list` isn't in the group.
+
+A run that starts while another holds the group waits as "Pending"; nothing already running is cancelled. GitHub keeps only **one** pending run per group, though: dispatch a second while one is already waiting and the older waiting run is cancelled. For example, while `cluster-up` (about 12 minutes) runs, dispatching `pod-up` for `foo` and then for `bar` leaves only `bar` queued, and the `foo` run shows as cancelled. Wait for the queue to clear, or re-dispatch any run that shows as cancelled.
+
 ## Pod owner
 
 Every pod has an owner, stored in the pod registry, tagged on the ECS task (`Owner`), and shown by `pod-list` and in the `pod-up` workflow summary. By default the owner is the GitHub user who ran `pod-up` (`GITHUB_ACTOR`). Pass a different one with the `owner` input:

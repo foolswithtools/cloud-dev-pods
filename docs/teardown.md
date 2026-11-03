@@ -23,6 +23,9 @@ It does NOT destroy:
 - The `BootstrapStack` (OIDC provider, IAM roles, ECR repos) — these are cheap to keep.
 - Route53 hosted zone — you brought it; you keep it.
 - ACM cert — kept (free; no charge for unused certs).
+- Stacks your fork adds itself, for example through `infra/extensions.local.ts`. `cluster-down` destroys only the stacks listed by `npx tsx scripts/stack-names.ts --cluster` (`<naming.prefix>-Network`, `-Cluster`, `-PodTaskFamily`, `-PodManager` and `-IdleReaper`). Any other stack is yours to tear down. If it imports outputs from one of those stacks, destroy it before running `cluster-down`, because CloudFormation won't delete a stack whose exports another stack still imports.
+
+The stack names follow `naming.prefix` in `config/config.yaml` (default `CloudDevPods`). `cluster-down` fails before draining any pod if none of those stacks exists in CloudFormation, which usually means the prefix was changed after `cluster-up` deployed. Set it back to the deployed value and run `cluster-down` again.
 
 ## Tear down everything (including bootstrap)
 
