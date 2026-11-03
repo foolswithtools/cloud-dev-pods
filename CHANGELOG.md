@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.4...v0.4.5) (2026-11-03)
+
+
+### Features
+
+* **cluster:** enforce TLS and access-point-only EFS access with a file-system policy ([#218](https://github.com/foolswithtools/cloud-dev-pods/issues/218)) ([ecc4a7e](https://github.com/foolswithtools/cloud-dev-pods/commit/ecc4a7e2b29547bb21a8c798e481bf6bd4e455d3)), closes [#217](https://github.com/foolswithtools/cloud-dev-pods/issues/217)
+
 ## [0.4.4](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.3...v0.4.4) (2026-11-02)
 
 
