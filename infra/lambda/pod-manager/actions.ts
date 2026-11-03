@@ -180,6 +180,7 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       podName,
       url,
       owner,
+      taskArn,
       tunnelName: mode === 'tunnel' ? podName : undefined,
       tunnelProvider,
       remoteBackend: mode === 'ssh' ? env.remoteBackend : undefined,

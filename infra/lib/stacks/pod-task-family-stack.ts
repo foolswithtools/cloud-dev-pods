@@ -4,7 +4,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { acknowledgeNag, nagImportRef } from '../util/nag';
+import { acknowledgeNag } from '../util/nag';
 import type { Construct } from 'constructs';
 import type { Config } from '../config/schema';
 import { ssmParamPath } from '../util/naming';
@@ -85,7 +85,9 @@ export class PodTaskFamilyStack extends Stack {
     oauthCookieSecret.grantRead(this.executionRole);
 
     // Per-mode task role: scopes runtime AWS access for the pod itself.
-    // Browser pods only need EFS + minimal logs; tunnel pods same.
+    // EFS only. No CloudWatch Logs actions: the awslogs driver writes with
+    // the execution role, and a shared task role able to write log streams
+    // could forge another pod's tunnel device-code line.
     //
     // EFS: the cluster's file-system policy (issue #217) grants nothing, so
     // the mount is authorized here. ClientMount + ClientWrite only (never
@@ -93,15 +95,9 @@ export class PodTaskFamilyStack extends Stack {
     // access-point condition matches any access point in the account: task
     // roles are shared per mode, so it can't name one pod's access point.
     const efsAccessPointArns = `arn:aws:elasticfilesystem:${config.aws.region}:${config.aws.accountId}:access-point/*`;
-    const taskRolePolicyDoc = (modeName: string) =>
+    const taskRolePolicyDoc = () =>
       new iam.PolicyDocument({
         statements: [
-          new iam.PolicyStatement({
-            actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
-            resources: [
-              `arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${cluster.podsLogGroup.logGroupName}:log-stream:${modeName}/*`,
-            ],
-          }),
           new iam.PolicyStatement({
             actions: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite'],
             resources: [cluster.fileSystem.fileSystemArn],
@@ -117,14 +113,14 @@ export class PodTaskFamilyStack extends Stack {
       path: '/cloud-dev-pods/',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       description: 'Pod task role for browser-mode pods.',
-      inlinePolicies: { default: taskRolePolicyDoc('browser') },
+      inlinePolicies: { default: taskRolePolicyDoc() },
     });
     this.tunnelTaskRole = new iam.Role(this, 'TunnelTaskRole', {
       roleName: 'CloudDevPodsTunnelTaskRole',
       path: '/cloud-dev-pods/',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       description: 'Pod task role for tunnel-mode pods.',
-      inlinePolicies: { default: taskRolePolicyDoc('tunnel') },
+      inlinePolicies: { default: taskRolePolicyDoc() },
     });
     // ssh pods (issue #145). Backends (#146-#148) add their own policies.
     this.sshTaskRole = new iam.Role(this, 'SshTaskRole', {
@@ -132,25 +128,8 @@ export class PodTaskFamilyStack extends Stack {
       path: '/cloud-dev-pods/',
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       description: 'Pod task role for ssh-mode pods.',
-      inlinePolicies: { default: taskRolePolicyDoc('ssh') },
+      inlinePolicies: { default: taskRolePolicyDoc() },
     });
-    // Per-pod log streams need a wildcard suffix; the pod name is part of
-    // the stream path. Bounded to this log group + mode-specific prefix.
-    acknowledgeNag(
-      [this.browserTaskRole, this.tunnelTaskRole, this.sshTaskRole],
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason:
-            'Per-pod CloudWatch log streams are wildcarded by pod name. Bounded to the cluster pods log group and the mode-specific stream prefix (browser/*, tunnel/* or ssh/*).',
-          appliesTo: ['browser', 'tunnel', 'ssh'].map(
-            (modeName) =>
-              `Resource::arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${nagImportRef(cluster, 'ExportsOutputRefPodsLogGroup17520DC50F223430')}:log-stream:${modeName}/*`,
-          ),
-        },
-      ],
-    );
-
     // EFS volume reference, attached to both task families. Per-pod access
     // points are created at runtime by pod-manager (ADR 0004); the access-point
     // ID gets attached via container-level mountPoints when a fresh task-def

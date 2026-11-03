@@ -135,6 +135,7 @@ jobs:
           MSG=$(echo "$RESULT" | jq -r '.message // empty')
           OWNER=$(echo "$RESULT" | jq -r '.owner // empty')
           BACKEND=$(echo "$RESULT" | jq -r '.remoteBackend // empty')
+          TASK_ARN=$(echo "$RESULT" | jq -r '.taskArn // empty')
           WARNING=$(echo "$RESULT" | jq -r '.warning // empty' | tr -d '\r\n')
           if [ -n "$WARNING" ]; then
             echo "::warning title=Tunnel cap::$WARNING"
@@ -150,6 +151,7 @@ jobs:
             echo "account=$ACCOUNT"
             echo "warning=$WARNING"
             echo "backend=$BACKEND"
+            echo "task_arn=$TASK_ARN"
           } >> "$GITHUB_OUTPUT"
 
       - name: Poll CW Logs for tunnel device code (tunnel mode only)
@@ -157,14 +159,18 @@ jobs:
         id: tunnel
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
+          TASK_ARN: ${{ steps.up.outputs.task_arn }}
         run: |
           set -euo pipefail
           # The pod's CW log group; project env defaults to "dev" — Phase 11 polish makes this configurable.
           LOG_GROUP="/cloud-dev-pods/dev/pods"
           POD="${{ inputs.pod_name }}"
+          # Read only this task's own log stream, never a tunnel/<pod>/ prefix:
+          # another stream under that prefix isn't proof this task wrote it.
           RESULT=$(npx tsx scripts/tunnel-poll-logs.ts \
             --log-group "$LOG_GROUP" \
-            --stream-prefix "tunnel/$POD/" \
+            --pod "$POD" \
+            --task-arn "$TASK_ARN" \
             --timeout 180 || true)
           echo "$RESULT"
           URL=$(echo "$RESULT" | jq -r '.url // empty')

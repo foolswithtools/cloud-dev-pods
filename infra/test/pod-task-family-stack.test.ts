@@ -84,18 +84,17 @@ describe('PodTaskFamilyStack ssh roles and family', () => {
       JSON.stringify(p.Properties.Roles).includes(`"${logicalId}"`),
     );
 
-  it('CloudDevPodsSshTaskRole: only inline policy is the ssh/* log-stream statement plus the EFS grant', () => {
+  it('CloudDevPodsSshTaskRole: only inline policy is the EFS grant', () => {
     const id = roleId('CloudDevPodsSshTaskRole');
     const role = template.toJSON().Resources[id] as Res;
     expect(role.Properties.ManagedPolicyArns).toBeUndefined();
     const inline = role.Properties.Policies as Array<{ PolicyDocument: { Statement: Array<Record<string, unknown>> } }>;
     expect(inline).toHaveLength(1);
-    // The log-stream statement plus the EFS client grant (issue #217).
+    // Only the EFS client grant (issue #217). No CloudWatch Logs actions: the
+    // awslogs driver writes with the execution role.
     const stmts = inline[0]!.PolicyDocument.Statement;
-    expect(stmts).toHaveLength(2);
-    expect(stmts[0]!.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
-    expect(JSON.stringify(stmts[0]!.Resource)).toMatch(/:log-stream:ssh\/\*"/);
-    expect(JSON.stringify(stmts[1]!.Action)).toContain('elasticfilesystem:');
+    expect(stmts).toHaveLength(1);
+    expect(JSON.stringify(stmts[0]!.Action)).toContain('elasticfilesystem:');
     expect(policiesFor(id)).toEqual([]);
   });
 
@@ -161,13 +160,9 @@ describe('PodTaskFamilyStack EFS client grants', () => {
     expect(role, roleName).toBeDefined();
     return (role!.Properties.Policies ?? []).flatMap((p) => p.PolicyDocument.Statement);
   };
-  const modes = [
-    ['CloudDevPodsBrowserTaskRole', 'browser'],
-    ['CloudDevPodsTunnelTaskRole', 'tunnel'],
-    ['CloudDevPodsSshTaskRole', 'ssh'],
-  ] as const;
+  const roles = ['CloudDevPodsBrowserTaskRole', 'CloudDevPodsTunnelTaskRole', 'CloudDevPodsSshTaskRole'] as const;
 
-  for (const [roleName, modeName] of modes) {
+  for (const roleName of roles) {
     it(`${roleName} may mount and write EFS only through an access point`, () => {
       const efs = inlineStatements(roleName).filter((s) => JSON.stringify(s.Action).includes('elasticfilesystem:'));
       expect(efs).toHaveLength(1);
@@ -191,13 +186,13 @@ describe('PodTaskFamilyStack EFS client grants', () => {
       expect(JSON.stringify(inlineStatements(roleName))).not.toContain('elasticfilesystem:*');
     });
 
-    it(`${roleName} keeps its ${modeName}/* log-stream statement unchanged`, () => {
-      const logs = inlineStatements(roleName).filter((s) => JSON.stringify(s.Action).includes('logs:'));
-      expect(logs).toHaveLength(1);
-      expect(logs[0]!.Effect).toBe('Allow');
-      expect(logs[0]!.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
-      expect(logs[0]!.Condition).toBeUndefined();
-      expect(JSON.stringify(logs[0]!.Resource)).toMatch(new RegExp(`:log-stream:${modeName}/\\*"`));
+    it(`${roleName} has no CloudWatch Logs actions`, () => {
+      // Pods must not be able to write log streams: the device-code poller
+      // trusts what it reads from tunnel/<pod>/ streams, and a shared task
+      // role could write another pod's. The awslogs
+      // driver writes with the execution role.
+      expect(JSON.stringify(inlineStatements(roleName))).not.toContain('logs:');
+      expect(JSON.stringify(inlineStatements(roleName))).not.toContain('"*"');
     });
   }
 });
