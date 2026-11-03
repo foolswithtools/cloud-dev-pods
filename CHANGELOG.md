@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.7](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.6...v0.4.7) (2026-11-03)
+
+
+### Bug Fixes
+
+* **pod-manager:** drop Route 53 grants and scope EFS/ECS permissions ([#235](https://github.com/foolswithtools/cloud-dev-pods/issues/235)) ([880e7a7](https://github.com/foolswithtools/cloud-dev-pods/commit/880e7a76d9cf645aadaf075f166e353ccea5da67)), closes [#224](https://github.com/foolswithtools/cloud-dev-pods/issues/224)
+* **pod-up:** hide mode ssh until a remote-access backend ships ([#234](https://github.com/foolswithtools/cloud-dev-pods/issues/234)) ([012c596](https://github.com/foolswithtools/cloud-dev-pods/commit/012c59608bab2743defcce0823b72622cf3d080d)), closes [#228](https://github.com/foolswithtools/cloud-dev-pods/issues/228)
+* **workflows:** keep pod runs out of the cluster concurrency group ([#238](https://github.com/foolswithtools/cloud-dev-pods/issues/238)) ([d11be04](https://github.com/foolswithtools/cloud-dev-pods/commit/d11be04895346c8e59a801745f453e035b524310))
+* **workflows:** teardown concurrency and prefix-derived stack names ([#236](https://github.com/foolswithtools/cloud-dev-pods/issues/236)) ([0d66eca](https://github.com/foolswithtools/cloud-dev-pods/commit/0d66eca8cfee86e7571c6679aef97a7723b52698)), closes [#225](https://github.com/foolswithtools/cloud-dev-pods/issues/225)
+
 ## [0.4.6](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.5...v0.4.6) (2026-11-03)
 
 
