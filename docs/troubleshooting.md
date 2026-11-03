@@ -266,6 +266,41 @@ Then re-run `cluster-up.yml`.
 
 **Fix:** enter the new code from the `pod-up` summary. Your GitHub or Microsoft account can hold at most 10 tunnels. If repeated restarts leave stale entries, remove them in VS Code Desktop's Remote Explorer → Tunnels (right-click → Unregister).
 
+## ECS task fails with `ResourceInitializationError ... EFS ... access denied`
+
+**Symptom:** a pod task stops before its containers start, with a stopped reason like:
+
+```text
+ResourceInitializationError: failed to invoke EFS utils commands to set up EFS volumes:
+stderr: b'mount.nfs4: access denied by server while mounting 127.0.0.1:/'
+```
+
+This is the usual ECS wording for an EFS mount that the file-system policy refused. It hasn't been captured from a cloud-dev-pods task (see cause 1), so match on `ResourceInitializationError` plus `access denied`, not on the exact text.
+
+Since v0.4.5 the EFS file system carries a file-system policy (ADR 0004, [File-system policy](adr/0004-efs-per-pod-access-point.md#file-system-policy-amended-2026-11-02-issue-217)): every mount must use TLS, go through an access point, and come from a role with an IAM grant for `elasticfilesystem:ClientMount`. Root access is never granted. Two things can trip it.
+
+**Cause 1: a pod started during the first `cluster-up` after upgrading.** `cluster-up` deploys `CloudDevPods-Cluster` (where the policy takes effect) before `CloudDevPods-PodTaskFamily` (where the task roles get their mount grant). A task that mounts between the two is refused. On the smoke fork this window was about 11 seconds, and a `pod-up` dispatched the moment the Cluster stack finished still mounted fine, so it's rare. Pods already running before the upgrade keep their mounts.
+
+**Fix:** re-run `pod-up` after `cluster-up` finishes. To avoid it entirely, don't start pods during the first `cluster-up` after upgrading.
+
+**Cause 2: a fork-local EFS client.** A task, Lambda or instance you added in `infra/extensions.local.ts` (for example a backup or sync job) that mounts the file-system root, mounts without TLS, mounts as root, or uses a role with no `ClientMount` grant is now refused.
+
+**Fix:** mount through an access point with TLS and IAM authorization (`transitEncryption: 'ENABLED'` and `authorizationConfig: { accessPointId, iam: 'ENABLED' }` for ECS), and give the client's role a grant matching the pod task roles in `infra/lib/stacks/pod-task-family-stack.ts`:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"],
+  "Resource": "arn:aws:elasticfilesystem:<region>:<account>:file-system/<fs-id>",
+  "Condition": {
+    "Bool": { "elasticfilesystem:AccessedViaMountTarget": "true" },
+    "ArnLike": { "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:<region>:<account>:access-point/*" }
+  }
+}
+```
+
+Drop `ClientWrite` for a read-only client. A client that needs root (`ClientRootAccess`) isn't supported: use an access point whose `PosixUser` owns the files instead.
+
 ## EFS mount target not in same AZ as task
 
 **Cause:** the task got placed in an AZ where EFS has no mount target. Should be impossible since `ClusterStack` creates mount targets in all private subnets, but possible if you customized the network in `infra/extensions.local.ts` and added subnets without mount targets.
