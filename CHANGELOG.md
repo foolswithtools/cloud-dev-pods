@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.6](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.5...v0.4.6) (2026-11-03)
+
+
+### Bug Fixes
+
+* **idle-reaper:** skip browser pods younger than their idle window ([#231](https://github.com/foolswithtools/cloud-dev-pods/issues/231)) ([caa354d](https://github.com/foolswithtools/cloud-dev-pods/commit/caa354da5a5178119eef63ef50b95377c38b1724)), closes [#229](https://github.com/foolswithtools/cloud-dev-pods/issues/229)
+* **pod-task-family:** drop task-role log-stream grants and read the tunnel device code from the task's own stream ([#233](https://github.com/foolswithtools/cloud-dev-pods/issues/233)) ([d0d5e28](https://github.com/foolswithtools/cloud-dev-pods/commit/d0d5e2805a8875d4ac5afa0c6577e6c8bc918d20))
+
 ## [0.4.5](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.4...v0.4.5) (2026-11-03)
 
 
