@@ -303,7 +303,7 @@ Common signatures with diagnostic + fix in [`docs/troubleshooting.md`](docs/trou
 - `cdk` failures with `ENOENT ... config/config.yaml` → user didn't commit it (Phase 11 footgun).
 - ECS task fails with `ResourceInitializationError ... AccessDenied ... secret:/cloud-dev-pods/oauth/...` → secret ARN suffix mismatch; rerun `cluster-up` with the latest pod-manager Lambda.
 - oauth2-proxy crashes with `cookie_secret must be 16, 24, or 32 bytes ... but is N bytes` → `aws secretsmanager update-secret` with `$(openssl rand -hex 16)` (32 bytes).
-- Idle reaper stops fresh pods within 5 min → ensure `ALB_NAME_DIMENSION` env var is wired (Phase 9.8).
+- Idle reaper stops a never-opened browser pod within ~10 min → fixed in #229 (reaper skips pods younger than their idle window); sync upstream + `cluster-up`.
 - ALB rule limit (100) hit → quota raise (`L-EAD7E5BC`).
 - Tunnel pod missing in VS Code Desktop → wrong GitHub/Microsoft account on the local side.
 

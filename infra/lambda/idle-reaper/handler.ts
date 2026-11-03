@@ -49,6 +49,7 @@ interface PodRecord {
   owner?: string;
   idleMinutes?: number;
   idleSince?: string;
+  createdAt?: string;
 }
 
 async function listPods(): Promise<PodRecord[]> {
@@ -142,7 +143,8 @@ async function invokeDown(podName: string): Promise<void> {
 
 async function runIdleScan(): Promise<{ checked: number; stopped: string[]; warned: string[] }> {
   const pods = await listPods();
-  const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
   const stopped: string[] = [];
   const warned: string[] = [];
   let checked = 0;
@@ -152,6 +154,12 @@ async function runIdleScan(): Promise<{ checked: number; stopped: string[]; warn
     if (!pod.targetGroupArn) continue;
     const minutes = pod.idleMinutes && pod.idleMinutes > 0 ? pod.idleMinutes : idleMinutesDefault;
     if (pod.idleMinutes === 0) continue;             // user disabled idle for this pod
+    // A pod younger than its idle window can't have been idle for the whole
+    // window: the metric lookback reaches back before the pod existed, so a
+    // never-opened pod would read as idle minutes after pod-up (#229).
+    // pod-up rewrites the registry row, so createdAt is this task's start.
+    // Rows without createdAt (older versions) fall through to the check.
+    if (pod.createdAt && nowMs - Date.parse(pod.createdAt) < minutes * 60_000) continue;
     checked++;
 
     const idle = await browserIdleSince(pod.targetGroupArn, minutes);
