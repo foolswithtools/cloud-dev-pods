@@ -80,3 +80,69 @@ describe('PodManagerStack ssh wiring', () => {
     expect(vars.REMOTE_BACKEND).toBe('');
   });
 });
+
+// Least-privilege scoping of the pod-manager role (issue #224).
+interface Statement {
+  Action: string | string[];
+  Resource: unknown;
+  Condition?: Record<string, Record<string, unknown>>;
+}
+
+function roleStatements(): Statement[] {
+  return Object.values(template.findResources('AWS::IAM::Policy')).flatMap(
+    (p) => (p.Properties.PolicyDocument as { Statement: Statement[] }).Statement,
+  );
+}
+
+function actionsOf(s: Statement): string[] {
+  return Array.isArray(s.Action) ? s.Action : [s.Action];
+}
+
+function resourcesOf(s: Statement): unknown[] {
+  return Array.isArray(s.Resource) ? s.Resource : [s.Resource];
+}
+
+function statementsWith(action: string): Statement[] {
+  const found = roleStatements().filter((s) => actionsOf(s).includes(action));
+  expect(found.length, action).toBeGreaterThan(0);
+  return found;
+}
+
+describe('PodManagerStack least privilege (#224)', () => {
+  it('grants no route53 action (the Lambda never calls Route 53)', () => {
+    const route53 = roleStatements().flatMap(actionsOf).filter((a) => a.startsWith('route53:'));
+    expect(route53).toEqual([]);
+  });
+
+  it('does not grant elasticfilesystem:CreateAccessPoint on *', () => {
+    for (const s of statementsWith('elasticfilesystem:CreateAccessPoint')) {
+      expect(resourcesOf(s)).not.toContain('*');
+      expect(JSON.stringify(s.Resource)).toContain('EfsFs');
+    }
+  });
+
+  it('scopes elasticfilesystem:DeleteAccessPoint to Project-tagged access points', () => {
+    for (const s of statementsWith('elasticfilesystem:DeleteAccessPoint')) {
+      expect(resourcesOf(s)).not.toContain('*');
+      expect(s.Condition?.StringEquals?.['aws:ResourceTag/Project']).toBe('cloud-dev-pods');
+    }
+  });
+
+  it('allows elasticfilesystem:TagResource only as part of CreateAccessPoint', () => {
+    for (const s of statementsWith('elasticfilesystem:TagResource')) {
+      expect(resourcesOf(s)).not.toContain('*');
+      expect(s.Condition?.StringEquals?.['elasticfilesystem:CreateAction']).toBe('CreateAccessPoint');
+    }
+  });
+
+  it.each(['ecs:RunTask', 'ecs:StopTask', 'ecs:ListTasks', 'ecs:DescribeTasks'])(
+    '%s carries an ecs:cluster condition on the cluster ARN',
+    (action) => {
+      for (const s of statementsWith(action)) {
+        const cluster = s.Condition?.ArnEquals?.['ecs:cluster'];
+        expect(cluster, action).toBeDefined();
+        expect(JSON.stringify(cluster)).toContain('Cluster');
+      }
+    },
+  );
+});
