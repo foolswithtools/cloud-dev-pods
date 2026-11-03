@@ -54,6 +54,17 @@ on:
         default: ""
         type: string
 
+# One shared group for cluster-up, cluster-down, pod-up and pod-down (#225),
+# so no pod or cluster workflow can start while a cluster-down is draining
+# and destroying (and two cluster-ups can't collide). cancel-in-progress:
+# false never cancels a running run. GitHub keeps at most ONE pending run per
+# group: a newer dispatch cancels an older one still waiting, so re-dispatch
+# anything that shows as cancelled. See "One workflow at a time" in
+# docs/operating.md.
+concurrency:
+  group: cloud-dev-pods-cluster-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:

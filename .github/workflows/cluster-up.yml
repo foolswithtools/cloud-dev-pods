@@ -5,6 +5,17 @@ name: cluster-up
 on:
   workflow_dispatch:
 
+# One shared group for cluster-up, cluster-down, pod-up and pod-down (#225),
+# so no pod or cluster workflow can start while a cluster-down is draining
+# and destroying (and two cluster-ups can't collide). cancel-in-progress:
+# false never cancels a running run. GitHub keeps at most ONE pending run per
+# group: a newer dispatch cancels an older one still waiting, so re-dispatch
+# anything that shows as cancelled. See "One workflow at a time" in
+# docs/operating.md.
+concurrency:
+  group: cloud-dev-pods-cluster-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
@@ -35,6 +46,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Stack names come from naming.prefix in config/config.yaml (#225), via
+      # the same module the CDK app builds its stacks from.
+      - name: Resolve stack names
+        id: stacks
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          set -euo pipefail
+          CLUSTER_STACKS=$(npx tsx scripts/stack-names.ts --cluster)
+          CLUSTER_STACK=$(npx tsx scripts/stack-names.ts --cluster-stack)
+          if [ -z "$CLUSTER_STACKS" ] || [ -z "$CLUSTER_STACK" ]; then
+            echo "::error::scripts/stack-names.ts returned no stack names."
+            exit 1
+          fi
+          echo "Cluster stacks: $CLUSTER_STACKS"
+          {
+            echo "cluster=$CLUSTER_STACKS"
+            echo "cluster_stack=$CLUSTER_STACK"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS via OIDC
         uses: ./.github/actions/aws-oidc
         with:
@@ -45,17 +76,19 @@ jobs:
         # Non-blocking: surfaces orphan EFS filesystems left over from a
         # v0.1.x deployment (RemovalPolicy.RETAIN). v0.2.0 defaults to
         # DESTROY (see ADR 0007), so any project-tagged EFS without a
-        # live CloudDevPods-Cluster stack is a leak from the previous
+        # live <prefix>-Cluster stack is a leak from the previous
         # version. Use scripts/maintainer/cleanup-orphan-efs.sh to clean
         # them up. NEVER fails the workflow.
+        env:
+          CLUSTER_STACK: ${{ steps.stacks.outputs.cluster_stack }}
         run: |
           set -uo pipefail
           ORPHAN_COUNT=$(aws efs describe-file-systems \
             --query "FileSystems[?Tags[?Key=='Project' && Value=='cloud-dev-pods']] | length(@)" \
             --output text 2>/dev/null || echo 0)
           if [[ "$ORPHAN_COUNT" =~ ^[0-9]+$ ]] && (( ORPHAN_COUNT > 0 )); then
-            if ! aws cloudformation describe-stacks --stack-name CloudDevPods-Cluster >/dev/null 2>&1; then
-              echo "::warning::Found $ORPHAN_COUNT orphan EFS filesystem(s) tagged Project=cloud-dev-pods with no live CloudDevPods-Cluster stack. These are likely left over from a v0.1.x deployment that used RemovalPolicy.RETAIN. Run scripts/maintainer/cleanup-orphan-efs.sh --mode efs --apply to clean them up. See ADR 0007 + docs/teardown.md."
+            if ! aws cloudformation describe-stacks --stack-name "$CLUSTER_STACK" >/dev/null 2>&1; then
+              echo "::warning::Found $ORPHAN_COUNT orphan EFS filesystem(s) tagged Project=cloud-dev-pods with no live $CLUSTER_STACK stack. These are likely left over from a v0.1.x deployment that used RemovalPolicy.RETAIN. Run CLUSTER_STACK_NAME=$CLUSTER_STACK scripts/maintainer/cleanup-orphan-efs.sh --mode efs --apply to clean them up. See ADR 0007 + docs/teardown.md."
             fi
           fi
 
@@ -64,13 +97,11 @@ jobs:
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+          CLUSTER_STACKS: ${{ steps.stacks.outputs.cluster }}
         run: |
-          npx cdk deploy \
-            CloudDevPods-Network \
-            CloudDevPods-Cluster \
-            CloudDevPods-PodTaskFamily \
-            CloudDevPods-PodManager \
-            CloudDevPods-IdleReaper \
+          set -euo pipefail
+          read -ra stacks <<< "$CLUSTER_STACKS"
+          npx cdk deploy "${stacks[@]}" \
             --require-approval never \
             --concurrency 4
 

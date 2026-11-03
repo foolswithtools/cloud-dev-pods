@@ -65,15 +65,30 @@ jobs:
           role-to-assume: ${{ vars.SANDBOX_AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.SANDBOX_AWS_REGION }}
 
+      # Stack names come from naming.prefix in the smoke config (#225).
+      - name: Resolve stack names
+        id: stacks
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
+        run: |
+          set -euo pipefail
+          BOOTSTRAP_STACK=$(npx tsx scripts/stack-names.ts --bootstrap)
+          if [ -z "$BOOTSTRAP_STACK" ]; then
+            echo "::error::scripts/stack-names.ts returned no Bootstrap stack name."
+            exit 1
+          fi
+          echo "bootstrap=$BOOTSTRAP_STACK" >> "$GITHUB_OUTPUT"
+
       - name: cdk deploy --all
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
           CDK_DEFAULT_ACCOUNT: ${{ vars.SANDBOX_AWS_ACCOUNT_ID }}
           CDK_DEFAULT_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+          BOOTSTRAP_STACK: ${{ steps.stacks.outputs.bootstrap }}
         run: |
           npx cdk deploy --all --require-approval never --concurrency 4 \
-            --exclude CloudDevPods-Bootstrap
+            --exclude "$BOOTSTRAP_STACK"
 
   pod-cycle:
     needs: cluster-up
@@ -130,8 +145,10 @@ jobs:
           exit 0
 
   cluster-down:
-    needs: pod-cycle
-    if: always() && inputs.cleanup
+    # needs guard too, so a skipped guard (not upstream, or sandbox disabled)
+    # skips cleanup instead of always() running it anyway (#225).
+    needs: [guard, pod-cycle]
+    if: always() && needs.guard.result == 'success' && inputs.cleanup
     runs-on: ubuntu-latest
     environment: smoke-sandbox
     permissions:
@@ -149,6 +166,19 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Resolve stack names
+        id: stacks
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
+        run: |
+          set -euo pipefail
+          CLUSTER_STACKS=$(npx tsx scripts/stack-names.ts --cluster)
+          if [ -z "$CLUSTER_STACKS" ]; then
+            echo "::error::scripts/stack-names.ts returned no stack names. Not destroying."
+            exit 1
+          fi
+          echo "cluster=$CLUSTER_STACKS" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS via OIDC (sandbox deployer)
         uses: ./.github/actions/aws-oidc
@@ -185,11 +215,9 @@ jobs:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
           CDK_DEFAULT_ACCOUNT: ${{ vars.SANDBOX_AWS_ACCOUNT_ID }}
           CDK_DEFAULT_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+          CLUSTER_STACKS: ${{ steps.stacks.outputs.cluster }}
         run: |
-          npx cdk destroy \
-            CloudDevPods-IdleReaper \
-            CloudDevPods-PodManager \
-            CloudDevPods-PodTaskFamily \
-            CloudDevPods-Cluster \
-            CloudDevPods-Network \
-            --force
+          set -euo pipefail
+          read -ra stacks <<< "$CLUSTER_STACKS"
+          # cdk destroy orders the stacks by dependency itself.
+          npx cdk destroy "${stacks[@]}" --force

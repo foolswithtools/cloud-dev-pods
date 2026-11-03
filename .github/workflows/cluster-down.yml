@@ -16,6 +16,13 @@ name: cluster-down
 # `steps.drain.outputs.proceed == 'true'`, and the "Require pre-flight proof"
 # step fails the job when the drain exited 0 without writing it (#211).
 # See "cluster-down refuses: pod pre-flight failed" in docs/troubleshooting.md.
+#
+# Stack names are `${naming.prefix}-*`, read from config/config.yaml by
+# scripts/stack-names.ts (#225). Before the drain, "Require deployed stacks"
+# fails the job if none of them exists in CloudFormation, so a mismatched
+# prefix can't drain the pods and then destroy nothing. Stacks a fork adds
+# through infra/extensions.local.ts are not in this list; see
+# docs/teardown.md.
 
 on:
   workflow_dispatch:
@@ -29,6 +36,17 @@ on:
         required: false
         default: false
         type: boolean
+
+# One shared group for cluster-up, cluster-down, pod-up and pod-down (#225),
+# so no pod or cluster workflow can start while a cluster-down is draining
+# and destroying (and two cluster-ups can't collide). cancel-in-progress:
+# false never cancels a running run. GitHub keeps at most ONE pending run per
+# group: a newer dispatch cancels an older one still waiting, so re-dispatch
+# anything that shows as cancelled. See "One workflow at a time" in
+# docs/operating.md.
+concurrency:
+  group: cloud-dev-pods-cluster-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions: {}
 
@@ -60,11 +78,49 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Stack names come from naming.prefix in config/config.yaml (#225), via
+      # the same module the CDK app builds its stacks from.
+      - name: Resolve stack names
+        id: stacks
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          set -euo pipefail
+          CLUSTER_STACKS=$(npx tsx scripts/stack-names.ts --cluster)
+          if [ -z "$CLUSTER_STACKS" ]; then
+            echo "::error::scripts/stack-names.ts returned no stack names. Not destroying."
+            exit 1
+          fi
+          echo "Cluster stacks: $CLUSTER_STACKS"
+          echo "cluster=$CLUSTER_STACKS" >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS via OIDC
         uses: ./.github/actions/aws-oidc
         with:
           role-to-assume: ${{ vars.AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      # Fail before the drain stops any pod if none of the configured stacks
+      # is deployed: a prefix that doesn't match what cluster-up deployed
+      # would otherwise drain the pods and then "destroy" nothing, green.
+      # A partial set (an earlier cluster-down that failed midway) is fine.
+      - name: Require deployed stacks
+        env:
+          CLUSTER_STACKS: ${{ steps.stacks.outputs.cluster }}
+        run: |
+          set -euo pipefail
+          read -ra stacks <<< "$CLUSTER_STACKS"
+          found=()
+          for s in "${stacks[@]}"; do
+            if aws cloudformation describe-stacks --stack-name "$s" >/dev/null 2>&1; then
+              found+=("$s")
+            fi
+          done
+          if [ "${#found[@]}" -eq 0 ]; then
+            echo "::error::None of the configured stacks ($CLUSTER_STACKS) exists in CloudFormation. Check naming.prefix in config/config.yaml against the stacks cluster-up deployed. Not destroying."
+            exit 1
+          fi
+          echo "Deployed: ${found[*]}"
 
       - name: Pre-flight — check and drain pods
         id: drain
@@ -96,14 +152,12 @@ jobs:
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+          CLUSTER_STACKS: ${{ steps.stacks.outputs.cluster }}
         run: |
-          npx cdk destroy \
-            CloudDevPods-IdleReaper \
-            CloudDevPods-PodManager \
-            CloudDevPods-PodTaskFamily \
-            CloudDevPods-Cluster \
-            CloudDevPods-Network \
-            --force
+          set -euo pipefail
+          read -ra stacks <<< "$CLUSTER_STACKS"
+          # cdk destroy orders the stacks by dependency itself.
+          npx cdk destroy "${stacks[@]}" --force
 
       - name: Summary
         run: |

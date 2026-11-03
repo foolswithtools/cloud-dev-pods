@@ -70,11 +70,26 @@ jobs:
           npx cdk bootstrap "aws://${{ inputs.confirm_account_id }}/${{ vars.AWS_REGION }}" \
             --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
 
+      # The Bootstrap stack name comes from naming.prefix (#225).
+      - name: Resolve Bootstrap stack name
+        id: stacks
+        env:
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+        run: |
+          set -euo pipefail
+          BOOTSTRAP_STACK=$(npx tsx scripts/stack-names.ts --bootstrap)
+          if [ -z "$BOOTSTRAP_STACK" ]; then
+            echo "::error::scripts/stack-names.ts returned no Bootstrap stack name."
+            exit 1
+          fi
+          echo "bootstrap=$BOOTSTRAP_STACK" >> "$GITHUB_OUTPUT"
+
       - name: cdk deploy BootstrapStack
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
-        run: npx cdk deploy CloudDevPods-Bootstrap --require-approval never
+          BOOTSTRAP_STACK: ${{ steps.stacks.outputs.bootstrap }}
+        run: npx cdk deploy "$BOOTSTRAP_STACK" --require-approval never
 
       - name: Read role ARNs from SSM
         id: roles
