@@ -181,16 +181,20 @@ aws elbv2 describe-rules --listener-arn "$LISTENER" \
   --query 'Rules[*].[Conditions[0].HostHeaderConfig.Values[0],Priority]' --output table
 ```
 
-## Idle reaper stops fresh pods within ~5 minutes
+## Idle reaper stops fresh pods within ~5–10 minutes
 
-**Cause:** Phase 9.8 bug — reaper queried CloudWatch with only `TargetGroup` dimension; AWS requires `(TargetGroup, LoadBalancer)` pair. Without the load-balancer dimension, queries returned 0 datapoints and the reaper interpreted that as "idle = stop."
+**Symptom:** a browser pod you haven't opened yet is stopped a few minutes after `pod-up`, well before its `idleMinutes` (default 60). The idle-reaper log shows `Stopping idle pod <name> (idleSince=...)`.
 
-**Fix:** sync upstream (Phase 9.8 is in `main`):
+**Cause (fixed in #229):** the reaper looked for ALB requests over the last `idleMinutes`, but a pod younger than that window hasn't had the chance to get any. The first scan marked it idle, and the second stopped it. The reaper now skips pods younger than their idle window.
+
+An older cause with the same symptom (Phase 9.8) was a CloudWatch query missing the `LoadBalancer` dimension, fixed long ago.
+
+**Fix:** sync upstream and redeploy the IdleReaper Lambda:
 
 ```bash
 gh workflow run sync-upstream.yml
 # Merge the PR.
-gh workflow run cluster-up.yml      # redeploys IdleReaper Lambda with fix.
+gh workflow run cluster-up.yml
 ```
 
 To temporarily disable idle-reap on a specific pod (e.g., for long builds):
