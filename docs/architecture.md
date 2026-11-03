@@ -47,7 +47,7 @@ No ALB, no inbound port. The ECS task dials out to Microsoft's tunnel broker ove
 
 - **VPC**: 2 AZ, public + private subnets, 1 NAT.
 - **ECS cluster**: Fargate + Fargate Spot capacity providers.
-- **EFS**: one filesystem, per-pod access points (POSIX UID-isolated).
+- **EFS**: one filesystem, per-pod access points (POSIX UID-isolated), file-system policy: TLS, IAM and access points required.
 - **ALB**: internet-facing, HTTPS only, ACM cert covering `*.<base-domain>`.
 - **Pod-manager Lambda**: orchestrates pod lifecycle. Sole holder of ECS/ALB/EFS write rights.
 - **Idle reaper Lambda**: EventBridge-scheduled; auto-stops idle pods after configurable timeout.

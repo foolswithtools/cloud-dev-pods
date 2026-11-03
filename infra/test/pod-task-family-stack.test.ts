@@ -7,6 +7,7 @@ import { NetworkStack } from '../lib/stacks/network-stack';
 import { PodTaskFamilyStack } from '../lib/stacks/pod-task-family-stack';
 
 let template: Template;
+let region: string;
 
 beforeAll(() => {
   const { config } = resolveConfig({
@@ -20,6 +21,7 @@ beforeAll(() => {
     auth: { browser: { allowedOrg: 'acme' } },
   });
   const app = new App();
+  region = config.aws.region;
   const env = { account: '123456789012', region: config.aws.region };
   const network = new NetworkStack(app, 'Network', { env, config });
   const cluster = new ClusterStack(app, 'Cluster', { env, config, network });
@@ -82,16 +84,18 @@ describe('PodTaskFamilyStack ssh roles and family', () => {
       JSON.stringify(p.Properties.Roles).includes(`"${logicalId}"`),
     );
 
-  it('CloudDevPodsSshTaskRole: only inline policy is the ssh/* log-stream statement', () => {
+  it('CloudDevPodsSshTaskRole: only inline policy is the ssh/* log-stream statement plus the EFS grant', () => {
     const id = roleId('CloudDevPodsSshTaskRole');
     const role = template.toJSON().Resources[id] as Res;
     expect(role.Properties.ManagedPolicyArns).toBeUndefined();
     const inline = role.Properties.Policies as Array<{ PolicyDocument: { Statement: Array<Record<string, unknown>> } }>;
     expect(inline).toHaveLength(1);
+    // The log-stream statement plus the EFS client grant (issue #217).
     const stmts = inline[0]!.PolicyDocument.Statement;
-    expect(stmts).toHaveLength(1);
+    expect(stmts).toHaveLength(2);
     expect(stmts[0]!.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
     expect(JSON.stringify(stmts[0]!.Resource)).toMatch(/:log-stream:ssh\/\*"/);
+    expect(JSON.stringify(stmts[1]!.Action)).toContain('elasticfilesystem:');
     expect(policiesFor(id)).toEqual([]);
   });
 
@@ -145,4 +149,55 @@ describe('PodTaskFamilyStack ssh roles and family', () => {
       });
     }
   });
+});
+
+// Issue #217: the EFS file-system policy grants nothing, so each task role
+// needs its own identity grant to mount through an access point.
+describe('PodTaskFamilyStack EFS client grants', () => {
+  type Stmt = { Effect: string; Action: string | string[]; Resource: unknown; Condition?: Record<string, Record<string, unknown>> };
+  const inlineStatements = (roleName: string): Stmt[] => {
+    const roles = template.findResources('AWS::IAM::Role', { Properties: { RoleName: roleName } });
+    const [role] = Object.values(roles) as Array<{ Properties: { Policies?: Array<{ PolicyDocument: { Statement: Stmt[] } }> } }>;
+    expect(role, roleName).toBeDefined();
+    return (role!.Properties.Policies ?? []).flatMap((p) => p.PolicyDocument.Statement);
+  };
+  const modes = [
+    ['CloudDevPodsBrowserTaskRole', 'browser'],
+    ['CloudDevPodsTunnelTaskRole', 'tunnel'],
+    ['CloudDevPodsSshTaskRole', 'ssh'],
+  ] as const;
+
+  for (const [roleName, modeName] of modes) {
+    it(`${roleName} may mount and write EFS only through an access point`, () => {
+      const efs = inlineStatements(roleName).filter((s) => JSON.stringify(s.Action).includes('elasticfilesystem:'));
+      expect(efs).toHaveLength(1);
+      const s = efs[0]!;
+      expect(s.Effect).toBe('Allow');
+      expect([s.Action].flat().slice().sort()).toEqual([
+        'elasticfilesystem:ClientMount',
+        'elasticfilesystem:ClientWrite',
+      ]);
+      // The file system ARN, imported from the cluster stack.
+      expect(JSON.stringify(s.Resource)).toMatch(/EfsFs/);
+      expect(s.Condition?.Bool?.['elasticfilesystem:AccessedViaMountTarget']).toBe('true');
+      expect(s.Condition?.ArnLike?.['elasticfilesystem:AccessPointArn']).toBe(
+        `arn:aws:elasticfilesystem:${region}:123456789012:access-point/*`,
+      );
+    });
+
+    it(`${roleName} is never granted ClientRootAccess`, () => {
+      const json = JSON.stringify(template.toJSON());
+      expect(json).not.toContain('elasticfilesystem:ClientRootAccess');
+      expect(JSON.stringify(inlineStatements(roleName))).not.toContain('elasticfilesystem:*');
+    });
+
+    it(`${roleName} keeps its ${modeName}/* log-stream statement unchanged`, () => {
+      const logs = inlineStatements(roleName).filter((s) => JSON.stringify(s.Action).includes('logs:'));
+      expect(logs).toHaveLength(1);
+      expect(logs[0]!.Effect).toBe('Allow');
+      expect(logs[0]!.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
+      expect(logs[0]!.Condition).toBeUndefined();
+      expect(JSON.stringify(logs[0]!.Resource)).toMatch(new RegExp(`:log-stream:${modeName}/\\*"`));
+    });
+  }
 });

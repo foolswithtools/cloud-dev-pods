@@ -86,6 +86,13 @@ export class PodTaskFamilyStack extends Stack {
 
     // Per-mode task role: scopes runtime AWS access for the pod itself.
     // Browser pods only need EFS + minimal logs; tunnel pods same.
+    //
+    // EFS: the cluster's file-system policy (issue #217) grants nothing, so
+    // the mount is authorized here. ClientMount + ClientWrite only (never
+    // ClientRootAccess), through a mount target and an access point. The
+    // access-point condition matches any access point in the account: task
+    // roles are shared per mode, so it can't name one pod's access point.
+    const efsAccessPointArns = `arn:aws:elasticfilesystem:${config.aws.region}:${config.aws.accountId}:access-point/*`;
     const taskRolePolicyDoc = (modeName: string) =>
       new iam.PolicyDocument({
         statements: [
@@ -94,6 +101,14 @@ export class PodTaskFamilyStack extends Stack {
             resources: [
               `arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${cluster.podsLogGroup.logGroupName}:log-stream:${modeName}/*`,
             ],
+          }),
+          new iam.PolicyStatement({
+            actions: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite'],
+            resources: [cluster.fileSystem.fileSystemArn],
+            conditions: {
+              Bool: { 'elasticfilesystem:AccessedViaMountTarget': 'true' },
+              ArnLike: { 'elasticfilesystem:AccessPointArn': efsAccessPointArns },
+            },
           }),
         ],
       });

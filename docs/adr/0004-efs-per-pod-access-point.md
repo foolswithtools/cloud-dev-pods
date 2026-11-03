@@ -15,7 +15,7 @@ Pods need persistent workspace storage that survives task restarts. Options for 
 
 ## Decision
 
-EFS filesystem per cluster (one), with one access point per pod. Each access point sets `Path=/pods/<podName>`, owner UID = unique per pod (allocated from `[10000, 65000)` and tracked in the pod registry). The pod's task IAM role is conditional on `elasticfilesystem:AccessPointArn = <this-ap-arn>` so even direct mount attempts fail for other pods' data.
+EFS filesystem per cluster (one), with one access point per pod. Each access point sets `Path=/pods/<podName>`, owner UID = unique per pod (allocated from `[10000, 65000)` and tracked in the pod registry). The pod's task IAM role is conditional on `elasticfilesystem:AccessPointArn = <this-ap-arn>` so even direct mount attempts fail for other pods' data. (Amended 2026-11-02: as built, task roles are shared per mode and their access-point condition matches any access point in the account, not one pod's access point. See "File-system policy" under Consequences.)
 
 ### Reuse semantics (amended 2026-05-09 — fixes #30)
 
@@ -31,3 +31,16 @@ EFS filesystem per cluster (one), with one access point per pod. Each access poi
 - EFS access points are created at first `pod-up` and retained by default on `pod-down` (state preserved across pod restarts).
 - EFS supports up to 1000 access points per filesystem — fine for individual users, watchpoint for teams.
 - EFS performance for IDE I/O is acceptable for source code but not for `node_modules` install. Documented in `docs/operating.md`.
+
+### File-system policy (amended 2026-11-02, issue #217)
+
+The EFS file system carries a file-system policy (`infra/lib/stacks/cluster-stack.ts`). This is standard EFS hardening: TLS, IAM and access points required. With a policy in place, EFS no longer grants default client access, so the existing pod mount configuration (TLS, IAM authorization, one access point per pod) is the only one EFS accepts.
+
+- **TLS required.** `ClientMount`, `ClientWrite` and `ClientRootAccess` are denied to every principal when `aws:SecureTransport` is `false`.
+- **Access point required.** The same three actions are denied to every principal when the request has no `elasticfilesystem:AccessPointArn`. A mount of the file-system root, outside any access point, is refused.
+- **No anonymous access.** The policy grants nothing. A client that does not authenticate with IAM is anonymous, and gets only what the policy grants it, which is nothing.
+- **No root access.** Nothing grants `ClientRootAccess`. The access point's `PosixUser` decides the identity a pod writes as.
+- **Identity grants on the task roles.** Each pod task role (`CloudDevPodsBrowserTaskRole`, `CloudDevPodsTunnelTaskRole`, `CloudDevPodsSshTaskRole`, in `infra/lib/stacks/pod-task-family-stack.ts`) allows `ClientMount` and `ClientWrite` on the file system, only through a mount target (`elasticfilesystem:AccessedViaMountTarget`) and an access point (`elasticfilesystem:AccessPointArn` like `arn:aws:elasticfilesystem:<region>:<account>:access-point/*`).
+- **New EFS clients need their own grant.** Any new client of the file system, for example the released-workspace cleanup job that #196 may add, must mount with TLS through an access point, and its role needs its own identity grant like the one above. Without it, the mount fails.
+- **Shared task roles.** The task roles are shared per mode, so the access-point condition matches any access point in the account, not one pod's access point. Per-pod separation still comes from each pod's own access point and `PosixUser`. Per-pod task roles, or conditions on access-point tags, are a separate decision.
+- The policy does not affect the pod-manager Lambda, which uses only EFS control-plane actions (`CreateAccessPoint`, `DeleteAccessPoint`, `DescribeAccessPoints`, `TagResource`).
