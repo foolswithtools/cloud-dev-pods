@@ -31,6 +31,10 @@ If you need to fundamentally change `infra/lib/**`, you can:
 1. Move the relevant file from `[tracked]` to `[merged]` in your local `.upstream-sync.toml` (also `[user]`-classified, so this customization sticks). You'll get three-way merge conflicts on upstream changes, which is the price.
 2. Open an issue / PR upstream proposing a new extension point.
 
+### Extensions that add an EFS client
+
+The workspace file system has a file-system policy (ADR 0004, [File-system policy](adr/0004-efs-per-pod-access-point.md#file-system-policy-amended-2026-11-02-issue-217)). Anything your extensions add that mounts it, such as a backup or sync job, must mount with TLS through an access point, and its role needs its own `elasticfilesystem:ClientMount` grant (plus `ClientWrite` if it writes). Root access isn't available. Otherwise the mount is refused; see [troubleshooting](troubleshooting.md#ecs-task-fails-with-resourceinitializationerror--efs--access-denied).
+
 ## What to NEVER customize
 
 - `.github/workflows/ci-*.yml` — these guarantee your fork's quality.

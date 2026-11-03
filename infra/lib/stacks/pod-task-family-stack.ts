@@ -155,6 +155,12 @@ export class PodTaskFamilyStack extends Stack {
     // points are created at runtime by pod-manager (ADR 0004); the access-point
     // ID gets attached via container-level mountPoints when a fresh task-def
     // revision is registered per pod-up.
+    //
+    // These CDK revisions are placeholders and never run. With no access
+    // point and no IAM authorization, this volume could not mount anyway:
+    // the file-system policy (ClusterStack, issue #217) refuses mounts that
+    // don't go through an access point. Every runnable revision comes from
+    // pod-manager with `authorizationConfig: { accessPointId, iam: 'ENABLED' }`.
     const efsVolume: ecs.Volume = {
       name: 'workspace',
       efsVolumeConfiguration: {
