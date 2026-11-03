@@ -56,17 +56,6 @@ on:
         type: choice
         options: ["config", "github", "microsoft"]
 
-# One shared group for cluster-up, cluster-down, pod-up and pod-down (#225),
-# so no pod or cluster workflow can start while a cluster-down is draining
-# and destroying (and two cluster-ups can't collide). cancel-in-progress:
-# false never cancels a running run. GitHub keeps at most ONE pending run per
-# group: a newer dispatch cancels an older one still waiting, so re-dispatch
-# anything that shows as cancelled. See "One workflow at a time" in
-# docs/operating.md.
-concurrency:
-  group: cloud-dev-pods-cluster-${{ github.repository }}
-  cancel-in-progress: false
-
 permissions: {}
 
 jobs:
@@ -84,9 +73,18 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read  # teardown-lock lists cluster-down runs
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      # Not in the cluster concurrency group, so pod runs stay parallel and a
+      # queued run can't be cancelled by someone else's dispatch. Instead,
+      # refuse while a cluster-down is queued or running (#225 follow-up).
+      - name: Refuse during cluster-down
+        uses: ./.github/actions/teardown-lock
+        with:
+          mode: refuse
 
       - name: Set up Node
         uses: actions/setup-node@v7

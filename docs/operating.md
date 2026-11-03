@@ -11,11 +11,16 @@ gh workflow run pod-list.yml
 gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing cost
 ```
 
-## One workflow at a time
+## Pod and cluster runs
 
-`cluster-up`, `cluster-down`, `pod-up` and `pod-down` share one GitHub Actions concurrency group (`cloud-dev-pods-cluster-<owner>/<repo>`), so only one of them runs at a time. That stops a `pod-up` from starting a pod while `cluster-down` is draining and destroying the cluster, and stops two `cluster-up` runs from colliding. `pod-list` isn't in the group.
+`cluster-up` and `cluster-down` share one GitHub Actions concurrency group (`cloud-dev-pods-cluster-<owner>/<repo>`), so two cluster runs never overlap. A cluster run that starts while another holds the group waits as "Pending"; nothing already running is cancelled. GitHub keeps only **one** pending run per group, so a second cluster run dispatched while one is already waiting cancels the waiting one. Re-dispatch any cluster run that shows as cancelled.
 
-A run that starts while another holds the group waits as "Pending"; nothing already running is cancelled. GitHub keeps only **one** pending run per group, though: dispatch a second while one is already waiting and the older waiting run is cancelled. For example, while `cluster-up` (about 12 minutes) runs, dispatching `pod-up` for `foo` and then for `bar` leaves only `bar` queued, and the `foo` run shows as cancelled. Wait for the queue to clear, or re-dispatch any run that shows as cancelled.
+`pod-up` and `pod-down` aren't in that group, so pod runs for different pods run in parallel and never cancel each other. Instead they're kept away from a teardown:
+
+- `pod-up` and `pod-down` fail at their first step, before touching AWS, while a `cluster-down` is queued or running. Re-run them after it finishes (and after `cluster-up`, if you want the cluster back).
+- `cluster-down` waits for any `pod-up` or `pod-down` already queued or running to finish (up to 30 minutes) before it drains the pods, so no pod lands between the drain and the destroy.
+
+`pod-list` is read-only and isn't checked.
 
 ## Pod owner
 
