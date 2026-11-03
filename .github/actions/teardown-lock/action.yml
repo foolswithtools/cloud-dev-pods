@@ -1,0 +1,72 @@
+name: cluster-down / pod workflow interlock
+description: >-
+  Keeps pod-up / pod-down from overlapping a cluster-down without putting
+  pod runs in a shared concurrency group (#225 follow-up). `refuse` fails the
+  job while a cluster-down run is queued or running; `wait` blocks until no
+  pod-up / pod-down run is queued or running. A pod run checks while it is
+  already in progress, and cluster-down waits for in-progress pod runs, so a
+  pod run that slips past `refuse` is still waited for. The calling job needs
+  `permissions: actions: read`.
+inputs:
+  mode:
+    description: "`refuse` (pod-up / pod-down) or `wait` (cluster-down)."
+    required: true
+  timeout-minutes:
+    description: "`wait` mode: fail after this many minutes."
+    required: false
+    default: "30"
+  github-token:
+    description: Token with actions:read on this repository.
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Check for overlapping runs
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        MODE: ${{ inputs.mode }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # Runs of a workflow that haven't completed (queued, waiting,
+        # pending, requested or in_progress).
+        active() {
+          gh run list -R "$REPO" --workflow "$1" --limit 50 \
+            --json databaseId,status \
+            -q '[.[] | select(.status != "completed") | .databaseId] | join(" ")'
+        }
+        case "$MODE" in
+          refuse)
+            runs=$(active cluster-down.yml)
+            if [ -n "$runs" ]; then
+              echo "::error::cluster-down is queued or running (run ${runs}). It is tearing the cluster down, so this run won't start a pod or touch one. Re-run after it finishes (and after cluster-up, if you want the cluster back)."
+              exit 1
+            fi
+            echo "No cluster-down queued or running."
+            ;;
+          wait)
+            deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+            while :; do
+              # Unquoted echo joins both lists with single spaces, no padding.
+              # shellcheck disable=SC2046,SC2005
+              runs=$(echo $(active pod-up.yml) $(active pod-down.yml))
+              if [ -z "$runs" ]; then
+                echo "No pod-up / pod-down queued or running."
+                break
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::pod-up / pod-down runs still active after ${TIMEOUT_MINUTES} minutes (runs: ${runs}). Not draining. Cancel or wait for them, then re-run cluster-down."
+                exit 1
+              fi
+              echo "Waiting for pod-up / pod-down runs to finish: ${runs}"
+              sleep 15
+            done
+            ;;
+          *)
+            echo "::error::teardown-lock: unknown mode '${MODE}' (use refuse or wait)."
+            exit 1
+            ;;
+        esac

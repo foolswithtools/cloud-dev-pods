@@ -37,12 +37,13 @@ on:
         default: false
         type: boolean
 
-# One shared group for cluster-up, cluster-down, pod-up and pod-down (#225),
-# so no pod or cluster workflow can start while a cluster-down is draining
-# and destroying (and two cluster-ups can't collide). cancel-in-progress:
-# false never cancels a running run. GitHub keeps at most ONE pending run per
-# group: a newer dispatch cancels an older one still waiting, so re-dispatch
-# anything that shows as cancelled. See "One workflow at a time" in
+# cluster-up and cluster-down share one concurrency group (#225), so two
+# cluster runs never overlap. cancel-in-progress: false never cancels a
+# running run; GitHub keeps at most ONE pending run per group (a newer
+# dispatch cancels an older waiting one). pod-up / pod-down are NOT in the
+# group: they refuse to start while a cluster-down is queued or running, and
+# cluster-down waits for running pod runs before it drains
+# (.github/actions/teardown-lock). See "Pod and cluster runs" in
 # docs/operating.md.
 concurrency:
   group: cloud-dev-pods-cluster-${{ github.repository }}
@@ -65,6 +66,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read  # teardown-lock lists pod-up / pod-down runs
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -121,6 +123,14 @@ jobs:
             exit 1
           fi
           echo "Deployed: ${found[*]}"
+
+      # pod-up / pod-down aren't in the concurrency group. They refuse to
+      # start while this run is active; wait here for any that started
+      # before it, so none lands between the drain and cdk destroy.
+      - name: Wait for running pod workflows
+        uses: ./.github/actions/teardown-lock
+        with:
+          mode: wait
 
       - name: Pre-flight — check and drain pods
         id: drain
