@@ -104,21 +104,42 @@ export class PodManagerStack extends Stack {
     // DDB grants
     this.registry.grantReadWriteData(this.fn);
 
+    const arnPrefix = (service: string): string =>
+      `arn:aws:${service}:${config.aws.region}:${config.aws.accountId}`;
+    // EFS access-point ARNs carry no file-system id, so per-pod access points
+    // are matched by ARN prefix and bounded by tag or create-action conditions.
+    const efsAccessPoints = `${arnPrefix('elasticfilesystem')}:access-point/*`;
+    // Must match the `Project` tag the Lambda writes in createAccessPoint
+    // (infra/lambda/pod-manager/aws.ts). That value is the literal
+    // 'cloud-dev-pods', not config.project.name.
+    const accessPointProjectTag = 'cloud-dev-pods';
+
     // ECS / ALB / EFS write rights — the actual privileges that PodOpsRole
     // would NOT have if it called these APIs directly.
+    //
+    // Task-definition actions do not support the ecs:cluster condition key;
+    // RegisterTaskDefinition / DescribeTaskDefinition / DeregisterTaskDefinition
+    // take no resource-level scoping. ecs:TagResource is needed implicitly for
+    // the tags passed to RegisterTaskDefinition and RunTask.
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [
           'ecs:RegisterTaskDefinition',
           'ecs:DeregisterTaskDefinition',
           'ecs:DescribeTaskDefinition',
-          'ecs:RunTask',
-          'ecs:StopTask',
-          'ecs:ListTasks',
-          'ecs:DescribeTasks',
           'ecs:TagResource',
         ],
         resources: ['*'],
+      }),
+    );
+    // Task lifecycle actions all support ecs:cluster: pin them to this cluster.
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ecs:RunTask', 'ecs:StopTask', 'ecs:ListTasks', 'ecs:DescribeTasks'],
+        resources: ['*'],
+        conditions: {
+          ArnEquals: { 'ecs:cluster': cluster.cluster.clusterArn },
+        },
       }),
     );
     this.fn.addToRolePolicy(
@@ -140,15 +161,41 @@ export class PodManagerStack extends Stack {
         resources: ['*'],
       }),
     );
+    // CreateAccessPoint authorizes against the file-system resource.
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: [
-          'elasticfilesystem:CreateAccessPoint',
-          'elasticfilesystem:DeleteAccessPoint',
-          'elasticfilesystem:DescribeAccessPoints',
-          'elasticfilesystem:TagResource',
-        ],
-        resources: ['*'],
+        actions: ['elasticfilesystem:CreateAccessPoint'],
+        resources: [cluster.fileSystem.fileSystemArn],
+      }),
+    );
+    // DescribeAccessPoints lists both resource types; the Lambda filters by
+    // FileSystemId.
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['elasticfilesystem:DescribeAccessPoints'],
+        resources: [cluster.fileSystem.fileSystemArn, efsAccessPoints],
+      }),
+    );
+    // DeleteAccessPoint supports only aws:ResourceTag: limit it to access
+    // points pod-manager tagged (every one since the first release).
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['elasticfilesystem:DeleteAccessPoint'],
+        resources: [efsAccessPoints],
+        conditions: {
+          StringEquals: { 'aws:ResourceTag/Project': accessPointProjectTag },
+        },
+      }),
+    );
+    // The Lambda never calls TagResource directly; it is only needed for the
+    // Tags passed to CreateAccessPoint (tag-on-create).
+    this.fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['elasticfilesystem:TagResource'],
+        resources: [cluster.fileSystem.fileSystemArn, efsAccessPoints],
+        conditions: {
+          StringEquals: { 'elasticfilesystem:CreateAction': 'CreateAccessPoint' },
+        },
       }),
     );
     this.fn.addToRolePolicy(
@@ -198,21 +245,6 @@ export class PodManagerStack extends Stack {
     );
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['route53:ChangeResourceRecordSets', 'route53:GetChange'],
-        resources: ['*'],
-      }),
-    );
-    if (config.domain.strategy === 'byo' && config.domain.hostedZoneId) {
-      // Tighter scoping when we know the zone.
-      this.fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ['route53:ChangeResourceRecordSets'],
-          resources: [`arn:aws:route53:::hostedzone/${config.domain.hostedZoneId}`],
-        }),
-      );
-    }
-    this.fn.addToRolePolicy(
-      new iam.PolicyStatement({
         actions: ['logs:FilterLogEvents', 'logs:GetLogEvents', 'logs:DescribeLogStreams'],
         resources: [
           `arn:aws:logs:${config.aws.region}:${config.aws.accountId}:log-group:${cluster.podsLogGroup.logGroupName}:*`,
@@ -229,22 +261,21 @@ export class PodManagerStack extends Stack {
       stringValue: this.registry.tableName,
     });
 
-    const arnPrefix = (service: string): string =>
-      `arn:aws:${service}:${config.aws.region}:${config.aws.accountId}`;
     acknowledgeNag(
       this.fn,
       [
         {
           id: 'AwsSolutions-IAM5',
           reason:
-            'pod-manager is the sole holder of ECS/ALB/EFS write rights (ADR 0003). Wildcard resources on ECS/ELBv2/EFS APIs are required because resource ARNs are determined at runtime per pod-up. Bounded by `iam:PassRole` Condition (ECS service only) and ECR scoped to `cloud-dev-pods/*`.',
+            'pod-manager is the sole holder of ECS/ALB/EFS write rights (ADR 0003). Wildcard resources remain only where resource ARNs are determined at runtime per pod-up or the action takes no resource-level scoping: ECS task-definition actions, ECS task lifecycle actions (bounded by an `ecs:cluster` condition on this cluster), ELBv2 rules/target groups, and `ecr:GetAuthorizationToken`. Bounded by `iam:PassRole` Condition (ECS service only) and ECR scoped to `cloud-dev-pods/*`.',
           appliesTo: ['Resource::*'],
         },
         {
           id: 'AwsSolutions-IAM5',
           reason:
-            'Project-scoped prefixes: ECR repos (cloud-dev-pods/*), SSM params (/cloud-dev-pods/*), OAuth secrets (/cloud-dev-pods/oauth/*, Secrets Manager appends a random ARN suffix), and per-pod log streams in the pods log group.',
+            'Project-scoped prefixes: ECR repos (cloud-dev-pods/*), SSM params (/cloud-dev-pods/*), OAuth secrets (/cloud-dev-pods/oauth/*, Secrets Manager appends a random ARN suffix), per-pod log streams in the pods log group, and per-pod EFS access points (IDs are allocated at runtime and the ARN carries no file-system id; DeleteAccessPoint is bounded by `aws:ResourceTag/Project`, TagResource by `elasticfilesystem:CreateAction`).',
           appliesTo: [
+            `Resource::${efsAccessPoints}`,
             `Resource::${arnPrefix('ecr')}:repository/cloud-dev-pods/*`,
             `Resource::${arnPrefix('ssm')}:parameter/cloud-dev-pods/*`,
             `Resource::${arnPrefix('secretsmanager')}:secret:/cloud-dev-pods/oauth/*`,
