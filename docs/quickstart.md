@@ -52,12 +52,12 @@ naming:
 ```
 
 ```bash
-git add config/config.yaml
+git add -f config/config.yaml
 git commit -m "chore: initial config"
 git push
 ```
 
-> **Important**: the upstream template `.gitignore`s `config/config.yaml` because each fork's values differ. Your fork commits it as the source of truth.
+> **Important**: the upstream template `.gitignore`s `config/config.yaml` because each fork's values differ, so the first `git add` needs `-f`. Your fork commits it as the source of truth; once it's tracked, later edits commit normally.
 
 ## 3. Set initial GitHub repo Variables
 

@@ -42,7 +42,7 @@ This file is **the contract**. Follow it. The order of sections matters.
 1. **Never** run `cdk destroy` or `aws ... delete-*` directly. Always go through the relevant workflow (`cluster-down.yml`, `pod-down.yml`) so the audit trail exists in GitHub Actions.
 2. **Never** `aws ecs stop-task` to bypass `pod-down.yml`. The pod-manager Lambda owns ALB rule + EFS access-point cleanup; bypassing leaks resources.
 3. **Never** modify the OIDC trust policy on `CloudDevPodsDeployerRole` without explaining the security model to the user first.
-4. **Never** commit secrets, raw AWS keys, or anything in `.gitignore` (`infra/extensions.local.ts`, `.env*`, `cdk.context.json`).
+4. **Never** commit secrets, raw AWS keys, or anything in `.gitignore` (`.env*`, `cdk.context.json`). `infra/extensions.local.ts` is the exception: forks commit it so `cluster-up` applies it (see `docs/extending.md`).
 5. **Never** edit files classified as `[tracked]` in `.upstream-sync.toml` and expect changes to persist; the next `sync-upstream` overwrites them. Use `infra/extensions.local.ts` (see `docs/extending.md`) for customizations.
 6. **Browser-mode pods require a real DNS domain** the user controls. GitHub OAuth Apps don't accept wildcard callback URLs, so each pod's URL has to resolve. Tunnel mode has no such requirement.
 
@@ -107,7 +107,7 @@ npm run init
 - Push `AWS_REGION`, `AWS_ACCOUNT_ID`, and `CLUSTER_NAME` as GitHub repo Variables (`gh variable set`).
 - Optionally create the `cloud-dev-pods-bootstrap` IAM user, attach `AdministratorAccess`, create an access key, and push it as repo Secrets via stdin (avoids GitHub-UI paste-mangling).
 
-When the script completes, `git add config/config.yaml && git commit -m 'chore: init config' && git push`. The fork's `.gitignore` excludes `config/config.yaml` upstream, but downstream forks **must commit it** so CI workflows can read it.
+When the script completes, `git add -f config/config.yaml && git add infra/extensions.local.ts && git commit -m 'chore: init config' && git push`. The fork's `.gitignore` excludes `config/config.yaml` (inherited from upstream), so it needs `-f` the first time; once tracked, later edits commit normally. Downstream forks **must commit it** so CI workflows can read it. Commit `infra/extensions.local.ts` too (it isn't ignored), so `cluster-up` applies your hooks.
 
 If the user prefers GUI for any step, see [`docs/setup-gui.md`](docs/setup-gui.md). Skip to **3c** for the manual-CLI fallback.
 
@@ -310,7 +310,7 @@ Common signatures with diagnostic + fix in [`docs/troubleshooting.md`](docs/trou
 ## 9. What you should NOT do
 
 - Don't write to `[tracked]` files (overwritten on next sync).
-- Don't commit `.env*`, `*.local.*`, `cdk.context.json`, raw AWS keys.
+- Don't commit `.env*`, `*.local.*` (except `infra/extensions.local.ts`), `cdk.context.json`, raw AWS keys.
 - Don't bypass `pod-down.yml` by killing tasks via console / CLI.
 - Don't run `aws ecs stop-task`, `aws elbv2 delete-rule`, `aws efs delete-access-point` directly. Pod-manager owns those.
 - Don't enable repo settings (branch protection, secret scanning) on the user's fork without telling them.

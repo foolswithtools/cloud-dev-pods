@@ -4,25 +4,49 @@ The repo is a template, but `infra/lib/**` is `[tracked]` in `.upstream-sync.tom
 
 ## The extension-point pattern
 
-Every CDK stack reads optional hooks from `infra/extensions.local.ts` (in the `[user]` taxonomy — never overwritten). Hooks let you inject your own VPC CIDR, extra subnets, extra tags, custom security group rules, custom container env vars, etc., without modifying upstream code.
+Customize the stacks from `infra/extensions.local.ts`. It's `[user]` in `.upstream-sync.toml`, so `sync-upstream` never overwrites it. `npm run init` writes a stub. Each hook is optional, gets its stack plus `{ app, config }`, and runs right after that stack is constructed, so a later hook sees what an earlier one added:
 
-## Example: customize VPC CIDR
+| Hook | Stack |
+| --- | --- |
+| `customizeBootstrap` | `<prefix>-Bootstrap` |
+| `customizeNetwork` | `<prefix>-Network` |
+| `customizeCluster` | `<prefix>-Cluster` |
+| `customizePodTaskFamily` | `<prefix>-PodTaskFamily` |
+| `customizePodManager` | `<prefix>-PodManager` |
+| `customizeIdleReaper` | `<prefix>-IdleReaper` |
+
+The CDK app (`infra/bin/app.ts`) loads the file when it exists. An unknown hook name (for example `customiseNetwork`), a hook that isn't a function, or a missing `extensions` export fails `cdk synth` with a message naming the file. cdk-nag checks the resources your hooks add like any others, so a finding fails synth until you fix it or acknowledge it.
+
+## Example: tag the VPC and add a VPC endpoint
 
 ```ts
 // infra/extensions.local.ts
-import type { ClusterStack, NetworkStack } from './lib/stacks/index.js';
+import { Tags } from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import type { Extensions } from './lib/extensions';
 
-export const extensions = {
-  customizeNetwork(stack: NetworkStack): void {
-    // your changes here — e.g., set CIDR, add subnets, add VPC endpoints
+export const extensions: Extensions = {
+  customizeNetwork(stack) {
+    Tags.of(stack.vpc).add('CostCenter', 'platform');
+    stack.vpc.addGatewayEndpoint('S3Endpoint', {
+      service: ec2.GatewayVpcEndpointAwsService.S3,
+    });
   },
-  customizeCluster(stack: ClusterStack): void {
-    // your changes here — e.g., add capacity providers, tweak ALB
+  customizeCluster(stack, { config }) {
+    // e.g. tweak the ALB or add alarms; `config` is the parsed config/config.yaml.
   },
 };
 ```
 
-The CDK app (`infra/bin/app.ts`) loads `extensions.local.ts` if it exists and calls each hook after constructing the corresponding stack.
+## Commit it
+
+`cluster-up` synthesizes from a fresh checkout, so an uncommitted `extensions.local.ts` has no effect on what it deploys. Commit and push it like `config/config.yaml`:
+
+```bash
+git add infra/extensions.local.ts && git commit -m 'chore: fork extensions' && git push
+```
+
+It's code, not configuration: keep secrets out of it (read them at deploy or run time from Secrets Manager or SSM). It's excluded from the `*.local.*` ignore rule for this reason.
 
 ## When extensions aren't enough
 
