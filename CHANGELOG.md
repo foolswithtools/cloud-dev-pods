@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.8](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.7...v0.4.8) (2026-11-04)
+
+
+### Features
+
+* **cluster-down:** guard EFS workspaces and ask about retention in init ([#243](https://github.com/foolswithtools/cloud-dev-pods/issues/243)) ([26da28b](https://github.com/foolswithtools/cloud-dev-pods/commit/26da28b3b8099d0026bc861148d1b6bdea67e55a))
+* **init:** add --post-bootstrap to set role ARNs and delete bootstrap credentials ([#242](https://github.com/foolswithtools/cloud-dev-pods/issues/242)) ([ad5075d](https://github.com/foolswithtools/cloud-dev-pods/commit/ad5075dc07ced97832760a31d50216c67eb6f572)), closes [#226](https://github.com/foolswithtools/cloud-dev-pods/issues/226)
+
+
+### Bug Fixes
+
+* **infra:** load infra/extensions.local.ts hooks and let forks commit the file ([#240](https://github.com/foolswithtools/cloud-dev-pods/issues/240)) ([23ef35b](https://github.com/foolswithtools/cloud-dev-pods/commit/23ef35bdd23e2640a49475464a8d416cd3b83c12)), closes [#239](https://github.com/foolswithtools/cloud-dev-pods/issues/239)
+
 ## [0.4.7](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.6...v0.4.7) (2026-11-03)
 
 
