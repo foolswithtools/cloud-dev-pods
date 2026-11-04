@@ -5,7 +5,8 @@
  * Interactive (default):
  *   - Auto-detects AWS account/region, GitHub owner/repo, Route53 zones.
  *   - Prompts for browser provider (GitHub or Entra ID), domain strategy,
- *     sign-in allowlist, ownerOnly, tunnel provider, VPC CIDR, sizing, idle.
+ *     sign-in allowlist, ownerOnly, tunnel provider, VPC CIDR, sizing, idle,
+ *     and whether to keep workspaces on cluster-down (efs.retainOnClusterDown).
  *   - Writes config/config.yaml, .upstream-sync.state, .envrc,
  *     infra/extensions.local.ts (stub).
  *   - Pushes initial GitHub repo Variables via `gh variable set`
@@ -86,6 +87,8 @@ export interface Answers {
   cpu: number;
   memory: number;
   idleMinutes: number;
+  // efs.retainOnClusterDown (ADR 0007, #227).
+  retainWorkspaces: boolean;
 }
 
 const POD_SIZES = {
@@ -436,7 +439,28 @@ async function prompt(defaults: Defaults): Promise<Answers> {
   checkOrExit(idleStr, 'Idle minutes');
   a.idleMinutes = parseInt(idleStr, 10);
 
+  const retain = await promptRetainWorkspaces(clack.confirm);
+  if (typeof retain !== 'boolean') {
+    clack.cancel('Cancelled at "Keep workspaces".');
+    process.exit(1);
+  }
+  a.retainWorkspaces = retain;
+
   return a as Answers;
+}
+
+// #227: cluster-down deletes the EFS file system (every /workspace) unless
+// efs.retainOnClusterDown is true (ADR 0007). Ask instead of defaulting
+// silently. The default answer matches the schema default (false).
+export const RETAIN_WORKSPACES_PROMPT =
+  'Keep workspaces when the cluster is torn down? Yes keeps the EFS file system on cluster-down; ' +
+  'its storage is billed (~$0.30/GB-month) while it is retained. No deletes every /workspace with the cluster.';
+
+type ConfirmFn = (opts: { message: string; initialValue?: boolean }) => Promise<boolean | symbol>;
+
+/** Asks the retention question. Returns the answer, or clack's cancel symbol for the caller to handle. */
+export function promptRetainWorkspaces(confirm: ConfirmFn): Promise<boolean | symbol> {
+  return confirm({ message: RETAIN_WORKSPACES_PROMPT, initialValue: false });
 }
 
 /** Split the comma-separated users answer: trim each entry, drop empties. */
@@ -472,6 +496,7 @@ const FLAG_OPTIONS = {
   'vpc-cidr': { type: 'string' },
   'pod-size': { type: 'string' },
   'idle-minutes': { type: 'string' },
+  'retain-workspaces': { type: 'boolean' },
 } as const satisfies NonNullable<ParseArgsConfig['options']>;
 
 type FlagName = keyof typeof FLAG_OPTIONS;
@@ -627,6 +652,7 @@ export function parseInitFlags(
       cpu: POD_SIZES[podSize].cpu,
       memory: POD_SIZES[podSize].memory,
       idleMinutes: parseInt(idle, 10),
+      retainWorkspaces: f['retain-workspaces'] === true,
     },
   };
 }
@@ -698,6 +724,12 @@ pods:
 
 naming:
   prefix: CloudDevPods
+
+# true keeps the EFS file system (every /workspace) when cluster-down runs;
+# its storage stays billed. false deletes it with the cluster (ADR 0007).
+# Re-run cluster-up after changing it: the removal policy is set at deploy time.
+efs:
+  retainOnClusterDown: ${a.retainWorkspaces}
 `;
 }
 

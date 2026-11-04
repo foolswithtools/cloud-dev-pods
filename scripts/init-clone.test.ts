@@ -11,6 +11,8 @@ import {
   parseInteractiveFlags,
   parsePostBootstrapFlags,
   parseUserList,
+  promptRetainWorkspaces,
+  RETAIN_WORKSPACES_PROMPT,
   renderConfigYaml,
   runPostBootstrap,
   validateOrg,
@@ -33,6 +35,7 @@ interface ResolvedBrowser {
 interface ResolvedConfig {
   domain: { strategy: 'byo' | 'alb-default'; baseDomain?: string; hostedZoneId?: string };
   auth: { browser: ResolvedBrowser; tunnel: { provider: 'github' | 'microsoft' } };
+  efs?: { retainOnClusterDown: boolean };
 }
 
 const { resolveConfig } = (await import(
@@ -69,6 +72,7 @@ function answers(allowedUsers: string[], allowedOrg: string): Answers {
     cpu: 1024,
     memory: 2048,
     idleMinutes: 60,
+    retainWorkspaces: false,
   };
 }
 
@@ -123,6 +127,46 @@ describe('renderConfigYaml', () => {
   it('keeps a numeric-looking login a string', () => {
     const { config } = resolveConfig(parse(renderConfigYaml(answers(['123', 'yes'], ''))));
     expect(config.auth.browser.allowedUsers).toEqual(['123', 'yes']);
+  });
+
+  // #227: the workspace-retention answer is always written, so the choice
+  // is visible in the committed config.
+  for (const retain of [true, false]) {
+    it(`writes efs.retainOnClusterDown: ${retain}`, () => {
+      const out = renderConfigYaml({ ...answers(['alice'], ''), retainWorkspaces: retain });
+      expect(out).toContain(`retainOnClusterDown: ${retain}`);
+      const { config, warnings } = resolveConfig(parse(out));
+      expect(warnings).toEqual([]);
+      expect(config.efs?.retainOnClusterDown).toBe(retain);
+    });
+  }
+});
+
+describe('promptRetainWorkspaces', () => {
+  type ConfirmOpts = { message: string; initialValue?: boolean };
+  for (const answer of [true, false]) {
+    it(`returns the answer (${answer})`, async () => {
+      const seen: ConfirmOpts[] = [];
+      const r = await promptRetainWorkspaces(async (o: ConfirmOpts) => {
+        seen.push(o);
+        return answer;
+      });
+      expect(r).toBe(answer);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.message).toBe(RETAIN_WORKSPACES_PROMPT);
+      // Default no: matches the schema default (ADR 0007).
+      expect(seen[0]!.initialValue).toBe(false);
+    });
+  }
+
+  it('asks the issue\'s question and mentions the retained-storage cost', () => {
+    expect(RETAIN_WORKSPACES_PROMPT).toContain('Keep workspaces when the cluster is torn down?');
+    expect(RETAIN_WORKSPACES_PROMPT).toMatch(/billed/);
+  });
+
+  it('passes a cancel through for the caller to handle', async () => {
+    const cancel = Symbol('cancel');
+    expect(await promptRetainWorkspaces(async () => cancel)).toBe(cancel);
   });
 });
 
@@ -222,7 +266,15 @@ describe('parseInitFlags', () => {
       cpu: 1024,
       memory: 2048,
       idleMinutes: 60,
+      retainWorkspaces: false,
     });
+    expect(resolveConfig(parse(renderConfigYaml(a))).config.efs?.retainOnClusterDown).toBe(false);
+  });
+
+  it('--retain-workspaces writes efs.retainOnClusterDown: true', () => {
+    const { answers: a } = parseOk([...GITHUB, '--retain-workspaces']);
+    expect(a.retainWorkspaces).toBe(true);
+    expect(resolveChecked(renderConfigYaml(a)).efs?.retainOnClusterDown).toBe(true);
   });
 
   it('accepts --out, --force, --no-push and --no-iam', () => {
@@ -286,6 +338,9 @@ describe('parseInteractiveFlags', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain('--non-interactive');
     expect(parseInteractiveFlags(['--bogus']).ok).toBe(false);
+    const retain = parseInteractiveFlags(['--retain-workspaces']);
+    expect(retain.ok).toBe(false);
+    if (!retain.ok) expect(retain.error).toContain('--non-interactive');
   });
 });
 
@@ -344,6 +399,16 @@ describe('init-clone CLI (--non-interactive)', () => {
     expect(r.stdout).toContain('docs/setup-entra.md');
     expect(existsSync(out)).toBe(true);
     checkEntra(readFileSync(out, 'utf8'));
+    expect(existsSync(callsLog)).toBe(false);
+  });
+
+  it('writes efs.retainOnClusterDown from --retain-workspaces', { timeout: 60_000 }, () => {
+    const { dir, stubDir, callsLog } = setup();
+    const out = join(dir, 'c.yaml');
+    const r = runCli(stubDir, [...GITHUB, '--retain-workspaces', '--out', out]);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(resolveChecked(readFileSync(out, 'utf8')).efs?.retainOnClusterDown).toBe(true);
     expect(existsSync(callsLog)).toBe(false);
   });
 

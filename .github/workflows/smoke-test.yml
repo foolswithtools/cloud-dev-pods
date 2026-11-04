@@ -208,6 +208,9 @@ jobs:
           echo "::error::The pod pre-flight exited 0 but did not write proceed=true, so it never confirmed the cluster is safe to destroy. Not destroying. See \"cluster-down refuses: pod pre-flight failed\" in docs/troubleshooting.md."
           exit 1
 
+      # No workspace pre-flight here (cluster-down.yml's
+      # cluster-workspace-guard.ts, #227): smoke cleanup deletes the sandbox
+      # EFS and its workspaces on purpose, as delete_workspaces=true would.
       - name: cdk destroy (everything except Bootstrap)
         if: steps.drain.outputs.proceed == 'true'
         working-directory: infra

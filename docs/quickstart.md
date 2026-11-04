@@ -125,6 +125,8 @@ gh workflow run cluster-down.yml -f confirm=destroy
 gh run watch
 ```
 
+`cluster-down` deletes pod workspaces (EFS) unless `efs.retainOnClusterDown` is on. While workspaces exist and retention is off, it refuses until you pass `-f delete_workspaces=true`; see [EFS retention](teardown.md#efs-retention).
+
 This brings ongoing AWS spend to ~$0. The bootstrap stack (OIDC + IAM + ECR + secrets) is intentionally retained so a future `cluster-up` doesn't have to redo it.
 
 ## Cost

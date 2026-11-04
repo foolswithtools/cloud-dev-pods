@@ -40,6 +40,8 @@ Idle fixed cost: ~$50/month (ALB ~$16, NAT ~$32, EFS ~$0). Per running pod: ~$0.
 gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing spend
 ```
 
+`cluster-down` deletes pod workspaces (EFS) unless `efs.retainOnClusterDown` is on, and refuses while workspaces exist unless you pass `-f delete_workspaces=true`. See [`docs/teardown.md`](docs/teardown.md#efs-retention).
+
 ## Cloning into your own account
 
 This repo is a **public template**. When you clone or "Use this template" into your own GitHub account or organization:
