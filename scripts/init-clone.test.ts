@@ -9,12 +9,15 @@ import {
   nextSteps,
   parseInitFlags,
   parseInteractiveFlags,
+  parsePostBootstrapFlags,
   parseUserList,
   promptRetainWorkspaces,
   RETAIN_WORKSPACES_PROMPT,
   renderConfigYaml,
+  runPostBootstrap,
   validateOrg,
   type Answers,
+  type RunResult,
 } from './init-clone.js';
 
 // Dynamic import: a static `import '../infra/...'` fails `tsc -b scripts`
@@ -342,6 +345,12 @@ describe('parseInteractiveFlags', () => {
 });
 
 describe('nextSteps', () => {
+  it('points at npm run init -- --post-bootstrap instead of copy-paste cleanup', () => {
+    const text = nextSteps(parseOk(GITHUB).answers).join('\n');
+    expect(text).toContain('npm run init -- --post-bootstrap');
+    expect(text).not.toContain('gh secret delete');
+    expect(text).not.toContain('aws ssm get-parameter');
+  });
   it('points entra-id at docs/setup-entra.md instead of the GitHub OAuth App', () => {
     const text = nextSteps(parseOk(ENTRA).answers).join('\n');
     expect(text).toContain('docs/setup-entra.md');
@@ -430,5 +439,264 @@ describe('init-clone CLI (--non-interactive)', () => {
     expect(r.stderr).toMatch(/^init-clone: /);
     expect(r.stderr.trim().split('\n')).toHaveLength(1);
     expect(existsSync(out)).toBe(false);
+  });
+});
+
+describe('parsePostBootstrapFlags', () => {
+  it('accepts --post-bootstrap alone and with --yes', () => {
+    expect(parsePostBootstrapFlags(['--post-bootstrap'])).toEqual({ ok: true, yes: false, nonInteractive: false });
+    expect(parsePostBootstrapFlags(['--post-bootstrap', '--yes'])).toEqual({ ok: true, yes: true, nonInteractive: false });
+    expect(parsePostBootstrapFlags(['--post-bootstrap', '--non-interactive', '--yes'])).toEqual({
+      ok: true,
+      yes: true,
+      nonInteractive: true,
+    });
+  });
+  it('refuses --non-interactive without the explicit --yes opt-in', () => {
+    const r = parsePostBootstrapFlags(['--post-bootstrap', '--non-interactive']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('--yes');
+  });
+  it('refuses the config flags and unknown flags', () => {
+    expect(parsePostBootstrapFlags(['--post-bootstrap', '--aws-account-id', '123456789012']).ok).toBe(false);
+    expect(parsePostBootstrapFlags(['--post-bootstrap', '--bogus']).ok).toBe(false);
+  });
+  it('keeps --post-bootstrap and --yes out of the config-writing modes', () => {
+    expect(parseInteractiveFlags(['--post-bootstrap']).ok).toBe(false);
+    expect(parseInitFlags([...REQUIRED, '--yes']).ok).toBe(false);
+  });
+});
+
+describe('runPostBootstrap', () => {
+  const DEPLOYER_PATH = '/cloud-dev-pods/dev/bootstrap/deployer-role-arn';
+  const PODOPS_PATH = '/cloud-dev-pods/dev/bootstrap/pod-ops-role-arn';
+  const DEPLOYER_ARN = 'arn:aws:iam::123456789012:role/CloudDevPodsDeployerRole';
+  const PODOPS_ARN = 'arn:aws:iam::123456789012:role/CloudDevPodsPodOpsRole';
+  const USER = 'cloud-dev-pods-bootstrap';
+  const noSuchEntity = (op: string): RunResult => ({
+    status: 254,
+    stdout: '',
+    stderr: `An error occurred (NoSuchEntity) when calling the ${op} operation: The user with name ${USER} cannot be found.`,
+  });
+  const ok = (stdout = ''): RunResult => ({ status: 0, stdout, stderr: '' });
+  const fail = (stderr: string): RunResult => ({ status: 1, stdout: '', stderr });
+
+  interface FakeState {
+    params: Record<string, string>;
+    variables: Record<string, string>;
+    secrets: Set<string>;
+    userExists: boolean;
+    keys: string[];
+    adminAttached: boolean;
+  }
+
+  // A fake aws/gh that keeps just enough state for each step to be verified
+  // against it, and records every call.
+  function fake(init: Partial<FakeState> = {}) {
+    const state: FakeState = {
+      params: { [DEPLOYER_PATH]: DEPLOYER_ARN, [PODOPS_PATH]: PODOPS_ARN },
+      variables: {},
+      secrets: new Set(['AWS_BOOTSTRAP_ACCESS_KEY_ID', 'AWS_BOOTSTRAP_SECRET_ACCESS_KEY', 'OTHER']),
+      userExists: true,
+      keys: ['AKIAAAAAAAAAAAAAAAA1'],
+      adminAttached: true,
+      ...init,
+    };
+    const calls: string[] = [];
+    const arg = (args: string[], flag: string) => args[args.indexOf(flag) + 1] ?? '';
+    const run = (cmd: string, args: string[]): RunResult => {
+      calls.push([cmd, ...args].join(' '));
+      const sub = args.slice(0, 2).join(' ');
+      if (cmd === 'aws' && sub === 'ssm get-parameter') {
+        const v = state.params[arg(args, '--name')];
+        return v === undefined
+          ? { status: 254, stdout: '', stderr: 'An error occurred (ParameterNotFound) when calling the GetParameter operation:' }
+          : ok(`${v}\n`);
+      }
+      if (cmd === 'gh' && sub === 'variable set') {
+        state.variables[args[2]!] = arg(args, '--body');
+        return ok();
+      }
+      if (cmd === 'gh' && sub === 'variable get') {
+        const v = state.variables[args[2]!];
+        return v === undefined ? fail('variable not found') : ok(`${v}\n`);
+      }
+      if (cmd === 'gh' && sub === 'secret list') return ok([...state.secrets].join('\n') + '\n');
+      if (cmd === 'gh' && sub === 'secret delete') {
+        return state.secrets.delete(args[2]!) ? ok() : fail('not found');
+      }
+      if (cmd === 'aws' && args[0] === 'iam') {
+        switch (args[1]) {
+          case 'get-user':
+            return state.userExists ? ok(JSON.stringify({ User: { UserName: USER } })) : noSuchEntity('GetUser');
+          case 'list-access-keys':
+            return state.userExists ? ok(JSON.stringify(state.keys)) : noSuchEntity('ListAccessKeys');
+          case 'delete-access-key':
+            state.keys = state.keys.filter((k) => k !== arg(args, '--access-key-id'));
+            return ok();
+          case 'detach-user-policy':
+            if (!state.adminAttached) return noSuchEntity('DetachUserPolicy');
+            state.adminAttached = false;
+            return ok();
+          case 'delete-user':
+            if (state.keys.length > 0 || state.adminAttached) {
+              return { status: 254, stdout: '', stderr: 'An error occurred (DeleteConflict) when calling the DeleteUser operation' };
+            }
+            state.userExists = false;
+            return ok();
+        }
+      }
+      return fail(`unexpected call: ${cmd} ${args.join(' ')}`);
+    };
+    return { state, calls, run };
+  }
+
+  async function go(
+    run: (cmd: string, args: string[]) => RunResult,
+    opts: { assumeYes?: boolean; confirm?: boolean } = {},
+  ) {
+    const log: string[] = [];
+    const prompts: string[] = [];
+    const r = await runPostBootstrap({
+      run,
+      confirm: (msg) => {
+        prompts.push(msg);
+        return Promise.resolve(opts.confirm ?? true);
+      },
+      log: (line) => log.push(line),
+      paramPaths: { deployer: DEPLOYER_PATH, podOps: PODOPS_PATH },
+      assumeYes: opts.assumeYes ?? false,
+    });
+    return { ...r, log: log.join('\n'), prompts };
+  }
+
+  const DESTRUCTIVE = /^(gh secret delete|aws iam (delete|detach))/;
+
+  it('happy path: sets both variables, deletes the secrets, then the IAM user', async () => {
+    const f = fake();
+    const r = await go(f.run);
+    expect(r.exitCode).toBe(0);
+    expect(f.state.variables).toEqual({ AWS_DEPLOYER_ROLE_ARN: DEPLOYER_ARN, AWS_POD_OPS_ROLE_ARN: PODOPS_ARN });
+    expect([...f.state.secrets]).toEqual(['OTHER']);
+    expect(f.state.adminAttached).toBe(false);
+    expect(f.state.userExists).toBe(false);
+    expect(r.prompts).toHaveLength(1);
+    expect(r.summary.join('\n')).toContain('AWS_DEPLOYER_ROLE_ARN');
+
+    // Ordering is security-relevant: the role variables exist (and verify)
+    // before any bootstrap credential goes away.
+    const lastVarCall = f.calls.map((c) => c.startsWith('gh variable')).lastIndexOf(true);
+    const firstSecretDelete = f.calls.findIndex((c) => c.startsWith('gh secret delete'));
+    const firstIamDelete = f.calls.findIndex((c) => /^aws iam (delete|detach)/.test(c));
+    expect(lastVarCall).toBeGreaterThan(-1);
+    expect(lastVarCall).toBeLessThan(firstSecretDelete);
+    expect(firstSecretDelete).toBeLessThan(firstIamDelete);
+    // The user is verified gone at the end.
+    expect(f.calls.at(-1)).toMatch(/^aws iam get-user/);
+  });
+
+  it('re-run with the user already gone (NoSuchEntity) skips the IAM step and succeeds', async () => {
+    const f = fake({ userExists: false, keys: [], adminAttached: false, secrets: new Set(['OTHER']) });
+    const r = await go(f.run);
+    expect(r.exitCode).toBe(0);
+    expect(r.prompts).toHaveLength(0);
+    expect(f.calls.filter((c) => DESTRUCTIVE.test(c))).toEqual([]);
+    expect(r.summary.join('\n')).toMatch(/already deleted/i);
+    expect(f.state.variables).toEqual({ AWS_DEPLOYER_ROLE_ARN: DEPLOYER_ARN, AWS_POD_OPS_ROLE_ARN: PODOPS_ARN });
+  });
+
+  it('a missing SSM parameter fails with guidance and changes nothing', async () => {
+    const f = fake({ params: { [DEPLOYER_PATH]: DEPLOYER_ARN } });
+    const r = await go(f.run);
+    expect(r.exitCode).toBe(1);
+    expect(r.log).toContain('bootstrap-aws.yml');
+    expect(r.log).toContain(PODOPS_PATH);
+    expect(f.calls.filter((c) => !c.startsWith('aws ssm get-parameter'))).toEqual([]);
+    expect(f.state.userExists).toBe(true);
+    expect(f.state.secrets.size).toBe(3);
+  });
+
+  it('deletes both access keys when the user has two', async () => {
+    const f = fake({ keys: ['AKIAAAAAAAAAAAAAAAA1', 'AKIAAAAAAAAAAAAAAAA2'] });
+    const r = await go(f.run);
+    expect(r.exitCode).toBe(0);
+    const deletes = f.calls.filter((c) => c.startsWith('aws iam delete-access-key'));
+    expect(deletes).toHaveLength(2);
+    expect(deletes[0]).toContain('AKIAAAAAAAAAAAAAAAA1');
+    expect(deletes[1]).toContain('AKIAAAAAAAAAAAAAAAA2');
+    expect(f.state.userExists).toBe(false);
+  });
+
+  it('tolerates a policy that is already detached', async () => {
+    const f = fake({ keys: [], adminAttached: false });
+    const r = await go(f.run);
+    expect(r.exitCode).toBe(0);
+    expect(f.state.userExists).toBe(false);
+  });
+
+  it('declining the confirmation keeps the IAM user and exits non-zero', async () => {
+    const f = fake();
+    const r = await go(f.run, { confirm: false });
+    expect(r.exitCode).toBe(1);
+    expect(f.state.userExists).toBe(true);
+    expect(f.calls.filter((c) => /^aws iam (delete|detach)/.test(c))).toEqual([]);
+    expect(r.log).toContain('aws iam delete-user');
+  });
+
+  it('--yes deletes the IAM user without prompting', async () => {
+    const f = fake();
+    const r = await go(f.run, { assumeYes: true });
+    expect(r.exitCode).toBe(0);
+    expect(r.prompts).toHaveLength(0);
+    expect(f.state.userExists).toBe(false);
+  });
+
+  it('a variable that fails to set aborts before deleting anything', async () => {
+    const f = fake();
+    const broken = (cmd: string, args: string[]): RunResult => {
+      if (cmd === 'gh' && args[0] === 'variable' && args[1] === 'set') {
+        f.calls.push('gh variable set (403)');
+        return fail('HTTP 403');
+      }
+      return f.run(cmd, args);
+    };
+    const r = await go(broken);
+    expect(r.exitCode).toBe(1);
+    expect(f.calls.filter((c) => DESTRUCTIVE.test(c))).toEqual([]);
+  });
+
+  it('an IAM error other than NoSuchEntity fails rather than skipping', async () => {
+    const f = fake();
+    const denied = (cmd: string, args: string[]): RunResult =>
+      cmd === 'aws' && args[1] === 'get-user'
+        ? { status: 254, stdout: '', stderr: 'An error occurred (AccessDenied) when calling the GetUser operation' }
+        : f.run(cmd, args);
+    const r = await go(denied);
+    expect(r.exitCode).toBe(1);
+    expect(r.log).toContain('AccessDenied');
+    expect(f.calls.filter((c) => /^aws iam (delete|detach)/.test(c))).toEqual([]);
+  });
+});
+
+describe('init-clone CLI (--post-bootstrap)', () => {
+  const SCRIPT = resolve(import.meta.dirname, 'init-clone.ts');
+  const REPO_ROOT = resolve(import.meta.dirname, '..');
+
+  it('refuses --non-interactive without --yes and calls no gh/aws', { timeout: 60_000 }, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'init-clone-pb-'));
+    const callsLog = join(dir, 'calls.log');
+    for (const cmd of ['gh', 'aws', 'git']) {
+      const p = join(dir, cmd);
+      writeFileSync(p, `#!/bin/sh\necho "$0 $*" >> "${callsLog}"\nexit 1\n`);
+      chmodSync(p, 0o755);
+    }
+    const r = spawnSync(process.execPath, ['--import', 'tsx', SCRIPT, '--post-bootstrap', '--non-interactive'], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, PATH: dir },
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/^init-clone: .*--yes/);
+    expect(existsSync(callsLog)).toBe(false);
   });
 });
