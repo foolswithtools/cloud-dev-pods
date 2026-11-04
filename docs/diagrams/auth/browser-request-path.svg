@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 989" width="1240" height="989" data-quality-profile="standard">
+<style>text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }</style>
+<defs><marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker><marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker><marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker><marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker><marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker><marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/></marker></defs>
+<rect data-graph-role="background" width="1240" height="989" fill="#ffffff"/>
+<text x="620.0" y="34" font-size="18" font-weight="600" fill="#111827" text-anchor="middle" data-graph-role="label">Browser pod request path</text>
+<text x="620.0" y="54" font-size="12" fill="#6b7280" text-anchor="middle" data-graph-role="label">domain.strategy: byo (HTTPS). alb-default serves HTTP on the ALB DNS name with no Route 53 record.</text>
+<line data-graph-role="decoration" x1="122.85714285714286" y1="128" x2="122.85714285714286" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="288.57142857142856" y1="128" x2="288.57142857142856" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="454.28571428571433" y1="128" x2="454.28571428571433" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="620.0" y1="128" x2="620.0" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="785.7142857142858" y1="128" x2="785.7142857142858" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="951.4285714285716" y1="128" x2="951.4285714285716" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="1117.142857142857" y1="128" x2="1117.142857142857" y2="925" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<g id="note-502" data-graph-role="label" data-graph-bounds="292.1428571428571 140 782.1428571428571 180">
+<rect x="292.1428571428571" y="140" width="490.0" height="40" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+<text x="300.1" y="158.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">First ~30 s after pod-up: target group health check GET /ping every 15 s,</text>
+<text x="300.1" y="173.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">2 healthy checks needed, so the ALB can answer 502 until the target is healthy.</text>
+</g>
+<path id="m-dns" data-graph-role="edge" data-edge-id="m-dns" d="M 126.9 218.0 L 284.6 218.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="131.0" y="200.0" width="149.5" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="205.7" y="211.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">resolve &lt;pod&gt;.&lt;baseDomain&gt;</text>
+<path id="m-dns-r" data-graph-role="edge" data-edge-id="m-dns-r" d="M 284.6 258.0 L 126.9 258.0" fill="none" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-gray)"/>
+<rect data-graph-role="decoration" x="177.9" y="240.0" width="55.7" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="205.7" y="251.0" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400" data-graph-role="label">ALB alias</text>
+<path id="m-https" data-graph-role="edge" data-edge-id="m-https" d="M 126.9 298.0 L 450.3 298.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="186.2" y="280.0" width="204.7" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="288.6" y="291.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">HTTPS GET (port 80 redirects to 443)</text>
+<g id="note-rule" data-graph-role="label" data-graph-bounds="296.28571428571433 316 612.2857142857143 356">
+<rect x="296.28571428571433" y="316" width="316.0" height="40" rx="4" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+<text x="304.3" y="334.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">host-header &lt;pod&gt;.&lt;baseDomain&gt; -&gt; pod target group</text>
+<text x="304.3" y="349.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">no matching rule -&gt; fixed 404 response</text>
+</g>
+<path id="m-fwd" data-graph-role="edge" data-edge-id="m-fwd" d="M 458.3 394.0 L 616.0 394.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="467.9" y="376.0" width="138.5" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="537.1" y="387.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">forward to task IP :4180</text>
+<path id="m-redirect" data-graph-role="edge" data-edge-id="m-redirect" d="M 616.0 452.0 L 126.9 452.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="318.7" y="434.0" width="105.4" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="445.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">302 to IdP sign-in</text>
+<path id="m-signin" data-graph-role="edge" data-edge-id="m-signin" d="M 126.9 492.0 L 781.7 492.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="415.4" y="474.0" width="77.8" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="454.3" y="485.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">user signs in</text>
+<path id="m-callback" data-graph-role="edge" data-edge-id="m-callback" d="M 781.7 532.0 L 126.9 532.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="371.2" y="514.0" width="166.1" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="454.3" y="525.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">302 /oauth2/callback?code=...</text>
+<path id="m-cb-proxy" data-graph-role="edge" data-edge-id="m-cb-proxy" d="M 126.9 572.0 L 616.0 572.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="285.6" y="554.0" width="171.6" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="565.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">GET /oauth2/callback (via ALB)</text>
+<path id="m-token" data-graph-role="edge" data-edge-id="m-token" d="M 624.0 612.0 L 781.7 612.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="628.1" y="594.0" width="149.5" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="702.9" y="605.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">redeem code, read identity</text>
+<g id="note-allow" data-graph-role="label" data-graph-bounds="471.0 630 769.0 685">
+<rect x="471.0" y="630" width="298.0" height="55" rx="4" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+<text x="479.0" y="648.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">Allowlist check (env set by pod-manager):</text>
+<text x="479.0" y="663.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">org / users / groups / tenants / email domains,</text>
+<text x="479.0" y="678.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">owner-only: GITHUB_USERS or emails file</text>
+</g>
+<path id="m-cookie" data-graph-role="edge" data-edge-id="m-cookie" d="M 616.0 723.0 L 126.9 723.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="255.3" y="705.0" width="232.3" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="716.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">Set-Cookie (session, cookie secret) + 302</text>
+<rect id="frame-login" data-graph-role="container" x="30" y="408" width="1020" height="333" rx="4" fill="none" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 3"/>
+<g data-graph-role="decoration">
+<path d="M 30 408 H 62.0 V 422 L 56.0 428 H 30 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1"/>
+</g>
+<text x="36.0" y="422.0" font-size="11" fill="#374151" text-anchor="start" font-weight="600" data-graph-role="label">alt</text>
+<text x="70.0" y="422.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400" font-style="italic" data-graph-role="label">no valid session cookie</text>
+<path id="m-req" data-graph-role="edge" data-edge-id="m-req" d="M 126.9 775.0 L 616.0 775.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="274.6" y="757.0" width="193.7" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="768.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">request + session cookie (via ALB)</text>
+<path id="m-up" data-graph-role="edge" data-edge-id="m-up" d="M 624.0 815.0 L 947.4 815.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="699.9" y="797.0" width="171.6" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="785.7" y="808.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">proxy to http://127.0.0.1:3000</text>
+<path id="m-efs" data-graph-role="edge" data-edge-id="m-efs" d="M 955.4 855.0 L 1113.1 855.0" fill="none" stroke="#16a34a" stroke-width="1.6" marker-end="url(#arrow-green)"/>
+<rect data-graph-role="decoration" x="943.0" y="837.0" width="182.6" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="1034.3" y="848.0" font-size="11" fill="#16a34a" text-anchor="middle" font-weight="400" data-graph-role="label">read/write /workspace (TLS, IAM)</text>
+<path id="m-ui" data-graph-role="edge" data-edge-id="m-ui" d="M 947.4 895.0 L 126.9 895.0" fill="none" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-gray)"/>
+<rect data-graph-role="decoration" x="393.4" y="877.0" width="287.5" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="537.1" y="888.0" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400" data-graph-role="label">VS Code UI + WebSocket (back through proxy and ALB)</text>
+<g id="browser" data-graph-role="node" data-node-id="browser">
+<rect x="47.85714285714286" y="76" width="150" height="52" rx="8" ry="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="122.9" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">Browser</text>
+<text x="122.9" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">user&#x27;s laptop</text>
+</g>
+<g id="r53" data-graph-role="node" data-node-id="r53">
+<rect x="213.57142857142856" y="76" width="150" height="52" rx="8" ry="8" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="288.6" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">Route 53</text>
+<text x="288.6" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">*.&lt;baseDomain&gt; alias</text>
+</g>
+<g id="alb" data-graph-role="node" data-node-id="alb">
+<rect x="379.28571428571433" y="76" width="150" height="52" rx="8" ry="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+<text x="454.3" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">ALB listener</text>
+<text x="454.3" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">:443 host-header rules</text>
+</g>
+<g id="proxy" data-graph-role="node" data-node-id="proxy">
+<rect x="545.0" y="76" width="150" height="52" rx="8" ry="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="620.0" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">oauth2-proxy</text>
+<text x="620.0" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">sidecar :4180</text>
+</g>
+<g id="idp" data-graph-role="node" data-node-id="idp">
+<rect x="710.7142857142858" y="76" width="150" height="52" rx="8" ry="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+<text x="785.7" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">Identity provider</text>
+<text x="785.7" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">GitHub / Entra ID / OIDC</text>
+</g>
+<g id="vscode" data-graph-role="node" data-node-id="vscode">
+<rect x="876.4285714285716" y="76" width="150" height="52" rx="8" ry="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="951.4" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">openvscode-server</text>
+<text x="951.4" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">127.0.0.1:3000</text>
+</g>
+<g id="efs" data-graph-role="node" data-node-id="efs">
+<rect x="1042.142857142857" y="76" width="150" height="52" rx="8" ry="8" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1117.1" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">EFS /workspace</text>
+<text x="1117.1" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">per-pod access point</text>
+</g>
+<g id="legend" data-graph-role="legend">
+<line x1="60" y1="959" x2="90" y2="959" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<text x="98" y="963" font-size="12" fill="#6b7280" text-anchor="start">request</text>
+<line x1="179.57999999999998" y1="959" x2="209.57999999999998" y2="959" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<text x="217.57999999999998" y="963" font-size="12" fill="#6b7280" text-anchor="start">OAuth sign-in (once per session)</text>
+<line x1="447.65999999999997" y1="959" x2="477.65999999999997" y2="959" stroke="#16a34a" stroke-width="1.6" marker-end="url(#arrow-green)"/>
+<text x="485.65999999999997" y="963" font-size="12" fill="#6b7280" text-anchor="start">workspace I/O</text>
+<line x1="602.88" y1="959" x2="632.88" y2="959" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-gray)"/>
+<text x="640.88" y="963" font-size="12" fill="#6b7280" text-anchor="start">response</text>
+</g>
+</svg>

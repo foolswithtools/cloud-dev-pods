@@ -1,0 +1,471 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 1,
+  "quality_profile": "standard",
+  "width": 1340,
+  "height": 840,
+  "title": "AWS Deployment Topology",
+  "subtitle": "what cluster-up deploys (plus the Bootstrap-owned ECR repos and OAuth secrets it consumes)",
+  "containers": [
+    {
+      "id": "deps",
+      "x": 40,
+      "y": 225,
+      "width": 250,
+      "height": 515,
+      "label": "Regional: task dependencies"
+    },
+    {
+      "id": "vpc",
+      "x": 330,
+      "y": 225,
+      "width": 470,
+      "height": 515,
+      "label": "VPC: 2 AZs"
+    },
+    {
+      "id": "public",
+      "x": 350,
+      "y": 268,
+      "width": 430,
+      "height": 118,
+      "label": "Public subnets"
+    },
+    {
+      "id": "private",
+      "x": 350,
+      "y": 412,
+      "width": 430,
+      "height": 306,
+      "label": "Private subnets"
+    },
+    {
+      "id": "control",
+      "x": 850,
+      "y": 225,
+      "width": 460,
+      "height": 515,
+      "label": "Regional: control plane"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "r53",
+      "kind": "rect",
+      "x": 60,
+      "y": 130,
+      "width": 230,
+      "height": 60,
+      "label": "Route53 + ACM",
+      "sublabel": "*.domain alias, wildcard cert",
+      "fill": "#f0fdf4",
+      "stroke": "#22c55e",
+      "flat": true
+    },
+    {
+      "id": "user",
+      "kind": "user_avatar",
+      "x": 544,
+      "y": 130,
+      "width": 210,
+      "height": 60,
+      "label": "Developer",
+      "sublabel": "browser pods",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "ssm",
+      "kind": "rect",
+      "x": 960,
+      "y": 130,
+      "width": 270,
+      "height": 60,
+      "label": "SSM parameters",
+      "sublabel": "/cloud-dev-pods/dev/* outputs",
+      "fill": "#f8fafc",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "nat",
+      "kind": "rect",
+      "x": 370,
+      "y": 310,
+      "width": 150,
+      "height": 56,
+      "label": "NAT gateway",
+      "sublabel": "task egress",
+      "fill": "#f8fafc",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "alb",
+      "kind": "double_rect",
+      "x": 564,
+      "y": 310,
+      "width": 170,
+      "height": 56,
+      "label": "ALB",
+      "sublabel": "host rule per pod",
+      "fill": "#fffbeb",
+      "stroke": "#f59e0b",
+      "flat": true
+    },
+    {
+      "id": "fargate",
+      "kind": "double_rect",
+      "x": 520,
+      "y": 460,
+      "width": 240,
+      "height": 64,
+      "label": "ECS Fargate pod tasks",
+      "sublabel": "one task per pod (FARGATE)",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "efs",
+      "kind": "rect",
+      "x": 520,
+      "y": 616,
+      "width": 240,
+      "height": 64,
+      "label": "EFS",
+      "sublabel": "TLS + access point per pod",
+      "fill": "#ecfdf5",
+      "stroke": "#10b981"
+    },
+    {
+      "id": "ecr",
+      "kind": "rect",
+      "x": 60,
+      "y": 310,
+      "width": 210,
+      "height": 60,
+      "label": "ECR",
+      "sublabel": "image pull at task start",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "secrets",
+      "kind": "rect",
+      "x": 60,
+      "y": 462,
+      "width": 210,
+      "height": 60,
+      "label": "Secrets Manager",
+      "sublabel": "oauth/* via execution role",
+      "fill": "#fef2f2",
+      "stroke": "#f87171",
+      "flat": true
+    },
+    {
+      "id": "logs",
+      "kind": "rect",
+      "x": 60,
+      "y": 622,
+      "width": 210,
+      "height": 60,
+      "label": "CloudWatch Logs",
+      "sublabel": "awslogs: /dev/pods",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "podmgr",
+      "kind": "double_rect",
+      "x": 870,
+      "y": 324,
+      "width": 180,
+      "height": 64,
+      "label": "pod-manager",
+      "sublabel": "Lambda",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "ddb",
+      "kind": "rect",
+      "x": 870,
+      "y": 460,
+      "width": 180,
+      "height": 64,
+      "label": "DynamoDB",
+      "sublabel": "pod registry",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6"
+    },
+    {
+      "id": "reaper",
+      "kind": "rect",
+      "x": 1120,
+      "y": 460,
+      "width": 170,
+      "height": 64,
+      "label": "pod-idle-reaper",
+      "sublabel": "Lambda",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "events",
+      "kind": "rect",
+      "x": 1120,
+      "y": 622,
+      "width": 170,
+      "height": 64,
+      "label": "EventBridge",
+      "sublabel": "5-min + task STOPPED",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "dns",
+      "source": "user",
+      "target": "r53",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "read",
+      "label": "resolve <pod>.domain"
+    },
+    {
+      "id": "https",
+      "source": "user",
+      "target": "alb",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read",
+      "label": "HTTPS"
+    },
+    {
+      "id": "route",
+      "source": "alb",
+      "target": "fargate",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read",
+      "label": "HTTP :4180",
+      "label_dx": 92
+    },
+    {
+      "id": "egress",
+      "source": "fargate",
+      "target": "nat",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "neutral",
+      "route_points": [
+        [
+          631,
+          399
+        ],
+        [
+          445,
+          399
+        ]
+      ],
+      "label": "egress"
+    },
+    {
+      "id": "nfs",
+      "source": "fargate",
+      "target": "efs",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "NFS 2049"
+    },
+    {
+      "id": "f1-pull",
+      "source": "fargate",
+      "target": "ecr",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data",
+      "route_points": [
+        [
+          480,
+          474
+        ],
+        [
+          310,
+          474
+        ],
+        [
+          310,
+          340
+        ]
+      ]
+    },
+    {
+      "id": "f2-secret",
+      "source": "fargate",
+      "target": "secrets",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data",
+      "route_points": [
+        [
+          480,
+          492
+        ],
+        [
+          300,
+          492
+        ]
+      ]
+    },
+    {
+      "id": "f3-log",
+      "source": "fargate",
+      "target": "logs",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data",
+      "route_points": [
+        [
+          480,
+          510
+        ],
+        [
+          310,
+          510
+        ],
+        [
+          310,
+          652
+        ]
+      ]
+    },
+    {
+      "id": "a-rules",
+      "source": "podmgr",
+      "target": "alb",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control",
+      "label": "TG + rule"
+    },
+    {
+      "id": "b-run",
+      "source": "podmgr",
+      "target": "fargate",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control",
+      "label": "RunTask",
+      "route_points": [
+        [
+          815,
+          356
+        ],
+        [
+          815,
+          492
+        ]
+      ]
+    },
+    {
+      "id": "c-ap",
+      "source": "podmgr",
+      "target": "efs",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control",
+      "label": "access point",
+      "route_points": [
+        [
+          836,
+          374
+        ],
+        [
+          836,
+          648
+        ]
+      ]
+    },
+    {
+      "id": "registry",
+      "source": "podmgr",
+      "target": "ddb",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "registry"
+    },
+    {
+      "id": "stop",
+      "source": "reaper",
+      "target": "podmgr",
+      "source_port": "top",
+      "target_port": "right",
+      "flow": "control",
+      "label": "invoke",
+      "route_points": [
+        [
+          1205,
+          356
+        ]
+      ]
+    },
+    {
+      "id": "scan",
+      "source": "reaper",
+      "target": "ddb",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "write",
+      "label": "scan"
+    },
+    {
+      "id": "trigger",
+      "source": "events",
+      "target": "reaper",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "async",
+      "dashed": true,
+      "label": "trigger"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 778,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "read",
+      "label": "user request path"
+    },
+    {
+      "flow": "control",
+      "label": "pod-manager / reaper API calls"
+    },
+    {
+      "flow": "write",
+      "label": "state read/write"
+    },
+    {
+      "flow": "data",
+      "label": "task start + logging"
+    },
+    {
+      "flow": "async",
+      "label": "scheduled / event trigger"
+    }
+  ]
+}

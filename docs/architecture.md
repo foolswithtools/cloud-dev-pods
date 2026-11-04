@@ -2,6 +2,8 @@
 
 How cloud-dev-pods works end-to-end.
 
+For diagrams of each part (AWS topology, CDK stacks, pod lifecycle, auth flows, workflows and IAM, the task runtime) with code citations for every element, see [`diagrams/`](diagrams/README.md).
+
 ## Delivery modes
 
 Two pod delivery modes are supported. Browser is the default; tunnel is opt-in per-pod.

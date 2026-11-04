@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 1,
+  "quality_profile": "standard",
+  "width": 1420,
+  "height": 880,
+  "title": "CDK Stack Composition",
+  "subtitle": "how infra/bin/app.ts builds six stacks, how they reference each other, and which workflow deploys them",
+  "containers": [
+    {
+      "id": "boot",
+      "x": 30,
+      "y": 390,
+      "width": 280,
+      "height": 160,
+      "label": "bootstrap-aws.yml"
+    },
+    {
+      "id": "clusterset",
+      "x": 380,
+      "y": 390,
+      "width": 970,
+      "height": 340,
+      "label": "cluster-up.yml"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "config",
+      "kind": "rect",
+      "x": 40,
+      "y": 140,
+      "width": 250,
+      "height": 64,
+      "label": "config/config.yaml",
+      "sublabel": "CDPODS_CONFIG first",
+      "fill": "#f8fafc",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "binapp",
+      "kind": "double_rect",
+      "x": 510,
+      "y": 140,
+      "width": 220,
+      "height": 64,
+      "label": "infra/bin/app.ts",
+      "sublabel": "cdk.App, tags, cdk-nag",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "ext",
+      "kind": "rect",
+      "x": 1000,
+      "y": 140,
+      "width": 300,
+      "height": 64,
+      "label": "infra/extensions.local.ts",
+      "sublabel": "optional fork hooks",
+      "fill": "#f0fdf4",
+      "stroke": "#22c55e",
+      "flat": true
+    },
+    {
+      "id": "build",
+      "kind": "double_rect",
+      "x": 510,
+      "y": 290,
+      "width": 220,
+      "height": 64,
+      "label": "buildStacks()",
+      "sublabel": "infra/lib/app.ts",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "ssm",
+      "kind": "rect",
+      "x": 1000,
+      "y": 290,
+      "width": 300,
+      "height": 64,
+      "label": "SSM parameters",
+      "sublabel": "every stack writes; workflows read",
+      "fill": "#f8fafc",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "bootstrap",
+      "kind": "rect",
+      "x": 50,
+      "y": 450,
+      "width": 240,
+      "height": 64,
+      "label": "Bootstrap",
+      "sublabel": "OIDC, roles, ECR, secrets",
+      "fill": "#fef2f2",
+      "stroke": "#f87171",
+      "flat": true
+    },
+    {
+      "id": "network",
+      "kind": "rect",
+      "x": 520,
+      "y": 450,
+      "width": 200,
+      "height": 64,
+      "label": "Network",
+      "sublabel": "VPC, NAT, 3 SGs",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "cluster",
+      "kind": "rect",
+      "x": 810,
+      "y": 450,
+      "width": 200,
+      "height": 64,
+      "label": "Cluster",
+      "sublabel": "ECS, EFS, ALB, logs",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "ptf",
+      "kind": "rect",
+      "x": 1100,
+      "y": 450,
+      "width": 220,
+      "height": 64,
+      "label": "PodTaskFamily",
+      "sublabel": "task defs + IAM roles",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "reaper",
+      "kind": "rect",
+      "x": 810,
+      "y": 610,
+      "width": 200,
+      "height": 64,
+      "label": "IdleReaper",
+      "sublabel": "Lambda, rules, SNS",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "podmgr",
+      "kind": "rect",
+      "x": 1100,
+      "y": 610,
+      "width": 220,
+      "height": 64,
+      "label": "PodManager",
+      "sublabel": "Lambda + DynamoDB",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "load-config",
+      "source": "config",
+      "target": "binapp",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "loadConfig (zod)"
+    },
+    {
+      "id": "load-ext",
+      "source": "ext",
+      "target": "binapp",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "write",
+      "label": "loadExtensions"
+    },
+    {
+      "id": "call",
+      "source": "binapp",
+      "target": "build",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "config, env, hooks"
+    },
+    {
+      "id": "mk-boot",
+      "source": "build",
+      "target": "bootstrap",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control",
+      "label": "new + customizeBootstrap",
+      "route_points": [
+        [
+          345,
+          322
+        ],
+        [
+          345,
+          482
+        ]
+      ]
+    },
+    {
+      "id": "mk-net",
+      "source": "build",
+      "target": "network",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "new + customize*",
+      "label_dy": -34
+    },
+    {
+      "id": "net-cluster",
+      "source": "network",
+      "target": "cluster",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data",
+      "label": "vpc, SGs"
+    },
+    {
+      "id": "cluster-ptf",
+      "source": "cluster",
+      "target": "ptf",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data",
+      "label": "EFS, logs"
+    },
+    {
+      "id": "ptf-pm",
+      "source": "ptf",
+      "target": "podmgr",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "task defs, roles"
+    },
+    {
+      "id": "pm-reaper",
+      "source": "podmgr",
+      "target": "reaper",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data",
+      "label": "table, fn"
+    },
+    {
+      "id": "cluster-reaper",
+      "source": "cluster",
+      "target": "reaper",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "cluster, ALB"
+    },
+    {
+      "id": "net-pm",
+      "source": "network",
+      "target": "podmgr",
+      "source_port": "bottom",
+      "target_port": "bottom",
+      "flow": "data",
+      "label": "subnets, tasks SG",
+      "route_points": [
+        [
+          620,
+          705
+        ],
+        [
+          1210,
+          705
+        ]
+      ]
+    },
+    {
+      "id": "z-lookup",
+      "source": "bootstrap",
+      "target": "ptf",
+      "source_port": "bottom",
+      "target_port": "right",
+      "flow": "neutral",
+      "dashed": true,
+      "label": "looked up by name: ECR repos, OAuth secrets",
+      "route_points": [
+        [
+          170,
+          770
+        ],
+        [
+          1380,
+          770
+        ],
+        [
+          1380,
+          482
+        ]
+      ]
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 820,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "synth-time call"
+    },
+    {
+      "flow": "write",
+      "label": "fork hook load"
+    },
+    {
+      "flow": "data",
+      "label": "stack prop (CFN export/import)"
+    },
+    {
+      "flow": "neutral",
+      "label": "name lookup, no CFN dependency"
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 920" width="1360" height="920">
+<style>text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }</style>
+<defs>
+<marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+<marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker>
+<marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker>
+<marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker>
+<marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+<marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/></marker>
+</defs>
+<rect data-graph-role="background" width="1360" height="920" fill="#ffffff"/>
+<text x="40" y="40" font-size="20" font-weight="600" fill="#111827">How a pod stops: pod-down, idle reaper, task-stopped cleanup</text>
+<text x="40" y="62" font-size="13" fill="#6b7280">Every path ends in the same pod-manager down action</text>
+<rect data-graph-role="container" x="330" y="190" width="1010" height="465" rx="4" fill="none" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5,3"/>
+<path data-graph-role="container" d="M 330,190 L 456.88,190 L 456.88,202 L 448.88,210 L 330,210 Z" fill="#f1f5f9" stroke="#64748b" stroke-width="1"/>
+<text x="337.0" y="204.0" font-size="11" fill="#334155" text-anchor="start" font-weight="700">idle-reaper Lambda</text>
+<text x="1032.0" y="204.0" font-size="11.5" fill="#334155" text-anchor="start" font-weight="400" font-style="italic">function pod-idle-reaper, two EventBridge rules</text>
+<path data-graph-role="edge" d="M 155.0,170.0 L 155.0,700.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<path data-graph-role="edge" d="M 480.0,170.0 L 480.0,230.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<path data-graph-role="edge" d="M 590.0,280.0 L 650.0,280.0" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-gray)"/>
+<path data-graph-role="edge" d="M 480.0,330.0 L 480.0,380.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<path data-graph-role="edge" d="M 590.0,430.0 L 650.0,430.0" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-gray)"/>
+<path data-graph-role="edge" d="M 480.0,480.0 L 480.0,530.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<path data-graph-role="edge" d="M 590.0,580.0 L 650.0,580.0" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-gray)"/>
+<path data-graph-role="edge" d="M 480.0,630.0 L 480.0,700.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<path data-graph-role="edge" d="M 1020.0,170.0 L 1020.0,230.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<path data-graph-role="edge" d="M 1120.0,280.0 L 1170.0,280.0" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-gray)"/>
+<path data-graph-role="edge" d="M 1020.0,330.0 L 1020.0,700.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="node" x="40" y="100" width="230" height="70" rx="8" ry="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="155.0" y="125.0" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">pod-down workflow</text>
+<text x="155.0" y="143.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">pod-down.yml, keep_workspace</text>
+<text x="155.0" y="158.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">input (default true)</text>
+<rect data-graph-role="node" x="360" y="100" width="240" height="70" rx="8" ry="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+<text x="480.0" y="125.0" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">EventBridge schedule</text>
+<text x="480.0" y="143.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">IdleScanSchedule</text>
+<text x="480.0" y="158.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">rate(5 minutes)</text>
+<rect data-graph-role="node" x="900" y="100" width="240" height="70" rx="8" ry="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+<text x="1020.0" y="125.0" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">EventBridge rule</text>
+<text x="1020.0" y="143.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">TaskStateChangeRule: ECS Task</text>
+<text x="1020.0" y="158.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">State Change, lastStatus STOPPED</text>
+<polygon data-graph-role="node" points="480,230.0 590.0,280 480,330.0 370.0,280" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="480.0" y="277.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">browser pod past</text>
+<text x="480.0" y="291.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">its idle window?</text>
+<polygon data-graph-role="node" points="480,380.0 590.0,430 480,480.0 370.0,430" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="480.0" y="427.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">0 requests in</text>
+<text x="480.0" y="441.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">idle window?</text>
+<polygon data-graph-role="node" points="480,530.0 590.0,580 480,630.0 370.0,580" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="480.0" y="577.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">idleSince</text>
+<text x="480.0" y="591.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">already set?</text>
+<polygon data-graph-role="node" points="1020,230.0 1120.0,280 1020,330.0 920.0,280" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="1020.0" y="277.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">registry row</text>
+<text x="1020.0" y="291.0" font-size="12" fill="#111827" text-anchor="middle" font-weight="600">with taskArn?</text>
+<rect data-graph-role="node" x="650" y="250" width="220" height="60" rx="8" ry="8" fill="#f9fafb" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="760.0" y="269.5" font-size="13" fill="#111827" text-anchor="middle" font-weight="600">Skip pod</text>
+<text x="760.0" y="287.5" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">tunnel, idleMinutes 0, or younger</text>
+<text x="760.0" y="302.5" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">than its window (#229)</text>
+<rect data-graph-role="node" x="650" y="400" width="220" height="60" rx="8" ry="8" fill="#f9fafb" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="760.0" y="427.0" font-size="13" fill="#111827" text-anchor="middle" font-weight="600">Clear idleSince</text>
+<text x="760.0" y="445.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">REMOVE idleSince if it was set</text>
+<rect data-graph-role="node" x="650" y="550" width="220" height="60" rx="8" ry="8" fill="#fff7ed" stroke="#f97316" stroke-width="1.5"/>
+<text x="760.0" y="569.5" font-size="13" fill="#111827" text-anchor="middle" font-weight="600">Warn first</text>
+<text x="760.0" y="587.5" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">SET idleSince = now,</text>
+<text x="760.0" y="602.5" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">SNS publish idle warning</text>
+<rect data-graph-role="node" x="1170" y="250" width="150" height="60" rx="8" ry="8" fill="#f9fafb" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1245.0" y="277.0" font-size="13" fill="#111827" text-anchor="middle" font-weight="600">Nothing to clean</text>
+<text x="1245.0" y="295.0" font-size="11.5" fill="#6b7280" text-anchor="middle" font-weight="400">already removed</text>
+<rect data-graph-role="node" x="60" y="700" width="1100" height="168" rx="8" ry="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+<text x="80.0" y="728.0" font-size="15" fill="#111827" text-anchor="start" font-weight="600">pod-manager Lambda: down action (podDown)</text>
+<text x="80.0" y="748.0" font-size="12.5" fill="#6b7280" text-anchor="start" font-weight="400">registryGet(podName); no row returns not-found. Then, in order:</text>
+<circle cx="90" cy="770" r="7.5" fill="#16a34a"/>
+<text x="90.0" y="774.0" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">1</text>
+<text x="106.0" y="774.0" font-size="12.5" fill="#111827" text-anchor="start" font-weight="400">ecs:StopTask on the registered task (errors logged, not fatal)</text>
+<circle cx="90" cy="789" r="7.5" fill="#16a34a"/>
+<text x="90.0" y="793.0" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">2</text>
+<text x="106.0" y="793.0" font-size="12.5" fill="#111827" text-anchor="start" font-weight="400">elbv2:DeleteRule, the pod's host-header listener rule (browser pods)</text>
+<circle cx="90" cy="808" r="7.5" fill="#16a34a"/>
+<text x="90.0" y="812.0" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">3</text>
+<text x="106.0" y="812.0" font-size="12.5" fill="#111827" text-anchor="start" font-weight="400">elbv2:DeregisterTargets (task IP), wait 5 s, DeleteTargetGroup (browser pods)</text>
+<circle cx="90" cy="827" r="7.5" fill="#16a34a"/>
+<text x="90.0" y="831.0" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">4</text>
+<text x="106.0" y="831.0" font-size="12.5" fill="#111827" text-anchor="start" font-weight="400">efs:DeleteAccessPoint ONLY when keepWorkspace=false; files stay on EFS either way</text>
+<circle cx="90" cy="846" r="7.5" fill="#16a34a"/>
+<text x="90.0" y="850.0" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">5</text>
+<text x="106.0" y="850.0" font-size="12.5" fill="#111827" text-anchor="start" font-weight="400">dynamodb:DeleteItem, the registry row</text>
+<text x="165.0" y="250.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">pod-cli Invoke</text>
+<text x="165.0" y="265.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">{action: down,</text>
+<text x="165.0" y="280.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400"> keepWorkspace}</text>
+<text x="165.0" y="295.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">pod-ops role</text>
+<text x="165.0" y="310.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">(OIDC)</text>
+<text x="620.0" y="272.0" font-size="12" fill="#6b7280" text-anchor="middle" font-weight="400">no</text>
+<text x="490.0" y="360.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">yes</text>
+<text x="620.0" y="422.0" font-size="12" fill="#6b7280" text-anchor="middle" font-weight="400">no</text>
+<text x="490.0" y="510.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">yes</text>
+<text x="620.0" y="572.0" font-size="12" fill="#6b7280" text-anchor="middle" font-weight="400">no</text>
+<text x="490.0" y="676.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">yes: invoke down, keepWorkspace=true</text>
+<text x="1145.0" y="272.0" font-size="12" fill="#6b7280" text-anchor="middle" font-weight="400">no</text>
+<text x="1030.0" y="500.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">yes: invoke down,</text>
+<text x="1030.0" y="515.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">keepWorkspace=true</text>
+<text x="650.0" y="488.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">CloudWatch RequestCount Sum over</text>
+<text x="650.0" y="503.0" font-size="12" fill="#6b7280" text-anchor="start" font-weight="400">idleMinutes; no datapoints = active</text>
+<g data-graph-role="legend" transform="translate(40,896)">
+<line x1="0" y1="0" x2="30" y2="0" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<text x="38" y="4" font-size="12" fill="#6b7280">manual trigger (workflow)</text>
+<line x1="246.00000000000003" y1="0" x2="276.0" y2="0" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-purple)"/>
+<text x="284.0" y="4" font-size="12" fill="#6b7280">automatic (EventBridge, reaper)</text>
+<line x1="532.32" y1="0" x2="562.32" y2="0" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-gray)"/>
+<text x="570.32" y="4" font-size="12" fill="#6b7280">no-op branch</text>
+</g>
+</svg>

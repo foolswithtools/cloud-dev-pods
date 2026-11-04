@@ -1,0 +1,53 @@
+{
+  "style": 1,
+  "quality_profile": "showcase",
+  "width": 1200,
+  "height": 880,
+  "title": "Workflows, GitHub OIDC and the two IAM roles",
+  "subtitle": "which fork workflow assumes which role (ADR 0003 split), and what each role may touch",
+  "containers": [
+    { "id": "fork", "x": 40, "y": 100, "width": 1110, "height": 130, "label": "Fork workflows · guard job: github.repository != 'foolswithtools/cloud-dev-pods'" },
+    { "id": "aws", "x": 40, "y": 280, "width": 1110, "height": 330, "label": "Your AWS account" },
+    { "id": "maint", "x": 40, "y": 650, "width": 560, "height": 120, "label": "Upstream only · guard == 'foolswithtools/cloud-dev-pods'" },
+    { "id": "anyrepo", "x": 640, "y": 650, "width": 510, "height": 120, "label": "Any repo · no AWS credentials" }
+  ],
+  "nodes": [
+    { "id": "sync", "kind": "rect", "x": 60, "y": 145, "width": 180, "height": 64, "label": "sync-upstream", "sublabel": "no AWS · contents + PR write", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "clusterwf", "kind": "rect", "x": 290, "y": 145, "width": 200, "height": 64, "label": "cluster-up / down", "sublabel": "id-token: write", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "bootstrap", "kind": "rect", "x": 590, "y": 145, "width": 200, "height": 64, "label": "bootstrap-aws", "sublabel": "static AWS_BOOTSTRAP_* keys", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "podwf", "kind": "rect", "x": 890, "y": 145, "width": 200, "height": 64, "label": "pod-up/down/list", "sublabel": "+ build-runtime", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "deployer", "kind": "rect", "x": 270, "y": 330, "width": 240, "height": 64, "label": "CloudDevPodsDeployerRole", "sublabel": "PowerUserAccess + iam:*", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "oidc", "kind": "double_rect", "x": 580, "y": 330, "width": 220, "height": 64, "label": "GitHub OIDC provider", "sublabel": "token.actions.githubusercontent.com", "fill": "#faf5ff", "stroke": "#8b5cf6", "flat": true },
+    { "id": "podops", "kind": "rect", "x": 870, "y": 330, "width": 240, "height": 64, "label": "CloudDevPodsPodOpsRole", "sublabel": "least privilege", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "stacks", "kind": "rect", "x": 280, "y": 510, "width": 220, "height": 64, "label": "Cluster CDK stacks", "sublabel": "via cluster-up · incl. pod-manager", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "ecr", "kind": "rect", "x": 620, "y": 510, "width": 200, "height": 64, "label": "ECR + CloudWatch", "sublabel": "push cloud-dev-pods/* · logs", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "lambda", "kind": "rect", "x": 909, "y": 510, "width": 180, "height": 64, "label": "pod-manager", "sublabel": "Lambda · InvokeFunction", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "release", "kind": "rect", "x": 70, "y": 690, "width": 220, "height": 60, "label": "release", "sublabel": "release-please · App token", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "smoke", "kind": "rect", "x": 340, "y": 690, "width": 230, "height": 60, "label": "smoke-test", "sublabel": "OIDC to sandbox-account roles", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "ci", "kind": "rect", "x": 770, "y": 690, "width": 250, "height": 60, "label": "ci-lint / test / security", "sublabel": "+ ci-runtime · on PR and push", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true }
+  ],
+  "arrows": [
+    { "id": "e-cl", "source": "clusterwf", "target": "deployer", "source_port": "bottom", "target_port": "top", "flow": "control", "label": "assume deployer" },
+    { "id": "e-boot", "source": "bootstrap", "target": "oidc", "source_port": "bottom", "target_port": "top", "flow": "neutral", "dashed": true, "label": "creates OIDC + roles" },
+    { "id": "e-pod", "source": "podwf", "target": "podops", "source_port": "bottom", "target_port": "top", "flow": "control", "label": "assume pod-ops" },
+    { "id": "e-trust-dep", "source": "oidc", "target": "deployer", "source_port": "left", "target_port": "right", "flow": "feedback", "label": "trusts" },
+    { "id": "e-trust-ops", "source": "oidc", "target": "podops", "source_port": "right", "target_port": "left", "flow": "feedback", "label": "trusts" },
+    { "id": "e-stacks", "source": "deployer", "target": "stacks", "source_port": "bottom", "target_port": "top", "flow": "write", "label": "cdk deploy / destroy" },
+    { "id": "e-ecr", "source": "podops", "target": "ecr", "source_port": "bottom", "target_port": "top", "flow": "data", "label": "push / read logs" },
+    { "id": "e-lambda", "source": "podops", "target": "lambda", "source_port": "bottom", "target_port": "top", "flow": "data", "label": "invoke" }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 800,
+  "legend_locked": true,
+  "legend": [
+    { "flow": "control", "label": "assume role via OIDC" },
+    { "flow": "feedback", "label": "trust policy" },
+    { "flow": "write", "label": "CloudFormation deploy" },
+    { "flow": "data", "label": "pod-ops API call" },
+    { "flow": "neutral", "label": "one-time bootstrap (dashed)" }
+  ],
+  "footer": "Trust: aud = sts.amazonaws.com · sub = repo:<org>/<repo>:ref:refs/heads/main or :environment:prod · both roles under CloudDevPodsBoundary",
+  "footer_x": 48,
+  "footer_y": 850
+}
