@@ -21,7 +21,10 @@ See [`docs/architecture.md`](docs/architecture.md), [`docs/delivery-modes.md`](d
 gh repo create <your>/cloud-dev-pods --template foolswithtools/cloud-dev-pods --private --clone
 cd cloud-dev-pods
 npm ci && npm run init                          # interactive setup
-gh workflow run bootstrap-aws.yml               # one-time AWS bootstrap
+git add -f config/config.yaml && git add infra/extensions.local.ts
+git commit -m 'chore: init config' && git push  # workflows read the committed config
+gh workflow run bootstrap-aws.yml -f confirm_account_id=<account>   # one-time AWS bootstrap
+npm run init -- --post-bootstrap                # set role ARNs, delete bootstrap credentials
 gh workflow run build-runtime.yml               # build + push runtime images
 gh workflow run cluster-up.yml                  # provision VPC + ECS + ALB + EFS
 gh workflow run pod-up.yml -f pod_name=hello -f mode=browser
@@ -65,19 +68,11 @@ Opens a PR with upstream upgrades. Local-only files (`infra/config.local.ts`, `i
 
 ## Status
 
-**Beta — all 15 implementation phases complete.** End-to-end validated against a real AWS account. The platform is ready for real use; v0.1.0 release is queued (pending one org-owner action — see [`docs/maintainer-runbook.md`](docs/maintainer-runbook.md)).
+**Beta, pre-1.0.** Validated end to end against a real AWS account and in use, but minor versions may still change config keys or workflow inputs.
 
-What's built:
-
-- Six functional CDK stacks (Bootstrap → Network → Cluster → PodTaskFamily → PodManager → IdleReaper)
-- Two runtime container images (browser + tunnel) with apt-upgrade for OS CVEs and Trivy scanning
-- Thirteen GitHub Actions workflows: maintainer CI (lint, test, security, runtime, release), provisioning (bootstrap, build-runtime, cluster-up/down, pod-up/down/list), upstream-sync, and a gated end-to-end smoke-test
-- Interactive `npm run init` (`scripts/init-clone.ts`) for first-time fork setup
-- Three-way upstream-sync algorithm (`scripts/sync-upstream.ts`) with `[tracked]/[merged]/[user]` taxonomy
-- Idempotent `scripts/maintainer/apply-repo-settings.sh` for governance + branch protection
-- Comprehensive docs (CLAUDE.md, quickstart, setup-cli, troubleshooting, architecture, ADRs ×6)
-
-Open polish items (none blocking): see `docs/maintainer-runbook.md` for the org-owner activation steps and the few remaining tightening tasks (DeployerRole inline policy, EFS access-point reuse on re-up, multi-pod OAuth design).
+- What changed in each release: [`CHANGELOG.md`](CHANGELOG.md) (also on the [Releases](https://github.com/foolswithtools/cloud-dev-pods/releases) page).
+- Why it's built the way it is: the architecture decision records in [`docs/adr/`](docs/adr/).
+- Open work: [issues](https://github.com/foolswithtools/cloud-dev-pods/issues).
 
 ## License
 

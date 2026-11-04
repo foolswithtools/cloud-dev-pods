@@ -19,16 +19,25 @@
  * parseInitFlags). Writes only the --out file; no prompts, no gh/aws/git
  * calls. Exit 0 written, 2 usage/validation error, 1 unexpected error.
  *
+ * Post-bootstrap (--post-bootstrap): run once bootstrap-aws.yml succeeds.
+ * Reads the two role ARNs from SSM, sets AWS_DEPLOYER_ROLE_ARN and
+ * AWS_POD_OPS_ROLE_ARN, deletes the AWS_BOOTSTRAP_* repo Secrets, then deletes
+ * the cloud-dev-pods-bootstrap IAM user (keys, policy, user). Verified and
+ * safe to re-run. Confirms before deleting the user; --yes skips the prompt
+ * and is required with --non-interactive (see runPostBootstrap).
+ *
  * Usage:
  *   npm run init [-- --no-push] [-- --no-iam]
+ *   npm run init -- --post-bootstrap [--yes]
  *   npm run init -- --non-interactive --aws-account-id 123456789012 \
  *     --github-owner alice --github-repo cloud-dev-pods --allowed-users alice
  */
 
 import * as clack from '@clack/prompts';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { isInvokedAsCli } from './lib/cli-entry.js';
 
@@ -797,12 +806,8 @@ export function nextSteps(a: Answers): string[] {
   const steps: string[] = [
     `1. Commit config/config.yaml and infra/extensions.local.ts: \`git add -f config/config.yaml && git add infra/extensions.local.ts && git commit -m 'chore: init config' && git push\``,
     `2. Run bootstrap: \`gh workflow run bootstrap-aws.yml -f confirm_account_id=${a.awsAccountId}\``,
-    `3. After bootstrap succeeds, set role ARNs and clean up:`,
-    `     DEPLOYER=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/deployer-role-arn --query Parameter.Value --output text)`,
-    `     PODOPS=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/pod-ops-role-arn --query Parameter.Value --output text)`,
-    `     gh variable set AWS_DEPLOYER_ROLE_ARN --body "$DEPLOYER"`,
-    `     gh variable set AWS_POD_OPS_ROLE_ARN --body "$PODOPS"`,
-    `     gh secret delete AWS_BOOTSTRAP_ACCESS_KEY_ID && gh secret delete AWS_BOOTSTRAP_SECRET_ACCESS_KEY`,
+    `3. After bootstrap succeeds, set the role ARN Variables and delete the bootstrap credentials`,
+    `     (repo Secrets + the cloud-dev-pods-bootstrap IAM user): \`npm run init -- --post-bootstrap\``,
   ];
   if (a.browserProvider === 'entra-id') {
     steps.push(
@@ -828,6 +833,298 @@ export function nextSteps(a: Answers): string[] {
     `     gh workflow run cluster-up.yml`,
   );
   return steps;
+}
+
+// ---------------------------------------------------------------------------
+// --post-bootstrap: after bootstrap-aws.yml succeeds, point the repo at the
+// OIDC roles and remove every bootstrap credential. Each step is verified and
+// safe to re-run.
+// ---------------------------------------------------------------------------
+
+const BOOTSTRAP_USER = 'cloud-dev-pods-bootstrap';
+const ADMIN_POLICY_ARN = 'arn:aws:iam::aws:policy/AdministratorAccess';
+const BOOTSTRAP_SECRETS = ['AWS_BOOTSTRAP_ACCESS_KEY_ID', 'AWS_BOOTSTRAP_SECRET_ACCESS_KEY'] as const;
+
+// Separate from FLAG_OPTIONS so the config-writing modes keep refusing these.
+const POST_BOOTSTRAP_OPTIONS = {
+  'post-bootstrap': { type: 'boolean' },
+  'non-interactive': { type: 'boolean' },
+  yes: { type: 'boolean' },
+} as const satisfies NonNullable<ParseArgsConfig['options']>;
+
+/**
+ * Flags for --post-bootstrap. --yes is the explicit opt-in to delete the
+ * bootstrap IAM user without a prompt; --non-interactive requires it.
+ */
+export function parsePostBootstrapFlags(
+  argv: string[],
+): { ok: true; yes: boolean; nonInteractive: boolean } | Failure {
+  let values: { 'post-bootstrap'?: boolean; 'non-interactive'?: boolean; yes?: boolean };
+  try {
+    ({ values } = parseArgs({ args: argv, options: POST_BOOTSTRAP_OPTIONS, strict: true, allowPositionals: false }));
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (values['post-bootstrap'] !== true) return { ok: false, error: 'parsePostBootstrapFlags needs --post-bootstrap.' };
+  const yes = values.yes === true;
+  const nonInteractive = values['non-interactive'] === true;
+  if (nonInteractive && !yes) {
+    return {
+      ok: false,
+      error: `--post-bootstrap --non-interactive deletes the ${BOOTSTRAP_USER} IAM user without asking; pass --yes to opt in.`,
+    };
+  }
+  return { ok: true, yes, nonInteractive };
+}
+
+/** What a gh/aws call returned. Errors are data, not exceptions. */
+export interface RunResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+export type Runner = (cmd: string, args: string[]) => RunResult;
+
+export interface PostBootstrapDeps {
+  run: Runner;
+  /** Asked once, before the IAM user is deleted, unless assumeYes. */
+  confirm: (message: string) => Promise<boolean>;
+  log: (line: string) => void;
+  /** SSM parameter names, from ssmParamPath(config, 'bootstrap/...'). */
+  paramPaths: { deployer: string; podOps: string };
+  assumeYes: boolean;
+}
+
+function captureRun(cmd: string, args: string[]): RunResult {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (r.error) return { status: 1, stdout: '', stderr: r.error.message };
+  return { status: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+
+// aws CLI client errors print "An error occurred (Code) ..." on stderr.
+function awsErrorIs(r: RunResult, code: string): boolean {
+  return r.status !== 0 && r.stderr.includes(`(${code})`);
+}
+
+function oneLine(r: RunResult): string {
+  return (r.stderr || r.stdout).trim().replace(/\s*\n\s*/g, ' ') || `exit ${r.status}`;
+}
+
+const MANUAL_IAM_CLEANUP = [
+  `  aws iam list-access-keys --user-name ${BOOTSTRAP_USER} --query 'AccessKeyMetadata[*].AccessKeyId' --output text`,
+  `  aws iam delete-access-key --user-name ${BOOTSTRAP_USER} --access-key-id <AKIA...>   # each key`,
+  `  aws iam detach-user-policy --user-name ${BOOTSTRAP_USER} --policy-arn ${ADMIN_POLICY_ARN}`,
+  `  aws iam delete-user --user-name ${BOOTSTRAP_USER}`,
+];
+
+/**
+ * The --post-bootstrap steps, in security order: the role ARN Variables are
+ * set and verified before any bootstrap credential is deleted, so the repo is
+ * never left with neither. Returns the exit code and a summary; the caller
+ * prints the summary.
+ */
+export async function runPostBootstrap(deps: PostBootstrapDeps): Promise<{ exitCode: number; summary: string[] }> {
+  const { run, log } = deps;
+  const summary: string[] = [];
+  const failed = (message: string) => {
+    log(message);
+    summary.push(`FAILED: ${message.split('\n')[0]}`);
+    return { exitCode: 1, summary };
+  };
+
+  // 1. Role ARNs from SSM. Nothing has changed yet if this fails.
+  const arns: Record<'deployer' | 'podOps', string> = { deployer: '', podOps: '' };
+  const missing: string[] = [];
+  for (const key of ['deployer', 'podOps'] as const) {
+    const name = deps.paramPaths[key];
+    const r = run('aws', ['ssm', 'get-parameter', '--name', name, '--query', 'Parameter.Value', '--output', 'text']);
+    const value = r.stdout.trim();
+    if (r.status !== 0 || !value.startsWith('arn:aws:iam::')) {
+      missing.push(`  ${name}: ${r.status !== 0 ? oneLine(r) : `unexpected value ${JSON.stringify(value)}`}`);
+    } else {
+      arns[key] = value;
+    }
+  }
+  if (missing.length > 0) {
+    return failed(
+      [
+        'Could not read the bootstrap role ARNs from SSM:',
+        ...missing,
+        'Run bootstrap first (`gh workflow run bootstrap-aws.yml -f confirm_account_id=<account>`), wait for it to',
+        'succeed, check your AWS CLI points at the same account and region, then rerun `npm run init -- --post-bootstrap`.',
+        'Nothing was changed.',
+      ].join('\n'),
+    );
+  }
+
+  // 2. Repo Variables, each read back.
+  const vars = [
+    ['AWS_DEPLOYER_ROLE_ARN', arns.deployer],
+    ['AWS_POD_OPS_ROLE_ARN', arns.podOps],
+  ] as const;
+  for (const [name, value] of vars) {
+    const set = run('gh', ['variable', 'set', name, '--body', value]);
+    if (set.status !== 0) {
+      return failed(`gh variable set ${name} failed: ${oneLine(set)}\nNo bootstrap credentials were deleted.`);
+    }
+    const got = run('gh', ['variable', 'get', name]);
+    if (got.status !== 0 || got.stdout.trim() !== value) {
+      return failed(`${name} did not read back as ${value} (${oneLine(got)}).\nNo bootstrap credentials were deleted.`);
+    }
+    log(`Set ${name}=${value}`);
+    summary.push(`OK: ${name} = ${value}`);
+  }
+
+  // 3. Bootstrap repo Secrets: delete only those present, then re-list.
+  const listSecrets = (): Set<string> | RunResult => {
+    const r = run('gh', ['secret', 'list', '--json', 'name', '--jq', '.[].name']);
+    return r.status === 0 ? new Set(r.stdout.split('\n').map((s) => s.trim()).filter(Boolean)) : r;
+  };
+  const before = listSecrets();
+  if (!(before instanceof Set)) return failed(`gh secret list failed: ${oneLine(before)}`);
+  const present = BOOTSTRAP_SECRETS.filter((s) => before.has(s));
+  for (const name of present) {
+    const r = run('gh', ['secret', 'delete', name]);
+    if (r.status !== 0) return failed(`gh secret delete ${name} failed: ${oneLine(r)}`);
+  }
+  if (present.length > 0) {
+    const after = listSecrets();
+    if (!(after instanceof Set)) return failed(`gh secret list failed: ${oneLine(after)}`);
+    const left = BOOTSTRAP_SECRETS.filter((s) => after.has(s));
+    if (left.length > 0) return failed(`Repo Secrets still present after delete: ${left.join(', ')}`);
+    log(`Deleted repo Secrets ${present.join(', ')}`);
+    summary.push(`OK: deleted repo Secrets ${present.join(', ')}`);
+  } else {
+    summary.push('OK: bootstrap repo Secrets already deleted');
+  }
+
+  // 4. The bootstrap IAM user (AdministratorAccess).
+  const getUser = run('aws', ['iam', 'get-user', '--user-name', BOOTSTRAP_USER]);
+  if (awsErrorIs(getUser, 'NoSuchEntity')) {
+    log(`IAM user ${BOOTSTRAP_USER} is already deleted; skipping.`);
+    summary.push(`OK: IAM user ${BOOTSTRAP_USER} already deleted`);
+    return { exitCode: 0, summary };
+  }
+  if (getUser.status !== 0) return failed(`aws iam get-user ${BOOTSTRAP_USER} failed: ${oneLine(getUser)}`);
+
+  const proceed =
+    deps.assumeYes ||
+    (await deps.confirm(
+      `Delete the ${BOOTSTRAP_USER} IAM user (AdministratorAccess) and its access keys? The OIDC roles replace it.`,
+    ));
+  if (!proceed) {
+    log(
+      [
+        `Kept IAM user ${BOOTSTRAP_USER}. It has AdministratorAccess; delete it when you're ready:`,
+        '  npm run init -- --post-bootstrap',
+        'or by hand:',
+        ...MANUAL_IAM_CLEANUP,
+      ].join('\n'),
+    );
+    summary.push(`NOT DONE: IAM user ${BOOTSTRAP_USER} still exists (AdministratorAccess)`);
+    return { exitCode: 1, summary };
+  }
+
+  const keysR = run('aws', [
+    'iam', 'list-access-keys', '--user-name', BOOTSTRAP_USER,
+    '--query', 'AccessKeyMetadata[*].AccessKeyId', '--output', 'json',
+  ]);
+  if (keysR.status !== 0) return failed(`aws iam list-access-keys failed: ${oneLine(keysR)}`);
+  let keys: string[];
+  try {
+    const parsed: unknown = JSON.parse(keysR.stdout.trim() || '[]');
+    keys = Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return failed(`Could not parse access key list: ${keysR.stdout.trim()}`);
+  }
+  for (const id of keys) {
+    const r = run('aws', ['iam', 'delete-access-key', '--user-name', BOOTSTRAP_USER, '--access-key-id', id]);
+    if (r.status !== 0 && !awsErrorIs(r, 'NoSuchEntity')) {
+      return failed(`aws iam delete-access-key ${id} failed: ${oneLine(r)}`);
+    }
+  }
+  log(`Deleted ${keys.length} access key(s).`);
+
+  const detach = run('aws', ['iam', 'detach-user-policy', '--user-name', BOOTSTRAP_USER, '--policy-arn', ADMIN_POLICY_ARN]);
+  if (detach.status !== 0 && !awsErrorIs(detach, 'NoSuchEntity')) {
+    return failed(`aws iam detach-user-policy failed: ${oneLine(detach)}`);
+  }
+  log('Detached AdministratorAccess.');
+
+  const del = run('aws', ['iam', 'delete-user', '--user-name', BOOTSTRAP_USER]);
+  if (del.status !== 0 && !awsErrorIs(del, 'NoSuchEntity')) {
+    const conflict = awsErrorIs(del, 'DeleteConflict')
+      ? '\nThe user still has something attached that this script did not create (a console password, MFA device,' +
+        ' inline or other managed policy, or group). Remove it in the IAM console, then rerun.'
+      : '';
+    return failed(`aws iam delete-user failed: ${oneLine(del)}${conflict}`);
+  }
+
+  const verify = run('aws', ['iam', 'get-user', '--user-name', BOOTSTRAP_USER]);
+  if (!awsErrorIs(verify, 'NoSuchEntity')) {
+    return failed(`IAM user ${BOOTSTRAP_USER} still exists after delete-user (${oneLine(verify)}).`);
+  }
+  log(`Deleted IAM user ${BOOTSTRAP_USER} (verified NoSuchEntity).`);
+  summary.push(`OK: deleted IAM user ${BOOTSTRAP_USER} (${keys.length} access key(s), AdministratorAccess detached)`);
+  return { exitCode: 0, summary };
+}
+
+// The config the CDK app deploys from: CDPODS_CONFIG, else config/config.yaml.
+// Unlike loadConfig, never falls back to config.example.yaml.
+async function bootstrapParamPaths(): Promise<{ deployer: string; podOps: string } | string> {
+  const path = process.env['CDPODS_CONFIG']
+    ? resolve(process.cwd(), process.env['CDPODS_CONFIG'])
+    : CONFIG_PATH;
+  if (!existsSync(path)) return `${path} not found; run \`npm run init\` and commit the config first.`;
+  // Dynamic import: a static `import '../infra/...'` fails `tsc -b scripts`
+  // with TS6059 because the file sits outside scripts/'s rootDir.
+  const { loadConfig } = (await import(
+    pathToFileURL(resolve(import.meta.dirname, '../infra/lib/config/config.ts')).href
+  )) as { loadConfig: (p?: string) => unknown };
+  const { ssmParamPath } = (await import(
+    pathToFileURL(resolve(import.meta.dirname, '../infra/lib/util/naming.ts')).href
+  )) as { ssmParamPath: (config: unknown, key: string) => string };
+  const config = loadConfig(path);
+  return {
+    deployer: ssmParamPath(config, 'bootstrap/deployer-role-arn'),
+    podOps: ssmParamPath(config, 'bootstrap/pod-ops-role-arn'),
+  };
+}
+
+async function mainPostBootstrap(argv: string[]): Promise<number> {
+  const flags = parsePostBootstrapFlags(argv);
+  if (!flags.ok) {
+    usageError(flags.error);
+    return 2;
+  }
+  if (!flags.yes && !process.stdin.isTTY) {
+    usageError('--post-bootstrap needs a terminal to confirm deleting the bootstrap IAM user; pass --yes to opt in without one.');
+    return 2;
+  }
+  const paramPaths = await bootstrapParamPaths();
+  if (typeof paramPaths === 'string') {
+    usageError(paramPaths);
+    return 2;
+  }
+
+  clack.intro('cloud-dev-pods init --post-bootstrap');
+  const { exitCode, summary } = await runPostBootstrap({
+    run: captureRun,
+    confirm: async (message) => {
+      const answer = await clack.confirm({ message, initialValue: true });
+      return answer === true;
+    },
+    log: (line) => clack.log.info(line),
+    paramPaths,
+    assumeYes: flags.yes,
+  });
+  clack.note(summary.join('\n'), 'Post-bootstrap summary');
+  if (exitCode === 0) {
+    clack.outro('Bootstrap credentials are gone; workflows now use OIDC. Next: build-runtime.yml, then cluster-up.yml.');
+  } else {
+    clack.outro('Post-bootstrap did not finish. Fix the issue above and rerun `npm run init -- --post-bootstrap` (it is safe to re-run).');
+  }
+  return exitCode;
 }
 
 // One line on stderr, prefixed for grep-ability.
@@ -860,6 +1157,12 @@ function runNonInteractive(argv: string[]): number {
 }
 
 async function main(argv: string[]): Promise<void> {
+  // Before --non-interactive: `--post-bootstrap --non-interactive --yes` is
+  // this mode, not the config writer.
+  if (argv.includes('--post-bootstrap')) {
+    process.exitCode = await mainPostBootstrap(argv);
+    return;
+  }
   if (argv.includes('--non-interactive')) {
     process.exitCode = runNonInteractive(argv);
     return;

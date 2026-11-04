@@ -29,7 +29,7 @@ aws iam get-user --user-name cloud-dev-pods-bootstrap 2>/dev/null \
 gh workflow run pod-list.yml && gh run watch
 ```
 
-Decision matrix: cluster `DOWN` + no role ARN variables → first-run setup (section 3). Cluster `UP` → day-2 (section 4). Bootstrap user `LEFTOVER` after a successful `bootstrap-aws.yml` → housekeeping cleanup (step 3e). **Never re-run `bootstrap-aws.yml` against a healthy cluster** without confirming with the user; it's idempotent but the bootstrap-credential dance is a footgun.
+Decision matrix: cluster `DOWN` + no role ARN variables → first-run setup (section 3). Cluster `UP` → day-2 (section 4). Bootstrap user `LEFTOVER` after a successful `bootstrap-aws.yml` → housekeeping cleanup (`npm run init -- --post-bootstrap`, step 3e). **Never re-run `bootstrap-aws.yml` against a healthy cluster** without confirming with the user; it's idempotent but the bootstrap-credential dance is a footgun.
 
 ---
 
@@ -168,7 +168,15 @@ gh workflow run bootstrap-aws.yml -f confirm_account_id=<account>
 gh run watch
 ```
 
-When it succeeds, read the role ARNs the workflow summary points at and set them as repo Variables:
+When it succeeds, run the post-bootstrap step. **Run it in the foreground** (it confirms before deleting the IAM user):
+
+```bash
+npm run init -- --post-bootstrap
+```
+
+It reads the two role ARNs from SSM, sets `AWS_DEPLOYER_ROLE_ARN` and `AWS_POD_OPS_ROLE_ARN` (verified by reading them back), and only then deletes the `AWS_BOOTSTRAP_*` repo Secrets and the `cloud-dev-pods-bootstrap` IAM user (access keys, `AdministratorAccess` attachment, user, verified gone). It's idempotent: re-running skips whatever is already done. If an SSM parameter is missing it fails and changes nothing — `bootstrap-aws.yml` hasn't succeeded yet. Pass `--yes` (required with `--non-interactive`) only if the user explicitly agrees to delete the IAM user without a prompt.
+
+**Manual fallback** (if `npm run init -- --post-bootstrap` can't run). Read the role ARNs and set them as repo Variables first:
 
 ```bash
 DEPLOYER=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/deployer-role-arn \
@@ -179,7 +187,7 @@ gh variable set AWS_DEPLOYER_ROLE_ARN --body "$DEPLOYER"
 gh variable set AWS_POD_OPS_ROLE_ARN --body "$PODOPS"
 ```
 
-**Bootstrap IAM cleanup (mandatory).** The `cloud-dev-pods-bootstrap` IAM user has `AdministratorAccess` — it must not survive past first-run bootstrap. Verify it exists, then remove it:
+**Bootstrap IAM cleanup (mandatory; `--post-bootstrap` does this for you).** The `cloud-dev-pods-bootstrap` IAM user has `AdministratorAccess` — it must not survive past first-run bootstrap. Verify it exists, then remove it:
 
 ```bash
 aws iam get-user --user-name cloud-dev-pods-bootstrap

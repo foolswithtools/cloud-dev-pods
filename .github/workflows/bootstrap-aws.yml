@@ -107,19 +107,21 @@ jobs:
           {
             echo "## Bootstrap complete"
             echo ""
-            echo "Set these as repo Variables:"
+            echo "Next, from your fork's checkout, run:"
             echo ""
             echo '```bash'
-            echo "gh variable set AWS_DEPLOYER_ROLE_ARN --body '${{ steps.roles.outputs.deployer }}'"
-            echo "gh variable set AWS_POD_OPS_ROLE_ARN --body '${{ steps.roles.outputs.podops }}'"
+            echo "npm run init -- --post-bootstrap"
             echo '```'
             echo ""
-            echo "Then **delete the bootstrap secrets** (GitHub doesn't permit a workflow to delete its own secrets):"
+            echo "It sets the role ARN repo Variables, then **deletes the bootstrap credentials**: the"
+            echo "AWS_BOOTSTRAP_* repo Secrets (a workflow can't delete its own secrets) and the"
+            echo "cloud-dev-pods-bootstrap IAM user, which has AdministratorAccess. It's safe to re-run."
             echo ""
-            echo '```bash'
-            echo "gh secret delete AWS_BOOTSTRAP_ACCESS_KEY_ID"
-            echo "gh secret delete AWS_BOOTSTRAP_SECRET_ACCESS_KEY"
-            echo '```'
+            echo "Role ARNs, for reference:"
+            echo ""
+            echo "- AWS_DEPLOYER_ROLE_ARN: \`${{ steps.roles.outputs.deployer }}\`"
+            echo "- AWS_POD_OPS_ROLE_ARN: \`${{ steps.roles.outputs.podops }}\`"
             echo ""
             echo "All subsequent workflows use OIDC against AWS_DEPLOYER_ROLE_ARN / AWS_POD_OPS_ROLE_ARN."
+            echo "Manual fallback: CLAUDE.md step 3e."
           } >> "$GITHUB_STEP_SUMMARY"
