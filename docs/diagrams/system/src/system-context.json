@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 1,
+  "quality_profile": "standard",
+  "width": 1040,
+  "height": 680,
+  "title": "cloud-dev-pods: System Context",
+  "subtitle": "C4 level 1 - who talks to the platform, and why",
+  "nodes": [
+    {
+      "id": "dev",
+      "kind": "user_avatar",
+      "x": 40,
+      "y": 330,
+      "width": 240,
+      "height": 64,
+      "label": "Fork owner",
+      "sublabel": "gh CLI, browser, VS Code",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "github",
+      "kind": "double_rect",
+      "x": 410,
+      "y": 150,
+      "width": 210,
+      "height": 64,
+      "label": "GitHub fork",
+      "sublabel": "repo + Actions + OIDC issuer",
+      "fill": "#f8fafc",
+      "stroke": "#64748b",
+      "flat": true
+    },
+    {
+      "id": "upstream",
+      "kind": "rect",
+      "x": 790,
+      "y": 150,
+      "width": 200,
+      "height": 64,
+      "label": "Upstream template",
+      "sublabel": "foolswithtools/cloud-dev-pods",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "aws",
+      "kind": "double_rect",
+      "x": 410,
+      "y": 330,
+      "width": 210,
+      "height": 64,
+      "label": "AWS account",
+      "sublabel": "cloud-dev-pods platform",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "idp",
+      "kind": "rect",
+      "x": 790,
+      "y": 330,
+      "width": 200,
+      "height": 64,
+      "label": "Browser IdP",
+      "sublabel": "GitHub OAuth / Entra ID / OIDC",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "tunnel",
+      "kind": "rect",
+      "x": 790,
+      "y": 470,
+      "width": 200,
+      "height": 64,
+      "label": "VS Code tunnel service",
+      "sublabel": "Microsoft, tunnel pods only",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "sync",
+      "source": "upstream",
+      "target": "github",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "data",
+      "label": "sync-upstream PR"
+    },
+    {
+      "id": "dispatch",
+      "source": "dev",
+      "target": "github",
+      "source_port": "top",
+      "target_port": "left",
+      "flow": "control",
+      "label": "gh workflow run",
+      "route_points": [
+        [
+          160,
+          182
+        ]
+      ]
+    },
+    {
+      "id": "provision",
+      "source": "github",
+      "target": "aws",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "OIDC role: deploy / invoke"
+    },
+    {
+      "id": "browse",
+      "source": "dev",
+      "target": "aws",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read",
+      "label": "HTTPS pod URL"
+    },
+    {
+      "id": "signin",
+      "source": "aws",
+      "target": "idp",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "write",
+      "dashed": true,
+      "label": "oauth2-proxy sign-in"
+    },
+    {
+      "id": "register",
+      "source": "aws",
+      "target": "tunnel",
+      "source_port": "bottom",
+      "target_port": "left",
+      "flow": "write",
+      "dashed": true,
+      "label": "code tunnel (outbound)",
+      "route_points": [
+        [
+          515,
+          502
+        ]
+      ]
+    },
+    {
+      "id": "connect",
+      "source": "dev",
+      "target": "tunnel",
+      "source_port": "bottom",
+      "target_port": "bottom",
+      "flow": "read",
+      "label": "Remote Tunnels: connect",
+      "route_points": [
+        [
+          160,
+          590
+        ],
+        [
+          890,
+          590
+        ]
+      ]
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 628,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "operator / automation"
+    },
+    {
+      "flow": "read",
+      "label": "developer traffic"
+    },
+    {
+      "flow": "write",
+      "label": "outbound auth / tunnel"
+    },
+    {
+      "flow": "data",
+      "label": "code sync"
+    }
+  ]
+}

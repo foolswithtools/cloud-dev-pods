@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 1,
+  "width": 1380,
+  "height": 800,
+  "title": "Browser pod: inside the ECS task",
+  "subtitle": "one task-definition revision per pod-up, registered by pod-manager (aws.ts registerTaskDef)",
+  "containers": [
+    {
+      "id": "task",
+      "x": 300,
+      "y": 236,
+      "width": 860,
+      "height": 340,
+      "label": "ECS Fargate task"
+    },
+    {
+      "id": "aws",
+      "x": 40,
+      "y": 616,
+      "width": 1310,
+      "height": 110,
+      "label": "AWS resources"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "alb",
+      "kind": "rect",
+      "x": 40,
+      "y": 318,
+      "width": 190,
+      "height": 64,
+      "label": "ALB listener rule",
+      "sublabel": "Host <pod>.<domain>",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "secrets",
+      "kind": "rect",
+      "x": 460,
+      "y": 120,
+      "width": 220,
+      "height": 54,
+      "label": "Secrets Manager",
+      "sublabel": "/cloud-dev-pods/oauth/*",
+      "fill": "#fef2f2",
+      "stroke": "#ef4444",
+      "flat": true
+    },
+    {
+      "id": "ecr",
+      "kind": "rect",
+      "x": 895,
+      "y": 120,
+      "width": 220,
+      "height": 54,
+      "label": "ECR vscode-browser",
+      "sublabel": ":<git sha> (immutable)",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "proxy",
+      "kind": "double_rect",
+      "x": 400,
+      "y": 318,
+      "width": 340,
+      "height": 64,
+      "label": "oauth2-proxy",
+      "sublabel": "quay.io image @sha256, :4180",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6"
+    },
+    {
+      "id": "vscode",
+      "kind": "double_rect",
+      "x": 890,
+      "y": 318,
+      "width": 230,
+      "height": 64,
+      "label": "vscode",
+      "sublabel": "openvscode-server 127.0.0.1:3000",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6"
+    },
+    {
+      "id": "volume",
+      "kind": "rect",
+      "x": 400,
+      "y": 478,
+      "width": 210,
+      "height": 64,
+      "label": "owner-authz volume",
+      "sublabel": "task-scoped, mounted /authz",
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af",
+      "flat": true
+    },
+    {
+      "id": "init",
+      "kind": "rect",
+      "x": 700,
+      "y": 478,
+      "width": 210,
+      "height": 64,
+      "label": "owner-authz-init",
+      "sublabel": "ownerOnly only; vscode image",
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af",
+      "flat": true
+    },
+    {
+      "id": "cw",
+      "kind": "rect",
+      "x": 1190,
+      "y": 318,
+      "width": 160,
+      "height": 64,
+      "label": "CloudWatch",
+      "sublabel": "<env>/pods group",
+      "fill": "#f0fdfa",
+      "stroke": "#14b8a6",
+      "flat": true
+    },
+    {
+      "id": "execrole",
+      "kind": "rect",
+      "x": 70,
+      "y": 650,
+      "width": 270,
+      "height": 56,
+      "label": "Execution role",
+      "sublabel": "ECR pull, awslogs, oauth secrets",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "taskrole",
+      "kind": "rect",
+      "x": 480,
+      "y": 650,
+      "width": 290,
+      "height": 56,
+      "label": "CloudDevPodsBrowserTaskRole",
+      "sublabel": "EFS ClientMount + ClientWrite only",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "efs",
+      "kind": "rect",
+      "x": 880,
+      "y": 650,
+      "width": 260,
+      "height": 56,
+      "label": "EFS access point",
+      "sublabel": "/pods/<pod>-<hex>, uid = gid",
+      "fill": "#ecfdf5",
+      "stroke": "#10b981",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "ingress",
+      "source": "alb",
+      "target": "proxy",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "HTTP :4180"
+    },
+    {
+      "id": "upstream",
+      "source": "proxy",
+      "target": "vscode",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "upstream :3000"
+    },
+    {
+      "id": "pull-vscode",
+      "source": "ecr",
+      "target": "vscode",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "image"
+    },
+    {
+      "id": "creds",
+      "source": "secrets",
+      "target": "proxy",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read",
+      "label": "oauth secrets"
+    },
+    {
+      "id": "logs",
+      "source": "vscode",
+      "target": "cw",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "async",
+      "dashed": true
+    },
+    {
+      "id": "init-write",
+      "source": "init",
+      "target": "volume",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "write",
+      "label": "writes"
+    },
+    {
+      "id": "authz-read",
+      "source": "volume",
+      "target": "proxy",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "read",
+      "label": "read-only"
+    },
+    {
+      "id": "workspace",
+      "source": "vscode",
+      "target": "efs",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "/workspace, TLS + IAM"
+    },
+    {
+      "id": "authorize",
+      "source": "taskrole",
+      "target": "efs",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "feedback",
+      "dashed": true,
+      "label": "authorizes mount"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 750,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "request path"
+    },
+    {
+      "flow": "data",
+      "label": "image pull"
+    },
+    {
+      "flow": "read",
+      "label": "read"
+    },
+    {
+      "flow": "write",
+      "label": "write"
+    },
+    {
+      "flow": "async",
+      "label": "logs"
+    },
+    {
+      "flow": "feedback",
+      "label": "IAM authorization"
+    }
+  ],
+  "style_overrides": {
+    "arrow_colors": {
+      "control": "#7c3aed",
+      "write": "#10b981",
+      "read": "#2563eb",
+      "data": "#f97316",
+      "async": "#64748b",
+      "feedback": "#ef4444",
+      "neutral": "#6b7280"
+    }
+  }
+}

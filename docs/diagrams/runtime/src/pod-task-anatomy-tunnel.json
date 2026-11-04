@@ -1,0 +1,286 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 1,
+  "width": 1240,
+  "height": 680,
+  "title": "Tunnel pod: inside the ECS task",
+  "subtitle": "one container, no inbound port; VS Code CLI dials out and logs the device code",
+  "style_overrides": {
+    "arrow_colors": {
+      "control": "#7c3aed",
+      "write": "#10b981",
+      "read": "#2563eb",
+      "data": "#f97316",
+      "async": "#64748b",
+      "feedback": "#ef4444",
+      "neutral": "#6b7280"
+    }
+  },
+  "containers": [
+    {
+      "id": "task",
+      "x": 270,
+      "y": 246,
+      "width": 460,
+      "height": 150,
+      "label": "ECS Fargate task"
+    },
+    {
+      "id": "aws",
+      "x": 300,
+      "y": 446,
+      "width": 900,
+      "height": 120,
+      "label": "AWS resources"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ecr",
+      "kind": "rect",
+      "x": 360,
+      "y": 120,
+      "width": 180,
+      "height": 56,
+      "label": "ECR vscode-tunnel",
+      "sublabel": ":<git sha> (immutable)",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "tunnel",
+      "kind": "double_rect",
+      "x": 300,
+      "y": 300,
+      "width": 400,
+      "height": 66,
+      "label": "vscode-tunnel",
+      "sublabel": "code tunnel --name <pod>, CLI 1.143.0",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6"
+    },
+    {
+      "id": "cw",
+      "kind": "rect",
+      "x": 40,
+      "y": 300,
+      "width": 190,
+      "height": 66,
+      "label": "CloudWatch",
+      "sublabel": "tunnel/<pod>/vscode-tunnel",
+      "fill": "#f0fdfa",
+      "stroke": "#14b8a6",
+      "flat": true
+    },
+    {
+      "id": "idp",
+      "kind": "rect",
+      "x": 580,
+      "y": 120,
+      "width": 220,
+      "height": 60,
+      "label": "GitHub or Microsoft",
+      "sublabel": "device-code sign-in (internet)",
+      "fill": "#fef2f2",
+      "stroke": "#ef4444",
+      "flat": true
+    },
+    {
+      "id": "laptop",
+      "kind": "rect",
+      "x": 910,
+      "y": 120,
+      "width": 230,
+      "height": 60,
+      "label": "VS Code Desktop",
+      "sublabel": "user's laptop",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "devtunnels",
+      "kind": "rect",
+      "x": 910,
+      "y": 300,
+      "width": 230,
+      "height": 66,
+      "label": "VS Code tunnel service",
+      "sublabel": "Microsoft relay (internet)",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "workflow",
+      "kind": "rect",
+      "x": 40,
+      "y": 486,
+      "width": 190,
+      "height": 60,
+      "label": "pod-up workflow",
+      "sublabel": "tunnel-poll-logs.ts",
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af",
+      "flat": true
+    },
+    {
+      "id": "efs",
+      "kind": "rect",
+      "x": 360,
+      "y": 486,
+      "width": 240,
+      "height": 60,
+      "label": "EFS access point",
+      "sublabel": "/pods/<pod>-<hex>, uid = gid",
+      "fill": "#ecfdf5",
+      "stroke": "#10b981",
+      "flat": true
+    },
+    {
+      "id": "taskrole",
+      "kind": "rect",
+      "x": 700,
+      "y": 486,
+      "width": 250,
+      "height": 60,
+      "label": "CloudDevPodsTunnelTaskRole",
+      "sublabel": "EFS ClientMount + ClientWrite",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "execrole",
+      "kind": "rect",
+      "x": 980,
+      "y": 486,
+      "width": 200,
+      "height": 60,
+      "label": "Execution role",
+      "sublabel": "ECR pull, awslogs",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "login",
+      "source": "tunnel",
+      "target": "idp",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "control",
+      "dashed": true,
+      "label": "login"
+    },
+    {
+      "id": "image",
+      "source": "ecr",
+      "target": "tunnel",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "image"
+    },
+    {
+      "id": "prompt",
+      "source": "tunnel",
+      "target": "cw",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "async",
+      "dashed": true,
+      "label": "stdout"
+    },
+    {
+      "id": "poll",
+      "source": "cw",
+      "target": "workflow",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read",
+      "label": "URL + code"
+    },
+    {
+      "id": "egress",
+      "source": "tunnel",
+      "target": "devtunnels",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "outbound HTTPS"
+    },
+    {
+      "id": "code",
+      "source": "laptop",
+      "target": "idp",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "control",
+      "label": "enters code"
+    },
+    {
+      "id": "connect",
+      "source": "laptop",
+      "target": "devtunnels",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "Connect to Tunnel"
+    },
+    {
+      "id": "workspace",
+      "source": "tunnel",
+      "target": "efs",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "/workspace"
+    },
+    {
+      "id": "authorize",
+      "source": "taskrole",
+      "target": "efs",
+      "source_port": "left",
+      "target_port": "right",
+      "flow": "feedback",
+      "dashed": true,
+      "label": "authorizes"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 600,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "connection"
+    },
+    {
+      "flow": "data",
+      "label": "image pull"
+    },
+    {
+      "flow": "read",
+      "label": "read"
+    },
+    {
+      "flow": "write",
+      "label": "write"
+    },
+    {
+      "flow": "async",
+      "label": "logs"
+    },
+    {
+      "flow": "feedback",
+      "label": "IAM authorization"
+    }
+  ]
+}

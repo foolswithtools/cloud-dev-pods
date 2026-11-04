@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 880" width="1200" height="880" data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="1" data-visual-theme="Flat Icon" data-diagram-type="architecture" data-motion-scene="" data-semantic-profile="generic" data-semantic-valid="true" data-quality-profile="showcase" data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35" data-max-bridged-crossings="0" data-min-node-gap="40.0" data-min-container-gutter="20.0" data-min-label-clearance="4.0" data-min-segment-length="16.0">
+  <defs>
+    <marker id="arrowA" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#10b981"/>
+    </marker>
+    <marker id="arrowC" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowE" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f97316"/>
+    </marker>
+    <marker id="arrowF" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>
+    </marker>
+    <marker id="arrowH" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowGlass" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28"/>
+    </filter>
+    <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 14px; font-weight: 500; fill: #6b7280; }
+    .section { font-size: 13px; font-weight: 700; fill: #2563eb; letter-spacing: 1.4px; }
+    .section-sub { font-size: 12px; font-weight: 500; fill: #94a3b8; }
+    .node-title { font-weight: 700; fill: #111827; }
+    .node-sub { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .node-type { font-size: 12px; font-weight: 700; fill: #9ca3af; letter-spacing: 0.08em; }
+    .arrow-label { font-size: 12px; font-weight: 600; fill: #6b7280; }
+    .legend { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .footnote { font-size: 12px; font-weight: 500; fill: #94a3b8; }
+    .metric-label { font-size: 8.5px; font-weight: 700; fill: #94a3b8; text-transform: uppercase; }
+    .metric-value { font-size: 9.5px; font-weight: 700; fill: #111827; }
+    </style>
+  </defs>
+  <rect data-graph-role="background" width="1200.0" height="880.0" fill="#ffffff"/>
+  <text x="600.0" y="56" text-anchor="middle" class="title">Workflows, GitHub OIDC and the two IAM roles</text>
+  <text x="600.0" y="82" text-anchor="middle" class="subtitle">which fork workflow assumes which role (ADR 0003 split), and what each role may touch</text>
+  <g id="fork" data-graph-role="container" data-container-id="fork" data-semantic-role="boundary" data-graph-bounds="40,100,1150,230">
+  <rect data-graph-role="container" x="40.0" y="100.0" width="1110.0" height="130.0" rx="16.0" fill="none" stroke="#dbe5f1" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <text x="58.0" y="124.0" class="section">FORK WORKFLOWS · GUARD JOB: GITHUB.REPOSITORY != 'FOOLSWITHTOOLS/CLOUD-DEV-PODS'</text>
+    <rect id="fork-header" data-graph-role="reserved" data-reserved-kind="container-header" x="48" y="106" width="595.5" height="30" fill="none" stroke="none"/>
+  </g>
+  <g id="aws" data-graph-role="container" data-container-id="aws" data-semantic-role="boundary" data-graph-bounds="40,280,1150,610">
+  <rect data-graph-role="container" x="40.0" y="280.0" width="1110.0" height="330.0" rx="16.0" fill="none" stroke="#dbe5f1" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <text x="58.0" y="304.0" class="section">YOUR AWS ACCOUNT</text>
+    <rect id="aws-header" data-graph-role="reserved" data-reserved-kind="container-header" x="48" y="286" width="148.04" height="30" fill="none" stroke="none"/>
+  </g>
+  <g id="maint" data-graph-role="container" data-container-id="maint" data-semantic-role="boundary" data-graph-bounds="40,650,600,770">
+  <rect data-graph-role="container" x="40.0" y="650.0" width="560.0" height="120.0" rx="16.0" fill="none" stroke="#dbe5f1" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <text x="58.0" y="674.0" class="section">UPSTREAM ONLY · GUARD == 'FOOLSWITHTOOLS/CLOUD-DEV-PODS'</text>
+    <rect id="maint-header" data-graph-role="reserved" data-reserved-kind="container-header" x="48" y="656" width="434.04" height="30" fill="none" stroke="none"/>
+  </g>
+  <g id="anyrepo" data-graph-role="container" data-container-id="anyrepo" data-semantic-role="boundary" data-graph-bounds="640,650,1150,770">
+  <rect data-graph-role="container" x="640.0" y="650.0" width="510.0" height="120.0" rx="16.0" fill="none" stroke="#dbe5f1" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <text x="658.0" y="674.0" class="section">ANY REPO · NO AWS CREDENTIALS</text>
+    <rect id="anyrepo-header" data-graph-role="reserved" data-reserved-kind="container-header" x="648" y="656" width="234.1" height="30" fill="none" stroke="none"/>
+  </g>
+  <path id="e-cl" data-graph-role="edge" data-edge-id="e-cl" data-source="clusterwf" data-target="deployer" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 390,209 L 390,330" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="e-boot" data-graph-role="edge" data-edge-id="e-boot" data-source="bootstrap" data-target="oidc" data-edge-kind="flow" data-topic-id="" data-flow="neutral" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 690,209 L 690,330" fill="none" stroke="#6b7280" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowH)" stroke-dasharray="6,4"/>
+  <path id="e-pod" data-graph-role="edge" data-edge-id="e-pod" data-source="podwf" data-target="podops" data-edge-kind="flow" data-topic-id="" data-flow="control" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 990,209 L 990,330" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="e-trust-dep" data-graph-role="edge" data-edge-id="e-trust-dep" data-source="oidc" data-target="deployer" data-edge-kind="flow" data-topic-id="" data-flow="feedback" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 580,362 L 510,362" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)"/>
+  <path id="e-trust-ops" data-graph-role="edge" data-edge-id="e-trust-ops" data-source="oidc" data-target="podops" data-edge-kind="flow" data-topic-id="" data-flow="feedback" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 800,362 L 870,362" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)"/>
+  <path id="e-stacks" data-graph-role="edge" data-edge-id="e-stacks" data-source="deployer" data-target="stacks" data-edge-kind="flow" data-topic-id="" data-flow="write" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 390,394 L 390,510" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowB)"/>
+  <path id="e-ecr" data-graph-role="edge" data-edge-id="e-ecr" data-source="podops" data-target="ecr" data-edge-kind="flow" data-topic-id="" data-flow="data" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="2" data-route-stretch="1.0" data-bridges="" d="M 981,394 L 981,418 L 720,418 L 720,510" fill="none" stroke="#f97316" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowE)"/>
+  <path id="e-lambda" data-graph-role="edge" data-edge-id="e-lambda" data-source="podops" data-target="lambda" data-edge-kind="flow" data-topic-id="" data-flow="data" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 999,394 L 999,510" fill="none" stroke="#f97316" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowE)"/>
+  <g id="node-sync" data-graph-role="node" data-node-id="sync" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,145,240,209">
+  <rect x="60.0" y="145.0" width="180.0" height="64.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
+  <text x="150.0" y="177.0" text-anchor="middle" class="node-title" font-size="18.0">sync-upstream</text>
+  <text x="150.0" y="199.0" text-anchor="middle" class="node-sub">no AWS · contents + PR write</text>
+  </g>
+  <g id="node-clusterwf" data-graph-role="node" data-node-id="clusterwf" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="290,145,490,209">
+  <rect x="290.0" y="145.0" width="200.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
+  <text x="390.0" y="177.0" text-anchor="middle" class="node-title" font-size="17.79">cluster-up / down</text>
+  <text x="390.0" y="199.0" text-anchor="middle" class="node-sub">id-token: write</text>
+  </g>
+  <g id="node-bootstrap" data-graph-role="node" data-node-id="bootstrap" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="590,145,790,209">
+  <rect x="590.0" y="145.0" width="200.0" height="64.0" rx="10.0" fill="#fff7ed" stroke="#f97316" stroke-width="1.8"/>
+  <text x="690.0" y="177.0" text-anchor="middle" class="node-title" font-size="18.0">bootstrap-aws</text>
+  <text x="690.0" y="199.0" text-anchor="middle" class="node-sub">static AWS_BOOTSTRAP_* keys</text>
+  </g>
+  <g id="node-podwf" data-graph-role="node" data-node-id="podwf" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="890,145,1090,209">
+  <rect x="890.0" y="145.0" width="200.0" height="64.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>
+  <text x="990.0" y="177.0" text-anchor="middle" class="node-title" font-size="18.0">pod-up/down/list</text>
+  <text x="990.0" y="199.0" text-anchor="middle" class="node-sub">+ build-runtime</text>
+  </g>
+  <g id="node-deployer" data-graph-role="node" data-node-id="deployer" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="270,330,510,394">
+  <rect x="270.0" y="330.0" width="240.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
+  <text x="390.0" y="362.0" text-anchor="middle" class="node-title" font-size="15.22">CloudDevPodsDeployerRole</text>
+  <text x="390.0" y="384.0" text-anchor="middle" class="node-sub">PowerUserAccess + iam:*</text>
+  </g>
+  <g id="node-oidc" data-graph-role="node" data-node-id="oidc" data-semantic-role="double_rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="580,330,800,394">
+  <rect x="580.0" y="330.0" width="220.0" height="64.0" rx="10.0" fill="#faf5ff" stroke="#8b5cf6" stroke-width="2.0"/>
+  <rect x="586.0" y="336.0" width="208.0" height="52.0" rx="7.0" fill="none" stroke="#8b5cf6" stroke-width="1.2" opacity="0.65"/>
+  <text x="690.0" y="362.0" text-anchor="middle" class="node-title" font-size="16.77">GitHub OIDC provider</text>
+  <text x="690.0" y="384.0" text-anchor="middle" class="node-sub">token.actions.githubusercontent.com</text>
+  </g>
+  <g id="node-podops" data-graph-role="node" data-node-id="podops" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="870,330,1110,394">
+  <rect x="870.0" y="330.0" width="240.0" height="64.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>
+  <text x="990.0" y="362.0" text-anchor="middle" class="node-title" font-size="16.33">CloudDevPodsPodOpsRole</text>
+  <text x="990.0" y="384.0" text-anchor="middle" class="node-sub">least privilege</text>
+  </g>
+  <g id="node-stacks" data-graph-role="node" data-node-id="stacks" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="280,510,500,574">
+  <rect x="280.0" y="510.0" width="220.0" height="64.0" rx="10.0" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8"/>
+  <text x="390.0" y="542.0" text-anchor="middle" class="node-title" font-size="18.0">Cluster CDK stacks</text>
+  <text x="390.0" y="564.0" text-anchor="middle" class="node-sub">via cluster-up · incl. pod-manager</text>
+  </g>
+  <g id="node-ecr" data-graph-role="node" data-node-id="ecr" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="620,510,820,574">
+  <rect x="620.0" y="510.0" width="200.0" height="64.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>
+  <text x="720.0" y="542.0" text-anchor="middle" class="node-title" font-size="18.0">ECR + CloudWatch</text>
+  <text x="720.0" y="564.0" text-anchor="middle" class="node-sub">push cloud-dev-pods/* · logs</text>
+  </g>
+  <g id="node-lambda" data-graph-role="node" data-node-id="lambda" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="909,510,1089,574">
+  <rect x="909.0" y="510.0" width="180.0" height="64.0" rx="10.0" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8"/>
+  <text x="999.0" y="542.0" text-anchor="middle" class="node-title" font-size="18.0">pod-manager</text>
+  <text x="999.0" y="564.0" text-anchor="middle" class="node-sub">Lambda · InvokeFunction</text>
+  </g>
+  <g id="node-release" data-graph-role="node" data-node-id="release" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="70,690,290,750">
+  <rect x="70.0" y="690.0" width="220.0" height="60.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
+  <text x="180.0" y="720.0" text-anchor="middle" class="node-title" font-size="18.0">release</text>
+  <text x="180.0" y="742.0" text-anchor="middle" class="node-sub">release-please · App token</text>
+  </g>
+  <g id="node-smoke" data-graph-role="node" data-node-id="smoke" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="340,690,570,750">
+  <rect x="340.0" y="690.0" width="230.0" height="60.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
+  <text x="455.0" y="720.0" text-anchor="middle" class="node-title" font-size="18.0">smoke-test</text>
+  <text x="455.0" y="742.0" text-anchor="middle" class="node-sub">OIDC to sandbox-account roles</text>
+  </g>
+  <g id="node-ci" data-graph-role="node" data-node-id="ci" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="770,690,1020,750">
+  <rect x="770.0" y="690.0" width="250.0" height="60.0" rx="10.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.8"/>
+  <text x="895.0" y="720.0" text-anchor="middle" class="node-title" font-size="16.63">ci-lint / test / security</text>
+  <text x="895.0" y="742.0" text-anchor="middle" class="node-sub">+ ci-runtime · on PR and push</text>
+  </g>
+  <g id="e-cl-label" data-graph-role="label" data-owner="e-cl" data-graph-bounds="274.36,255.5,387,275.5">
+  <rect x="274.36" y="255.5" width="112.64000000000001" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="330.68" y="269.5" text-anchor="middle" class="arrow-label">assume deployer</text>
+  </g>
+  <g id="e-boot-label" data-graph-role="label" data-owner="e-boot" data-graph-bounds="547.96,255.5,687,275.5">
+  <rect x="547.96" y="255.5" width="139.04000000000002" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="617.48" y="269.5" text-anchor="middle" class="arrow-label">creates OIDC + roles</text>
+  </g>
+  <g id="e-pod-label" data-graph-role="label" data-owner="e-pod" data-graph-bounds="878.2,255.5,987,275.5">
+  <rect x="878.2" y="255.5" width="108.80000000000001" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="932.6" y="269.5" text-anchor="middle" class="arrow-label">assume pod-ops</text>
+  </g>
+  <g id="e-trust-dep-label" data-graph-role="label" data-owner="e-trust-dep" data-graph-bounds="517.12,331,572.88,351">
+  <rect x="517.12" y="331.0" width="55.76" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="545.0" y="345.0" text-anchor="middle" class="arrow-label">trusts</text>
+  </g>
+  <g id="e-trust-ops-label" data-graph-role="label" data-owner="e-trust-ops" data-graph-bounds="807.12,331,862.88,351">
+  <rect x="807.12" y="331.0" width="55.76" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="835.0" y="345.0" text-anchor="middle" class="arrow-label">trusts</text>
+  </g>
+  <g id="e-stacks-label" data-graph-role="label" data-owner="e-stacks" data-graph-bounds="244.84,438,387,458">
+  <rect x="244.84" y="438.0" width="142.16000000000003" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="315.92" y="452.0" text-anchor="middle" class="arrow-label">cdk deploy / destroy</text>
+  </g>
+  <g id="e-ecr-label" data-graph-role="label" data-owner="e-ecr" data-graph-bounds="793.34,405,907.66,425">
+  <rect x="793.34" y="405.0" width="114.32" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="850.5" y="419.0" text-anchor="middle" class="arrow-label">push / read logs</text>
+  </g>
+  <g id="e-lambda-label" data-graph-role="label" data-owner="e-lambda" data-graph-bounds="943.36,438,996,458">
+  <rect x="943.36" y="438.0" width="52.64" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="969.68" y="452.0" text-anchor="middle" class="arrow-label">invoke</text>
+  </g>
+  <g id="legend" data-graph-role="legend">
+    <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="38" y="786" width="948.96" height="46" rx="10" fill="none" stroke="none"/>
+    <line data-graph-role="decoration" x1="48.0" y1="800.0" x2="78.0" y2="800.0" stroke="#7c3aed" stroke-width="2.4" marker-end="url(#arrowA)"/>
+    <text data-graph-role="decoration" x="88.0" y="804.0" class="legend">assume role via OIDC</text>
+    <line data-graph-role="decoration" x1="237.92000000000002" y1="800.0" x2="267.92" y2="800.0" stroke="#ef4444" stroke-width="2.4" marker-end="url(#arrowG)"/>
+    <text data-graph-role="decoration" x="277.92" y="804.0" class="legend">trust policy</text>
+    <line data-graph-role="decoration" x1="380.56000000000006" y1="800.0" x2="410.56000000000006" y2="800.0" stroke="#10b981" stroke-width="2.4" marker-end="url(#arrowB)"/>
+    <text data-graph-role="decoration" x="420.56000000000006" y="804.0" class="legend">CloudFormation deploy</text>
+    <line data-graph-role="decoration" x1="582.72" y1="800.0" x2="612.72" y2="800.0" stroke="#f97316" stroke-width="2.4" marker-end="url(#arrowE)"/>
+    <text data-graph-role="decoration" x="622.72" y="804.0" class="legend">pod-ops API call</text>
+    <line data-graph-role="decoration" x1="747.44" y1="800.0" x2="777.44" y2="800.0" stroke="#6b7280" stroke-width="2.4" marker-end="url(#arrowH)"/>
+    <text data-graph-role="decoration" x="787.44" y="804.0" class="legend">one-time bootstrap (dashed)</text>
+  </g>
+  <g id="footer" data-graph-role="reserved" data-graph-bounds="48,838,1007,854">
+  <text x="48.0" y="850.0" class="footnote">Trust: aud = sts.amazonaws.com · sub = repo:&lt;org&gt;/&lt;repo&gt;:ref:refs/heads/main or :environment:prod · both roles under CloudDevPodsBoundary</text>
+  </g>
+</svg>

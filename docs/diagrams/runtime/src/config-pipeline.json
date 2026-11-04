@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "mode": "data-flow",
+  "template_type": "data-flow",
+  "style": 1,
+  "width": 1340,
+  "height": 880,
+  "title": "Config pipeline: config/config.yaml to its consumers",
+  "subtitle": "one zod schema; values reach AWS at deploy time (CDK) and the pod-manager at run time (Lambda env)",
+  "style_overrides": {
+    "arrow_colors": {
+      "control": "#7c3aed",
+      "write": "#10b981",
+      "read": "#2563eb",
+      "data": "#f97316",
+      "async": "#64748b",
+      "feedback": "#ef4444",
+      "neutral": "#6b7280"
+    }
+  },
+  "containers": [
+    {
+      "id": "cdk",
+      "x": 580,
+      "y": 96,
+      "width": 720,
+      "height": 580,
+      "label": "CDK app (cdk synth / deploy in workflows)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "init",
+      "kind": "rect",
+      "x": 40,
+      "y": 150,
+      "width": 220,
+      "height": 64,
+      "label": "npm run init",
+      "sublabel": "scripts/init-clone.ts",
+      "flat": true,
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af"
+    },
+    {
+      "id": "yaml",
+      "kind": "rect",
+      "x": 40,
+      "y": 336,
+      "width": 220,
+      "height": 68,
+      "label": "config/config.yaml",
+      "sublabel": "committed in the fork",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "schema",
+      "kind": "double_rect",
+      "x": 320,
+      "y": 336,
+      "width": 220,
+      "height": 68,
+      "label": "loadConfig",
+      "sublabel": "zod ConfigSchema",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6"
+    },
+    {
+      "id": "app",
+      "kind": "rect",
+      "x": 720,
+      "y": 336,
+      "width": 160,
+      "height": 68,
+      "label": "infra/bin/app.ts",
+      "sublabel": "typed Config",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "boot",
+      "kind": "rect",
+      "x": 950,
+      "y": 140,
+      "width": 320,
+      "height": 60,
+      "label": "BootstrapStack",
+      "sublabel": "aws.*, github.org/repo (OIDC trust)",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "net",
+      "kind": "rect",
+      "x": 950,
+      "y": 240,
+      "width": 320,
+      "height": 60,
+      "label": "Network + Cluster stacks",
+      "sublabel": "network.*, domain.*, efs.*, project.env",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "family",
+      "kind": "rect",
+      "x": 950,
+      "y": 340,
+      "width": 320,
+      "height": 60,
+      "label": "PodTaskFamilyStack",
+      "sublabel": "pods.defaultCpu / defaultMemory",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "reaper",
+      "kind": "rect",
+      "x": 950,
+      "y": 440,
+      "width": 320,
+      "height": 60,
+      "label": "IdleReaperStack",
+      "sublabel": "pods.idleMinutes (fallback)",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "pmstack",
+      "kind": "rect",
+      "x": 950,
+      "y": 540,
+      "width": 320,
+      "height": 60,
+      "label": "PodManagerStack",
+      "sublabel": "auth.*, domain.*, remote.backend",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "lambda",
+      "kind": "double_rect",
+      "x": 950,
+      "y": 716,
+      "width": 320,
+      "height": 64,
+      "label": "pod-manager Lambda",
+      "sublabel": "env.ts, then oauth2-proxy env",
+      "fill": "#ecfdf5",
+      "stroke": "#10b981"
+    },
+    {
+      "id": "scripts",
+      "kind": "rect",
+      "x": 320,
+      "y": 560,
+      "width": 220,
+      "height": 64,
+      "label": "workflow helpers",
+      "sublabel": "stack-names, workspace guard",
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "e1",
+      "source": "init",
+      "target": "yaml",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "writes"
+    },
+    {
+      "id": "e2",
+      "source": "yaml",
+      "target": "schema",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data",
+      "label": "YAML"
+    },
+    {
+      "id": "e3",
+      "source": "schema",
+      "target": "app",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "data",
+      "label": "Config"
+    },
+    {
+      "id": "e4",
+      "source": "schema",
+      "target": "scripts",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "prefix, efs"
+    },
+    {
+      "id": "f1",
+      "source": "app",
+      "target": "boot",
+      "source_port": "top",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "f2",
+      "source": "app",
+      "target": "net",
+      "source_port": "top",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "f3",
+      "source": "app",
+      "target": "family",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "f5",
+      "source": "app",
+      "target": "reaper",
+      "source_port": "bottom",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "f4",
+      "source": "app",
+      "target": "pmstack",
+      "source_port": "bottom",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "e5",
+      "source": "pmstack",
+      "target": "lambda",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "AUTH_* + env vars"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 840,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "write",
+      "label": "written / deployed"
+    },
+    {
+      "flow": "data",
+      "label": "parsed config"
+    },
+    {
+      "flow": "read",
+      "label": "keys read by stack"
+    }
+  ]
+}

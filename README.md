@@ -67,6 +67,7 @@ Opens a PR with upstream upgrades. Local-only files (`infra/config.local.ts`, `i
 - [`docs/cost-controls.md`](docs/cost-controls.md) — idle cost breakdown + Budgets alarm template (read before first `cluster-up`).
 - [`docs/operating.md`](docs/operating.md), [`docs/teardown.md`](docs/teardown.md), [`docs/troubleshooting.md`](docs/troubleshooting.md) — day-2.
 - [`docs/architecture.md`](docs/architecture.md), [`docs/adr/`](docs/adr/) — how it works and why.
+- [`docs/diagrams/`](docs/diagrams/README.md) — architecture and design diagrams, indexed by area.
 
 ## Status
 

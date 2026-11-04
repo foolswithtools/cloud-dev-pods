@@ -1,0 +1,49 @@
+{
+  "style": 1,
+  "quality_profile": "showcase",
+  "width": 1130,
+  "height": 700,
+  "title": "First-run setup flow (user mode)",
+  "subtitle": "from a fresh fork to the first pod; hexagon = decision",
+  "containers": [
+    { "id": "local", "x": 40, "y": 100, "width": 1050, "height": 130, "label": "1 · Local: init the fork, then bootstrap AWS once" },
+    { "id": "post", "x": 40, "y": 270, "width": 1050, "height": 130, "label": "2 · Hand over to OIDC roles; OAuth only for browser pods" },
+    { "id": "up", "x": 40, "y": 440, "width": 1050, "height": 130, "label": "3 · Images, cluster, first pod" }
+  ],
+  "nodes": [
+    { "id": "fork", "kind": "rect", "x": 60, "y": 145, "width": 200, "height": 64, "label": "Fork from template", "sublabel": "gh repo create --template", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "init", "kind": "rect", "x": 330, "y": 145, "width": 200, "height": 64, "label": "npm run init", "sublabel": "config + Variables + IAM user?", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "commit", "kind": "rect", "x": 600, "y": 145, "width": 200, "height": 64, "label": "Commit config", "sublabel": "git add -f config/config.yaml", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "bootstrap", "kind": "rect", "x": 870, "y": 145, "width": 200, "height": 64, "label": "bootstrap-aws.yml", "sublabel": "confirm_account_id · static keys", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "postboot", "kind": "rect", "x": 870, "y": 315, "width": 200, "height": 64, "label": "init --post-bootstrap", "sublabel": "role ARNs in · bootstrap creds out", "fill": "#faf5ff", "stroke": "#8b5cf6", "flat": true },
+    { "id": "decide", "kind": "hexagon", "x": 600, "y": 315, "width": 200, "height": 64, "label": "Browser pods?", "sublabel": "domain.strategy: byo", "fill": "#fefce8", "stroke": "#ca8a04", "flat": true },
+    { "id": "oauth", "kind": "rect", "x": 330, "y": 315, "width": 200, "height": 64, "label": "OAuth secrets", "sublabel": "register app · update-secret", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "build", "kind": "rect", "x": 339, "y": 485, "width": 200, "height": 64, "label": "build-runtime.yml", "sublabel": "push images to ECR", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "clusterup", "kind": "rect", "x": 600, "y": 485, "width": 200, "height": 64, "label": "cluster-up.yml", "sublabel": "cdk deploy cluster stacks", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "podup", "kind": "rect", "x": 870, "y": 485, "width": 200, "height": 64, "label": "pod-up.yml", "sublabel": "mode = browser | tunnel", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true }
+  ],
+  "arrows": [
+    { "id": "f1", "source": "fork", "target": "init", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "f2", "source": "init", "target": "commit", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "f3", "source": "commit", "target": "bootstrap", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "f4", "source": "bootstrap", "target": "postboot", "source_port": "bottom", "target_port": "top", "flow": "control", "label": "on success" },
+    { "id": "f5", "source": "postboot", "target": "decide", "source_port": "left", "target_port": "right", "flow": "control" },
+    { "id": "f6", "source": "decide", "target": "oauth", "source_port": "left", "target_port": "right", "flow": "write", "label": "yes" },
+    { "id": "f7", "source": "oauth", "target": "build", "source_port": "bottom", "target_port": "top", "flow": "control" },
+    { "id": "f8", "source": "decide", "target": "build", "source_port": "bottom", "target_port": "top", "flow": "feedback", "label": "no · tunnel only", "corridor_y": [420] },
+    { "id": "f9", "source": "build", "target": "clusterup", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "f10", "source": "clusterup", "target": "podup", "source_port": "right", "target_port": "left", "flow": "control" }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 610,
+  "legend_locked": true,
+  "legend": [
+    { "flow": "control", "label": "next step" },
+    { "flow": "write", "label": "browser-mode branch" },
+    { "flow": "feedback", "label": "tunnel-only branch" }
+  ],
+  "footer": "Orange = static-credential phase · purple = credential handover · entra-id browser provider forces domain.strategy: byo",
+  "footer_x": 48,
+  "footer_y": 660
+}

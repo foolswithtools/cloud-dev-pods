@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "template_type": "flowchart",
+  "style": 1,
+  "width": 1280,
+  "height": 800,
+  "title": "Runtime images: build, push, and pick-up by pod-up",
+  "subtitle": "immutable tags = git commit SHA; pod-manager picks the newest pushed tag unless pod-up passes image_tag",
+  "style_overrides": {
+    "arrow_colors": {
+      "control": "#7c3aed",
+      "write": "#10b981",
+      "read": "#2563eb",
+      "data": "#f97316",
+      "async": "#64748b",
+      "feedback": "#ef4444",
+      "neutral": "#6b7280"
+    }
+  },
+  "containers": [
+    {
+      "id": "gha",
+      "x": 260,
+      "y": 256,
+      "width": 980,
+      "height": 140,
+      "label": "build-runtime.yml (GitHub Actions)"
+    },
+    {
+      "id": "podup",
+      "x": 260,
+      "y": 476,
+      "width": 640,
+      "height": 260,
+      "label": "pod-up path"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "dfb",
+      "kind": "rect",
+      "x": 420,
+      "y": 110,
+      "width": 260,
+      "height": 64,
+      "label": "vscode-browser/Dockerfile",
+      "sublabel": "FROM openvscode-server:1.105.1",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "dft",
+      "kind": "rect",
+      "x": 720,
+      "y": 110,
+      "width": 300,
+      "height": 64,
+      "label": "vscode-tunnel/Dockerfile",
+      "sublabel": "CLI 1.143.0 @2d0b750, sha256 checked",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6",
+      "flat": true
+    },
+    {
+      "id": "fail",
+      "kind": "rect",
+      "x": 1060,
+      "y": 116,
+      "width": 170,
+      "height": 60,
+      "label": "Job fails",
+      "sublabel": "nothing pushed",
+      "fill": "#fef2f2",
+      "stroke": "#ef4444",
+      "flat": true
+    },
+    {
+      "id": "trigger",
+      "kind": "rect",
+      "x": 40,
+      "y": 300,
+      "width": 180,
+      "height": 64,
+      "label": "Trigger",
+      "sublabel": "push runtime/** or dispatch",
+      "fill": "#f9fafb",
+      "stroke": "#9ca3af",
+      "flat": true
+    },
+    {
+      "id": "matrix",
+      "kind": "rect",
+      "x": 290,
+      "y": 300,
+      "width": 190,
+      "height": 64,
+      "label": "Matrix job",
+      "sublabel": "OIDC pod-ops role",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "build",
+      "kind": "rect",
+      "x": 560,
+      "y": 300,
+      "width": 300,
+      "height": 64,
+      "label": "docker build",
+      "sublabel": "runtime/<image>, tag :$GITHUB_SHA",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    },
+    {
+      "id": "trivy",
+      "kind": "hexagon",
+      "x": 1050,
+      "y": 300,
+      "width": 190,
+      "height": 64,
+      "label": "Trivy scan",
+      "sublabel": "OS pkgs, CRITICAL/HIGH",
+      "fill": "#fff7ed",
+      "stroke": "#f97316",
+      "flat": true
+    },
+    {
+      "id": "ecr",
+      "kind": "rect",
+      "x": 1040,
+      "y": 520,
+      "width": 210,
+      "height": 64,
+      "label": "ECR repos",
+      "sublabel": "IMMUTABLE, keep 10",
+      "fill": "#ecfdf5",
+      "stroke": "#10b981",
+      "flat": true
+    },
+    {
+      "id": "podcli",
+      "kind": "rect",
+      "x": 290,
+      "y": 520,
+      "width": 190,
+      "height": 64,
+      "label": "pod-up workflow",
+      "sublabel": "pod-cli.ts up",
+      "fill": "#ffffff",
+      "stroke": "#cbd5e1",
+      "flat": true
+    },
+    {
+      "id": "pm",
+      "kind": "double_rect",
+      "x": 580,
+      "y": 520,
+      "width": 260,
+      "height": 64,
+      "label": "pod-manager podUp",
+      "sublabel": "resolveLatestImageTag",
+      "fill": "#eff6ff",
+      "stroke": "#3b82f6"
+    },
+    {
+      "id": "taskdef",
+      "kind": "rect",
+      "x": 580,
+      "y": 650,
+      "width": 260,
+      "height": 64,
+      "label": "registerTaskDef",
+      "sublabel": "image = <repo URI>:<tag>",
+      "fill": "#faf5ff",
+      "stroke": "#8b5cf6",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "e1",
+      "source": "trigger",
+      "target": "matrix",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "start"
+    },
+    {
+      "id": "e2",
+      "source": "matrix",
+      "target": "build",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "per image"
+    },
+    {
+      "id": "a-dfb",
+      "source": "dfb",
+      "target": "build",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "context"
+    },
+    {
+      "id": "b-dft",
+      "source": "dft",
+      "target": "build",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "context"
+    },
+    {
+      "id": "e3",
+      "source": "build",
+      "target": "trivy",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "local image"
+    },
+    {
+      "id": "e4",
+      "source": "trivy",
+      "target": "fail",
+      "source_port": "top",
+      "target_port": "bottom",
+      "flow": "feedback",
+      "label": "findings"
+    },
+    {
+      "id": "e5",
+      "source": "trivy",
+      "target": "ecr",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "write",
+      "label": "clean: docker push"
+    },
+    {
+      "id": "e6",
+      "source": "podcli",
+      "target": "pm",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control",
+      "label": "optional tag"
+    },
+    {
+      "id": "e7",
+      "source": "pm",
+      "target": "ecr",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read",
+      "label": "DescribeImages"
+    },
+    {
+      "id": "e8",
+      "source": "pm",
+      "target": "taskdef",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "control",
+      "label": "image URI"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 760,
+  "legend_locked": true,
+  "legend": [
+    {
+      "flow": "control",
+      "label": "control"
+    },
+    {
+      "flow": "data",
+      "label": "build input"
+    },
+    {
+      "flow": "write",
+      "label": "push"
+    },
+    {
+      "flow": "read",
+      "label": "tag lookup"
+    },
+    {
+      "flow": "feedback",
+      "label": "gate failure"
+    }
+  ]
+}

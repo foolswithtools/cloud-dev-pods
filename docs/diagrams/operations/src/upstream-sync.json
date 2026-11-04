@@ -1,0 +1,47 @@
+{
+  "style": 1,
+  "quality_profile": "showcase",
+  "width": 1300,
+  "height": 720,
+  "title": "Upstream sync: tracked / merged / user",
+  "subtitle": "sync-upstream.yml runs scripts/sync-upstream.ts, then opens a PR that is never auto-merged (ADR 0006)",
+  "containers": [],
+  "nodes": [
+    { "id": "trigger", "kind": "rect", "x": 60, "y": 140, "width": 180, "height": 70, "label": "sync-upstream.yml", "sublabel": "fork only · Mon cron · dispatch", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "fetch", "kind": "rect", "x": 320, "y": 140, "width": 180, "height": 70, "label": "Fetch upstream", "sublabel": "toSha = upstream/main", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "diff", "kind": "rect", "x": 580, "y": 140, "width": 180, "height": 70, "label": "Diff since last sync", "sublabel": "from = state file | merge-base", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "toml", "kind": "rect", "x": 320, "y": 320, "width": 180, "height": 70, "label": ".upstream-sync.toml", "sublabel": "path globs", "fill": "#faf5ff", "stroke": "#8b5cf6", "flat": true },
+    { "id": "classify", "kind": "hexagon", "x": 580, "y": 320, "width": 180, "height": 70, "label": "Classify path", "sublabel": "user > merged > tracked", "fill": "#fefce8", "stroke": "#ca8a04", "flat": true },
+    { "id": "tracked", "kind": "rect", "x": 840, "y": 320, "width": 180, "height": 70, "label": "[tracked]", "sublabel": "take upstream · + unmatched", "fill": "#f0fdf4", "stroke": "#16a34a", "flat": true },
+    { "id": "user", "kind": "rect", "x": 320, "y": 500, "width": 180, "height": 70, "label": "[user]", "sublabel": "skipped, never touched", "fill": "#ffffff", "stroke": "#cbd5e1", "flat": true },
+    { "id": "merged", "kind": "rect", "x": 589, "y": 500, "width": 180, "height": 70, "label": "[merged]", "sublabel": "git merge-file --diff3", "fill": "#fff7ed", "stroke": "#f97316", "flat": true },
+    { "id": "prbody", "kind": "rect", "x": 840, "y": 500, "width": 180, "height": 70, "label": "PR body", "sublabel": "counts + Conflicted files", "fill": "#eff6ff", "stroke": "#3b82f6", "flat": true },
+    { "id": "pr", "kind": "rect", "x": 1080, "y": 500, "width": 170, "height": 70, "label": "Sync PR", "sublabel": "user reviews + merges", "fill": "#faf5ff", "stroke": "#8b5cf6", "flat": true }
+  ],
+  "arrows": [
+    { "id": "s1", "source": "trigger", "target": "fetch", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "s2", "source": "fetch", "target": "diff", "source_port": "right", "target_port": "left", "flow": "control" },
+    { "id": "s3", "source": "diff", "target": "classify", "source_port": "bottom", "target_port": "top", "flow": "data", "label": "changed paths" },
+    { "id": "s4", "source": "toml", "target": "classify", "source_port": "right", "target_port": "left", "flow": "read", "label": "rules" },
+    { "id": "s5", "source": "classify", "target": "tracked", "source_port": "right", "target_port": "left", "flow": "data" },
+    { "id": "s6", "source": "classify", "target": "user", "source_port": "bottom", "target_port": "top", "flow": "neutral", "dashed": true },
+    { "id": "s7", "source": "classify", "target": "merged", "source_port": "bottom", "target_port": "top", "flow": "data" },
+    { "id": "s8", "source": "tracked", "target": "prbody", "source_port": "bottom", "target_port": "top", "flow": "data" },
+    { "id": "s9", "source": "merged", "target": "prbody", "source_port": "right", "target_port": "left", "flow": "write" },
+    { "id": "s10", "source": "prbody", "target": "pr", "source_port": "right", "target_port": "left", "flow": "control" }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 620,
+  "legend_locked": true,
+  "legend": [
+    { "flow": "control", "label": "workflow step" },
+    { "flow": "data", "label": "changed paths" },
+    { "flow": "read", "label": "rules" },
+    { "flow": "write", "label": "merge results + conflicts" },
+    { "flow": "neutral", "label": "skipped (dashed)" }
+  ],
+  "footer": "Upstream deletions apply only when HEAD still equals the base copy · the PR also commits .upstream-sync.state = toSha",
+  "footer_x": 48,
+  "footer_y": 680
+}

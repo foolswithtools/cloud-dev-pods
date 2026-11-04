@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 852" width="1240" height="852" data-quality-profile="standard">
+<style>text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }</style>
+<defs><marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker><marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker><marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker><marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker><marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker><marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/></marker></defs>
+<rect data-graph-role="background" width="1240" height="852" fill="#ffffff"/>
+<text x="620.0" y="34" font-size="18" font-weight="600" fill="#111827" text-anchor="middle" data-graph-role="label">Tunnel pod: device-code sign-in</text>
+<text x="620.0" y="54" font-size="12" fill="#6b7280" text-anchor="middle" data-graph-role="label">pod-up -f mode=tunnel. No ALB, no oauth2-proxy: the pod dials out, and the dev tunnel service checks the account.</text>
+<line data-graph-role="decoration" x1="122.85714285714286" y1="128" x2="122.85714285714286" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="288.57142857142856" y1="128" x2="288.57142857142856" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="454.28571428571433" y1="128" x2="454.28571428571433" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="620.0" y1="128" x2="620.0" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="785.7142857142858" y1="128" x2="785.7142857142858" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="951.4285714285716" y1="128" x2="951.4285714285716" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line data-graph-role="decoration" x1="1117.142857142857" y1="128" x2="1117.142857142857" y2="788" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="5 5"/>
+<path id="m-invoke" data-graph-role="edge" data-edge-id="m-invoke" d="M 126.9 162.0 L 284.6 162.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="131.0" y="144.0" width="149.5" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="205.7" y="155.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">pod-cli up (lambda Invoke)</text>
+<path id="m-run" data-graph-role="edge" data-edge-id="m-run" d="M 292.6 202.0 L 450.3 202.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="293.9" y="184.0" width="155.0" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="195.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">register task def + RunTask</text>
+<g id="note-env" data-graph-role="label" data-graph-bounds="296.28571428571433 220 612.2857142857143 260">
+<rect x="296.28571428571433" y="220" width="316.0" height="40" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+<text x="304.3" y="238.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">env POD_NAME, TUNNEL_PROVIDER = github | microsoft</text>
+<text x="304.3" y="253.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400">(auth.tunnel.provider or tunnel_provider input)</text>
+</g>
+<path id="m-result" data-graph-role="edge" data-edge-id="m-result" d="M 284.6 298.0 L 126.9 298.0" fill="none" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-gray)"/>
+<rect data-graph-role="decoration" x="139.2" y="280.0" width="133.0" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="205.7" y="291.0" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400" data-graph-role="label">taskArn, tunnelProvider</text>
+<path id="m-login" data-graph-role="edge" data-edge-id="m-login" d="M 458.3 356.0 L 616.0 356.0" fill="none" stroke="#ea580c" stroke-width="1.6" marker-end="url(#arrow-orange)"/>
+<rect data-graph-role="decoration" x="387.9" y="338.0" width="298.6" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="537.1" y="349.0" font-size="11" fill="#ea580c" text-anchor="middle" font-weight="400" data-graph-role="label">code tunnel user login --provider: device-code prompt</text>
+<path id="m-poll" data-graph-role="edge" data-edge-id="m-poll" d="M 126.9 396.0 L 616.0 396.0" fill="none" stroke="#ea580c" stroke-width="1.6" marker-end="url(#arrow-orange)"/>
+<rect data-graph-role="decoration" x="136.6" y="378.0" width="469.7" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="389.0" font-size="11" fill="#ea580c" text-anchor="middle" font-weight="400" data-graph-role="label">tunnel-poll-logs.ts: FilterLogEvents, this task&#x27;s stream only, every 5 s (180 s max)</text>
+<path id="m-code" data-graph-role="edge" data-edge-id="m-code" d="M 616.0 436.0 L 126.9 436.0" fill="none" stroke="#ea580c" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-orange)"/>
+<rect data-graph-role="decoration" x="338.1" y="418.0" width="66.7" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="371.4" y="429.0" font-size="11" fill="#ea580c" text-anchor="middle" font-weight="400" data-graph-role="label">{url, code}</text>
+<path id="m-summary" data-graph-role="edge" data-edge-id="m-summary" d="M 126.9 476.0 L 781.7 476.0" fill="none" stroke="#ea580c" stroke-width="1.6" marker-end="url(#arrow-orange)"/>
+<rect data-graph-role="decoration" x="338.1" y="458.0" width="232.3" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="454.3" y="469.0" font-size="11" fill="#ea580c" text-anchor="middle" font-weight="400" data-graph-role="label">workflow summary: Open &lt;url&gt;, Code &lt;code&gt;</text>
+<path id="m-signin" data-graph-role="edge" data-edge-id="m-signin" d="M 789.7 516.0 L 947.4 516.0" fill="none" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="813.1" y="498.0" width="110.9" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="868.6" y="509.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">enter code, sign in</text>
+<path id="m-token" data-graph-role="edge" data-edge-id="m-token" d="M 947.4 556.0 L 458.3 556.0" fill="none" stroke="#9333ea" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-purple)"/>
+<rect data-graph-role="decoration" x="581.2" y="538.0" width="243.4" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="702.9" y="549.0" font-size="11" fill="#9333ea" text-anchor="middle" font-weight="400" data-graph-role="label">device flow completes; CLI stores the login</text>
+<rect id="frame-login" data-graph-role="container" x="30" y="312" width="1180" height="262" rx="4" fill="none" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 3"/>
+<g data-graph-role="decoration">
+<path d="M 30 312 H 62.0 V 326 L 56.0 332 H 30 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1"/>
+</g>
+<text x="36.0" y="326.0" font-size="11" fill="#374151" text-anchor="start" font-weight="600" data-graph-role="label">opt</text>
+<text x="70.0" y="326.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400" font-style="italic" data-graph-role="label">no stored login (code tunnel user show fails)</text>
+<path id="m-register" data-graph-role="edge" data-edge-id="m-register" d="M 458.3 608.0 L 1113.1 608.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="650.2" y="590.0" width="271.0" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="785.7" y="601.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">code tunnel --name &lt;pod&gt;: outbound HTTPS via NAT</text>
+<path id="m-connect" data-graph-role="edge" data-edge-id="m-connect" d="M 789.7 648.0 L 1113.1 648.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="796.6" y="630.0" width="309.6" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="951.4" y="641.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">VS Code Desktop: Connect to Tunnel &lt;pod&gt; (same account)</text>
+<path id="m-relay" data-graph-role="edge" data-edge-id="m-relay" d="M 1113.1 688.0 L 458.3 688.0" fill="none" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<rect data-graph-role="decoration" x="664.0" y="670.0" width="243.4" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="785.7" y="681.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="400" data-graph-role="label">relayed session to the pod&#x27;s VS Code server</text>
+<path id="m-unreg" data-graph-role="edge" data-edge-id="m-unreg" d="M 458.3 746.0 L 1113.1 746.0" fill="none" stroke="#dc2626" stroke-width="1.6" marker-end="url(#arrow-red)"/>
+<rect data-graph-role="decoration" x="622.6" y="728.0" width="326.2" height="14" fill="#ffffff" fill-opacity="0.9"/>
+<text x="785.7" y="739.0" font-size="11" fill="#dc2626" text-anchor="middle" font-weight="400" data-graph-role="label">SIGTERM trap: code tunnel unregister (frees 1 of 10 slots)</text>
+<rect id="frame-down" data-graph-role="container" x="30" y="702" width="1180" height="62" rx="4" fill="none" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 3"/>
+<g data-graph-role="decoration">
+<path d="M 30 702 H 62.0 V 716 L 56.0 722 H 30 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1"/>
+</g>
+<text x="36.0" y="716.0" font-size="11" fill="#374151" text-anchor="start" font-weight="600" data-graph-role="label">opt</text>
+<text x="70.0" y="716.0" font-size="11" fill="#374151" text-anchor="start" font-weight="400" font-style="italic" data-graph-role="label">pod-down (ECS sends SIGTERM, 30 s stopTimeout)</text>
+<g id="gha" data-graph-role="node" data-node-id="gha">
+<rect x="47.85714285714286" y="76" width="150" height="52" rx="8" ry="8" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="122.9" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">pod-up.yml</text>
+<text x="122.9" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">GitHub Actions, PodOps role</text>
+</g>
+<g id="lambda" data-graph-role="node" data-node-id="lambda">
+<rect x="213.57142857142856" y="76" width="150" height="52" rx="8" ry="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+<text x="288.6" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">pod-manager</text>
+<text x="288.6" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">Lambda</text>
+</g>
+<g id="task" data-graph-role="node" data-node-id="task">
+<rect x="379.28571428571433" y="76" width="150" height="52" rx="8" ry="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="454.3" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">vscode-tunnel</text>
+<text x="454.3" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">ECS task (code CLI)</text>
+</g>
+<g id="cwl" data-graph-role="node" data-node-id="cwl">
+<rect x="545.0" y="76" width="150" height="52" rx="8" ry="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="620.0" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">CloudWatch Logs</text>
+<text x="620.0" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">/cloud-dev-pods/dev/pods</text>
+</g>
+<g id="user" data-graph-role="node" data-node-id="user">
+<rect x="710.7142857142858" y="76" width="150" height="52" rx="8" ry="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="785.7" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">User</text>
+<text x="785.7" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">laptop browser + VS Code</text>
+</g>
+<g id="idp" data-graph-role="node" data-node-id="idp">
+<rect x="876.4285714285716" y="76" width="150" height="52" rx="8" ry="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+<text x="951.4" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">GitHub / Microsoft</text>
+<text x="951.4" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">device login page</text>
+</g>
+<g id="tunnels" data-graph-role="node" data-node-id="tunnels">
+<rect x="1042.142857142857" y="76" width="150" height="52" rx="8" ry="8" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1117.1" y="99.5" font-size="14" fill="#111827" text-anchor="middle" font-weight="600">Dev tunnel service</text>
+<text x="1117.1" y="114.5" font-size="11" fill="#6b7280" text-anchor="middle" font-weight="400">Microsoft (internet)</text>
+</g>
+<g id="legend" data-graph-role="legend">
+<line x1="60" y1="822" x2="90" y2="822" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrow-blue)"/>
+<text x="98" y="826" font-size="12" fill="#6b7280" text-anchor="start">tunnel connection</text>
+<line x1="238.98" y1="822" x2="268.98" y2="822" stroke="#ea580c" stroke-width="1.6" marker-end="url(#arrow-orange)"/>
+<text x="276.98" y="826" font-size="12" fill="#6b7280" text-anchor="start">device-code relay</text>
+<line x1="417.96" y1="822" x2="447.96" y2="822" stroke="#9333ea" stroke-width="1.6" marker-end="url(#arrow-purple)"/>
+<text x="455.96" y="826" font-size="12" fill="#6b7280" text-anchor="start">account sign-in</text>
+<line x1="585.06" y1="822" x2="615.06" y2="822" stroke="#dc2626" stroke-width="1.6" marker-end="url(#arrow-red)"/>
+<text x="623.06" y="826" font-size="12" fill="#6b7280" text-anchor="start">cleanup</text>
+<line x1="704.64" y1="822" x2="734.64" y2="822" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow-gray)"/>
+<text x="742.64" y="826" font-size="12" fill="#6b7280" text-anchor="start">response</text>
+</g>
+</svg>
