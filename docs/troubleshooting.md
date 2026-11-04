@@ -25,7 +25,7 @@ printf '%s' "<secret>" | gh secret set AWS_BOOTSTRAP_SECRET_ACCESS_KEY
 **Fix:**
 
 ```bash
-git add config/config.yaml
+git add -f config/config.yaml   # ignored by the inherited .gitignore; -f is needed once
 git commit -m "chore: initial config"
 git push
 ```

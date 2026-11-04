@@ -54,11 +54,14 @@ cdk.context.json
 
 # Local-only project files (taxonomy: [user] in .upstream-sync.toml)
 infra/config.local.ts
-infra/extensions.local.ts
 config/config.yaml
 .upstream-sync.state.local
 .envrc
 *.local.*
+# Fork CDK hooks (#239): code, not secrets. Forks commit it so cluster-up,
+# which synthesizes from a fresh checkout, applies it. Still [user] in
+# .upstream-sync.toml, so sync never overwrites it.
+!infra/extensions.local.ts
 
 # Build artifacts
 build/

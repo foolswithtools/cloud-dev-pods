@@ -4,6 +4,7 @@ import { Validations } from 'aws-cdk-lib';
 import { AwsSolutionsChecks } from 'cdk-nag';
 import { buildStacks } from '../lib/app';
 import { loadConfig } from '../lib/config/config';
+import { loadExtensions } from '../lib/extensions';
 import { applyProjectTags } from '../lib/util/tags';
 
 const app = new cdk.App();
@@ -20,7 +21,8 @@ const env = {
 };
 
 // Stack IDs are `${naming.prefix}-<Suffix>`; see lib/stack-names.ts.
-buildStacks(app, config, env);
+// Fork hooks come from infra/extensions.local.ts when it exists (#239).
+buildStacks(app, config, env, loadExtensions());
 
 applyProjectTags(app, config);
 // cdk-nag v3: a policy-validation plugin; unacknowledged findings fail synth.

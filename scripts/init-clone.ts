@@ -701,21 +701,23 @@ export CDPODS_CONFIG=$PWD/config/config.yaml
 }
 
 const EXTENSIONS_STUB = `// Customizations that survive sync-upstream. This file is [user] in
-// .upstream-sync.toml — never overwritten. See docs/extending.md.
+// .upstream-sync.toml, so it's never overwritten. Commit it: cluster-up
+// synthesizes from a fresh checkout. See docs/extending.md.
 //
-// Each hook is optional and runs after the corresponding stack constructs
-// its default resources but before synthesis is finalized.
+// Every hook is optional. Each gets its stack plus { app, config } and runs
+// right after that stack is constructed. An unknown hook name fails synth.
 
-// import type { ClusterStack } from './lib/stacks/cluster-stack';
-// import type { NetworkStack } from './lib/stacks/network-stack';
+import type { Extensions } from './lib/extensions';
 
-export const extensions = {
-  // customizeNetwork(stack: NetworkStack): void {
-  //   // e.g., add VPC endpoints, more subnets, custom flow logs
+export const extensions: Extensions = {
+  // customizeNetwork(stack) {
+  //   // e.g. add VPC endpoints, tags or flow logs on stack.vpc
   // },
-  // customizeCluster(stack: ClusterStack): void {
-  //   // e.g., add capacity providers, change ALB idle timeout
+  // customizeCluster(stack, { config }) {
+  //   // e.g. tweak the ALB or add alarms
   // },
+  // Also: customizeBootstrap, customizePodTaskFamily, customizePodManager,
+  // customizeIdleReaper.
 };
 `;
 
@@ -793,7 +795,7 @@ async function maybeCreateBootstrapIam(): Promise<void> {
 /** The outro's next steps for these answers (both modes print them). */
 export function nextSteps(a: Answers): string[] {
   const steps: string[] = [
-    `1. Commit config/config.yaml: \`git add config/config.yaml && git commit -m 'chore: init config' && git push\``,
+    `1. Commit config/config.yaml and infra/extensions.local.ts: \`git add -f config/config.yaml && git add infra/extensions.local.ts && git commit -m 'chore: init config' && git push\``,
     `2. Run bootstrap: \`gh workflow run bootstrap-aws.yml -f confirm_account_id=${a.awsAccountId}\``,
     `3. After bootstrap succeeds, set role ARNs and clean up:`,
     `     DEPLOYER=$(aws ssm get-parameter --name /cloud-dev-pods/dev/bootstrap/deployer-role-arn --query Parameter.Value --output text)`,

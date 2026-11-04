@@ -91,7 +91,7 @@ Other flags: `--aws-region`, `--browser-provider`, `--domain-strategy`, `--hoste
 Then:
 
 ```bash
-git add config/config.yaml
+git add -f config/config.yaml   # ignored by the inherited .gitignore; -f is needed once
 git commit -m "chore: initial config"
 git push
 ```
