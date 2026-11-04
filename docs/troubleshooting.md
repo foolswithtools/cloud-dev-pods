@@ -211,7 +211,7 @@ gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=
 
 | Reason | What it means | What to do |
 | --- | --- | --- |
-| `N pod(s) still registered: a, b. Re-run cluster-down with force=true ...` | Pods are registered and `force` was off. | `pod-down` each pod, or re-run `cluster-down` with `force=true` to stop them (workspaces are kept). |
+| `N pod(s) still registered: a, b. Re-run cluster-down with force=true ...` | Pods are registered and `force` was off. | `pod-down` each pod, or re-run `cluster-down` with `force=true` to stop them (the drain keeps their access points; the workspace check decides what happens to EFS). |
 | `Pod pre-flight failed: invoking the pod-manager Lambda failed: ...` | The `list` call never reached the Lambda, or the Lambda raised an error. `Function not found` / `ResourceNotFoundException` means the `CloudDevPods-PodManager` stack is already gone (see below). `AccessDenied` means the deployer role can't invoke it. | Read the error text. For a missing Lambda, see "PodManager stack already gone" below. |
 | `Pod pre-flight failed: the pod-manager Lambda returned ok: false (status ...): ...` | The Lambda ran but couldn't list pods (for example, the registry table scan failed). | Check the Lambda's logs (`aws logs tail /aws/lambda/pod-manager --since 30m`), fix the cause, re-run. |
 | `Pod pre-flight failed: ... missing or invalid "pods"` / `invalid "pods" entry` / `non-object response` | The Lambda's response wasn't the shape `cluster-drain.ts` expects. Usually a pod-manager Lambda that is older or newer than the workflow. | Re-run `cluster-up` so the Lambda matches this checkout, then `cluster-down` again. |
@@ -222,6 +222,22 @@ gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=
 **`Require pre-flight proof` fails instead.** If the pre-flight step goes green but the next step, `Require pre-flight proof`, fails with "The pod pre-flight exited 0 but did not write proceed=true", the drain never reached a decision. `cluster-drain.ts` writes the step output `proceed=true` only when it has confirmed no pods are registered, and `cdk destroy` runs only with that output. Exiting 0 without it usually means the script's `main()` didn't run at all (the `isInvokedAsCli` failure from #194, for example after a change to how the script is invoked). The step log for the pre-flight will be empty or show no `Listing registered pods...` line. Nothing was destroyed. Check that `npx tsx scripts/cluster-drain.ts` prints `Listing registered pods...` when run the same way as the workflow, fix the invocation, then re-run `cluster-down`.
 
 **PodManager stack already gone (partial teardown).** If an earlier `cluster-down` got as far as destroying `CloudDevPods-PodManager` and then failed, the pre-flight can't list or drain pods any more: the drain only stops pods through the pod-manager Lambda (it never stops ECS tasks directly, per CLAUDE.md hard rule 2). Re-run `cluster-up` to restore the stacks, including the Lambda, then run `cluster-down` again (with `force=true` if pods are still registered).
+
+## cluster-down refuses: workspaces would be deleted
+
+**Symptom:** the `Pre-flight — check EFS workspaces` step of `cluster-down.yml` fails before any pod is stopped, and the step summary reads "Workspace pre-flight refused cluster-down".
+
+**Cause:** `scripts/cluster-workspace-guard.ts` found pod workspaces (EFS access points) on a file system whose deployed removal policy is DESTROY, and `delete_workspaces` wasn't set. `cdk destroy` would have deleted them. Nothing was stopped or deleted.
+
+| Reason | What it means | What to do |
+| --- | --- | --- |
+| `EFS file system fs-... holds N pod workspace(s) (a, b), and its deployed removal policy is DESTROY.` | Retention is off (`efs.retainOnClusterDown: false`, the default) and workspaces exist. | Pick one. Delete: re-run with `-f delete_workspaces=true`. Keep: set `efs.retainOnClusterDown: true`, commit, run `cluster-up`, then `cluster-down` (the file system stays billed). Back up first: see [teardown.md](teardown.md#backing-up-workspaces-before-cluster-down). |
+| The same, plus `config/config.yaml sets efs.retainOnClusterDown: true, but the deployed stack still has DESTROY` | You turned retention on but haven't re-deployed. The removal policy is set at deploy time. | Run `cluster-up`, then `cluster-down` again. |
+| `Workspace pre-flight failed: ...` | The check couldn't read the Cluster stack template or list access points (for example `AccessDenied` or throttling), so it can't tell whether workspaces would be lost. | Read the error, fix it and re-run. If you're fine losing the workspaces either way, re-run with `delete_workspaces=true`. |
+
+**`Require workspace pre-flight proof` fails instead.** As with the pod pre-flight above, the guard exited 0 without writing `proceed=true`, so its `main()` likely never ran. Nothing was destroyed. Check that `npx tsx scripts/cluster-workspace-guard.ts` prints `Reading the EFS removal policy...` when run the same way as the workflow.
+
+The check counts access points only. Directories without one, for example after `pod-down -f keep_workspace=false`, aren't detected (see [teardown.md](teardown.md#the-workspace-check-in-cluster-down)).
 
 ## `cluster-up` fails with "log group already exists" or "Table already exists"
 
@@ -366,7 +382,7 @@ If your customization should *never* be overwritten, consider refactoring it to 
 
 ## EFS filesystem retained across `cluster-down` (#29)
 
-**Resolved by default in v0.2.0.** `ClusterStack` now provisions the EFS filesystem with `RemovalPolicy.DESTROY` (see [ADR 0007](adr/0007-efs-cluster-removal-policy.md)), so `cluster-down` tears it down with the cluster. To restore the v0.1.x retain behavior, set `efs.retainOnClusterDown: true` in `config/config.yaml` and re-deploy `cluster-up.yml` BEFORE running `cluster-down`.
+**Resolved by default in v0.2.0.** `ClusterStack` now provisions the EFS filesystem with `RemovalPolicy.DESTROY` (see [ADR 0007](adr/0007-efs-cluster-removal-policy.md)), so `cluster-down` tears it down with the cluster. To restore the v0.1.x retain behavior, set `efs.retainOnClusterDown: true` in `config/config.yaml` and re-deploy `cluster-up.yml` BEFORE running `cluster-down`. With retention off, `cluster-down` refuses to delete existing workspaces without `-f delete_workspaces=true` (see "cluster-down refuses: workspaces would be deleted").
 
 **Legacy fix (forks still on v0.1.x or with an EFS already orphaned):** use the maintainer cleanup script —
 

@@ -11,6 +11,8 @@ gh workflow run pod-list.yml
 gh workflow run cluster-down.yml -f confirm=destroy   # zero ongoing cost
 ```
 
+`cluster-down` deletes every pod workspace on EFS unless `efs.retainOnClusterDown` is true. With retention off and workspaces present it refuses until you add `-f delete_workspaces=true`. See [teardown.md](teardown.md#efs-retention).
+
 ## Pod and cluster runs
 
 `cluster-up` and `cluster-down` share one GitHub Actions concurrency group (`cloud-dev-pods-cluster-<owner>/<repo>`), so two cluster runs never overlap. A cluster run that starts while another holds the group waits as "Pending"; nothing already running is cancelled. GitHub keeps only **one** pending run per group, so a second cluster run dispatched while one is already waiting cancels the waiting one. Re-dispatch any cluster run that shows as cancelled.
@@ -71,7 +73,7 @@ The biggest fixed costs are:
 
 Pods themselves cost ~$0.014/hour on Fargate Spot (1 vCPU / 2 GB) while running. Idle reaper auto-stops pods after `idleMinutes`.
 
-To go to zero ongoing cost: `cluster-down`.
+To go to zero ongoing cost: `cluster-down`. It deletes the workspaces too, unless `efs.retainOnClusterDown` is true, in which case the retained file system keeps costing $0.30/GB-month.
 
 ## EFS performance for IDE I/O
 

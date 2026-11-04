@@ -269,6 +269,12 @@ If pods are still running, ask the user explicitly:
 
 Wait for confirmation. **Never** run `cluster-down -f confirm=destroy -f force=true` without explicit user agreement.
 
+`cluster-down` deletes the EFS file system and every pod workspace on it unless `efs.retainOnClusterDown: true` is deployed. Check `config/config.yaml` and tell the user before running it. With retention off and workspaces present, the workflow refuses ("cluster-down refuses: workspaces would be deleted" in `docs/troubleshooting.md`). Ask the user:
+
+> cluster-down will delete the workspaces of N pods. Delete them (`-f delete_workspaces=true`), keep them (set `efs.retainOnClusterDown: true`, commit, run `cluster-up`, then `cluster-down`; the file system stays billed), or back them up first (`docs/teardown.md`)?
+
+**Never** pass `delete_workspaces=true` without explicit user agreement.
+
 Before `pod-down`, confirm the pod name. If a tunnel pod is in use, mention the local VS Code session will disconnect.
 
 ## 6. Sync-upstream playbook
@@ -290,7 +296,7 @@ Fixed costs while the cluster is up (no pods running):
 
 Per running pod (1 vCPU / 2 GB Fargate Spot): ~$0.014/hour.
 
-If the user mentions they won't need pods for >1 day, suggest `cluster-down`. Re-running `cluster-up` later takes ~12 min.
+If the user mentions they won't need pods for >1 day, suggest `cluster-down`. Re-running `cluster-up` later takes ~12 min. Say in the same breath that `cluster-down` deletes their workspaces unless `efs.retainOnClusterDown` is true (then the file system stays, at $0.30/GB-month), and that with workspaces present it needs `-f delete_workspaces=true` (see §5).
 
 The idle reaper auto-stops browser pods after `idleMinutes` of zero ALB request count (default 60). Tunnel pods aren't idle-reaped.
 

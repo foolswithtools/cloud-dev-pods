@@ -256,6 +256,8 @@ gh run watch
 
 Ongoing AWS spend after this drops to ~$0.40/month (the three Secrets Manager secrets that are retained). Bootstrap (OIDC + IAM roles + ECR repos) is also retained so the next `cluster-up` is fast.
 
+`cluster-down` also deletes every pod workspace on EFS unless `efs.retainOnClusterDown: true` is deployed (then the file system stays, at $0.30/GB-month). With retention off and workspaces present, it refuses until you add `-f delete_workspaces=true`. See [teardown.md](teardown.md#efs-retention).
+
 ## What's next
 
 - **Customize the IaC** without losing upstream sync: [`extending.md`](extending.md).

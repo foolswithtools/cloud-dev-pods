@@ -15,7 +15,7 @@ Cloud-dev-pods provisions real AWS resources in your account. Most of the bill i
 
 Tunnel relay: free, capped. Tunnel pods' editor traffic goes through Microsoft's dev tunnels relay. Microsoft doesn't charge for the relay; it caps it instead, at 5 GB of bandwidth per account per month among other limits, with no paid tier and no SLA. See [Data path, limits and egress](delivery-modes.md#data-path-limits-and-egress). The pod reaches the relay through the NAT gateway, so tunnel bytes still pay NAT per-GB processing. The pod's own downloads (`git clone`, `npm install`) pay NAT processing too but don't count toward the relay cap.
 
-`cluster-down` removes everything except the bootstrap stack (OIDC + IAM + ECR + the three Secrets Manager secrets). Post-teardown ongoing spend drops to ~$0.40/month (the three secrets) plus any data sitting in EFS, which is also gone since EFS is part of `cluster-down`.
+`cluster-down` removes everything except the bootstrap stack (OIDC + IAM + ECR + the three Secrets Manager secrets). Post-teardown ongoing spend drops to ~$0.40/month (the three secrets). By default `cluster-down` also deletes the EFS file system and every pod workspace on it. With `efs.retainOnClusterDown: true` (asked by `npm run init`) it keeps the file system, and you keep paying $0.30/GB-month for it. See [Workspaces and `cluster-down`](#workspaces-and-cluster-down).
 
 ## Per-pod runtime cost
 
@@ -32,7 +32,7 @@ For the Spot rate variation across regions and the on-demand fallback rate (~3×
 | --- | --- |
 | < 4 hours | Leave up. Re-running `cluster-up` takes ~12 min. |
 | 4 hours – 1 day | Judgement call. ~$1–2 to leave up vs. ~12 min restart cost. |
-| > 1 day | `cluster-down`. Bootstrap state is retained, so the next `cluster-up` is fast. |
+| > 1 day | `cluster-down`. Bootstrap state is retained, so the next `cluster-up` is fast. **Workspaces are deleted unless `efs.retainOnClusterDown` is true** (see below). |
 
 ```bash
 gh workflow run cluster-down.yml -f confirm=destroy
@@ -40,6 +40,16 @@ gh run watch
 ```
 
 If pods are still running, the workflow will refuse unless you also pass `force=true`. Don't pass `force=true` without first running `pod-list.yml` and confirming what you'd be killing.
+
+### Workspaces and `cluster-down`
+
+`cluster-down` deletes the EFS file system, and every pod's `/workspace` with it, unless retention is on (`efs.retainOnClusterDown: true`, [ADR 0007](adr/0007-efs-cluster-removal-policy.md)). The workflow checks first: when retention is off and pod workspaces still exist, it stops before touching anything and tells you your options:
+
+- **Delete them on purpose:** `gh workflow run cluster-down.yml -f confirm=destroy -f delete_workspaces=true`.
+- **Keep them:** set `efs.retainOnClusterDown: true` in `config/config.yaml`, commit, run `cluster-up.yml` (it updates the removal policy), then run `cluster-down`. The retained file system keeps costing $0.30/GB-month until you delete it.
+- **Back them up first**, then delete. See [teardown.md](teardown.md#efs-retention).
+
+The check counts EFS access points, so it can't see workspace directories whose access point is already gone (for example after `pod-down -f keep_workspace=false`). Those are deleted without a prompt.
 
 ## Set up an AWS Budgets alarm (recommended)
 
@@ -153,7 +163,7 @@ Patterns that catch the common forget-to-tear-down footgun:
 
 - Run `gh workflow run pod-list.yml` at the end of each working day. It's free, and the output reminds you what's running.
 - Calendar a recurring "cluster check" Friday afternoon: `gh run list --workflow cluster-up.yml --limit 1` shows when you last brought it up.
-- Wire `cluster-down` into your end-of-day shutdown if you're not running pods overnight. The 12-minute `cluster-up` next morning is cheap insurance.
+- Wire `cluster-down` into your end-of-day shutdown if you're not running pods overnight. The 12-minute `cluster-up` next morning is cheap insurance. Turn on `efs.retainOnClusterDown` first if you want your workspaces back in the morning: without it, `cluster-down` deletes them (and refuses to, without `delete_workspaces=true`, while any exist).
 
 ## What gets retained after `cluster-down`
 
@@ -161,8 +171,9 @@ Intentional retentions (by `RemovalPolicy.RETAIN` in the CDK stacks):
 
 - **Bootstrap stack** (OIDC provider, IAM roles, ECR repos, the three OAuth secrets). Retained so the next `cluster-up` doesn't have to redo these — they're slow or annoying to recreate.
 - **ECR images** (no automatic delete on `cluster-down`).
+- **EFS file system and workspaces**, only when `efs.retainOnClusterDown: true`. Billed at $0.30/GB-month while retained.
 
-Everything else — VPC, NAT, ALB, EFS, ECS cluster, Lambdas, CloudWatch log groups (after Phase 15.5 fix), DynamoDB registry — is destroyed.
+Everything else — VPC, NAT, ALB, EFS (unless retained), ECS cluster, Lambdas, CloudWatch log groups (after Phase 15.5 fix), DynamoDB registry — is destroyed.
 
 If you want true zero-AWS-spend (no Secrets Manager $0.40 × 3 either), tear down the bootstrap stack manually:
 

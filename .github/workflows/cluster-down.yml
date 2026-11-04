@@ -23,6 +23,15 @@ name: cluster-down
 # prefix can't drain the pods and then destroy nothing. Stacks a fork adds
 # through infra/extensions.local.ts are not in this list; see
 # docs/teardown.md.
+#
+# Workspaces (#227): scripts/cluster-workspace-guard.ts (step id
+# `workspace_guard`) runs before the drain. When the deployed EFS removal
+# policy is DESTROY (efs.retainOnClusterDown: false, ADR 0007) and the file
+# system still has access points (pod workspaces), it refuses unless
+# `delete_workspaces=true`. It finds workspaces by access point only: a
+# directory left without one isn't visible without mounting the file
+# system. Same proceed=true proof as the drain. See "cluster-down refuses:
+# workspaces would be deleted" in docs/troubleshooting.md.
 
 on:
   workflow_dispatch:
@@ -33,6 +42,11 @@ on:
         type: string
       force:
         description: "Stop any running pods before destroying."
+        required: false
+        default: false
+        type: boolean
+      delete_workspaces:
+        description: "Delete the pod workspaces on EFS. Needed only when efs.retainOnClusterDown is false and workspaces exist."
         required: false
         default: false
         type: boolean
@@ -132,6 +146,31 @@ jobs:
         with:
           mode: wait
 
+      # Before the drain stops any pod, and after the lock so a pod-up can't
+      # add a workspace behind the check. Exits non-zero unless the EFS
+      # workspaces are retained, absent, or delete_workspaces=true. Writes
+      # proceed=true, efs_action and efs_id to $GITHUB_OUTPUT only when it
+      # is safe to destroy.
+      - name: Pre-flight — check EFS workspaces
+        id: workspace_guard
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
+          DELETE_WORKSPACES: ${{ inputs.delete_workspaces }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$DELETE_WORKSPACES" = "true" ]; then
+            args+=(--delete-workspaces)
+          fi
+          npx tsx scripts/cluster-workspace-guard.ts "${args[@]}"
+
+      - name: Require workspace pre-flight proof
+        if: steps.workspace_guard.outputs.proceed != 'true'
+        run: |
+          echo "::error::The workspace pre-flight exited 0 but did not write proceed=true, so it never confirmed the EFS workspaces are safe to destroy. Not destroying. See \"cluster-down refuses: workspaces would be deleted\" in docs/troubleshooting.md."
+          exit 1
+
       - name: Pre-flight — check and drain pods
         id: drain
         env:
@@ -158,7 +197,7 @@ jobs:
           exit 1
 
       - name: cdk destroy (everything except Bootstrap)
-        if: steps.drain.outputs.proceed == 'true'
+        if: steps.drain.outputs.proceed == 'true' && steps.workspace_guard.outputs.proceed == 'true'
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.yaml
@@ -170,13 +209,26 @@ jobs:
           npx cdk destroy "${stacks[@]}" --force
 
       - name: Summary
+        env:
+          EFS_ACTION: ${{ steps.workspace_guard.outputs.efs_action }}
+          EFS_ID: ${{ steps.workspace_guard.outputs.efs_id }}
         run: |
           {
             echo "## Cluster destroyed"
             echo ""
             echo "Bootstrap (OIDC + IAM roles + ECR repos) retained. Re-run \`cluster-up.yml\` to spin everything back up."
             echo ""
-            echo "EFS filesystem was destroyed alongside the cluster (RemovalPolicy.DESTROY is the v0.2.0 default — see ADR 0007). Any \`/workspace\` data is gone."
-            echo ""
-            echo "If you want the v0.1.x retain-on-cluster-down behavior, set \`efs.retainOnClusterDown: true\` in your \`config/config.yaml\` and re-deploy via \`cluster-up.yml\` BEFORE running \`cluster-down\`."
+            case "$EFS_ACTION" in
+              retain)
+                echo "**EFS: retained.** File system \`$EFS_ID\` and every \`/workspace\` on it were kept (\`efs.retainOnClusterDown: true\`, ADR 0007). Its storage is still billed (about \$0.30/GB-month) until you delete it. See docs/teardown.md."
+                ;;
+              destroy)
+                echo "**EFS: deleted.** File system \`${EFS_ID:-unknown}\` was destroyed with the cluster (removal policy DESTROY, ADR 0007). Any \`/workspace\` data on it is gone."
+                echo ""
+                echo "To keep workspaces next time, set \`efs.retainOnClusterDown: true\` in \`config/config.yaml\` and run \`cluster-up.yml\` BEFORE \`cluster-down\`."
+                ;;
+              *)
+                echo "**EFS: none.** The Cluster stack had no EFS file system left to delete."
+                ;;
+            esac
           } >> "$GITHUB_STEP_SUMMARY"
