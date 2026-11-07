@@ -8,7 +8,7 @@ cloud-dev-pods uses oauth2-proxy with a GitHub OAuth App to authenticate users b
 2. Fields:
    - **Application name**: `cloud-dev-pods` (or whatever you want).
    - **Homepage URL**: `https://github.com/<your>/cloud-dev-pods`.
-   - **Authorization callback URL**: `https://*.<your-base-domain>/oauth2/callback`. (Wildcard subdomain — supported by GitHub OAuth.)
+   - **Authorization callback URL**: `https://<pod-name>.<your-base-domain>/oauth2/callback`, for example `https://hello.pods.example.com/oauth2/callback`. GitHub OAuth Apps don't accept wildcard subdomains and take exactly one callback URL, so the app serves one pod hostname. Pick the pod name now and use it with `pod-up`. For more pods, see "OAuth App won't accept callback URL with wildcard" in `docs/troubleshooting.md`.
 3. Save. GitHub gives you a Client ID. Generate a Client Secret.
 
 ## Wire it into the repo

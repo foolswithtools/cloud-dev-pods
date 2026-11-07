@@ -1,7 +1,9 @@
 name: pod-down
 # Spin down one pod via pod-manager Lambda. EFS access point retained by
 # default (so subsequent `pod-up` with the same name reattaches the same
-# workspace) — pass keep_workspace=false to also delete it.
+# workspace). keep_workspace=false deletes the access point, so the next
+# `pod-up` starts empty, but the files stay on EFS as an orphaned directory
+# (see "Released workspaces" in docs/operating.md, and #196).
 
 on:
   workflow_dispatch:
