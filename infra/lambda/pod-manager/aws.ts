@@ -347,8 +347,7 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
     extraVolumes.push(...authParts.volumes);
   } else if (args.mode === 'ssh') {
     // Container contract shared with the runtime image (#181): name, port,
-    // log prefix and env names must change on both sides together. The log
-    // prefix must match the ssh task role's `ssh/*` log-stream policy.
+    // log prefix and env names must change on both sides together.
     if (!args.sshPublicKey) throw new Error('ssh task definition needs sshPublicKey');
     containerDefs.push({
       name: 'vscode-ssh',

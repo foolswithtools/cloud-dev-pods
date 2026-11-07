@@ -340,7 +340,7 @@ If missing, redeploy `cluster-up.yml`. If you customized via extensions, ensure 
 
 **Cause:** GitHub OAuth Apps don't support wildcard subdomains in the callback URL field. (GitHub *Apps* do — it's a different product.)
 
-**Fix:** for the smoke test or single-pod workflows, register the OAuth App with the specific pod hostname (`https://hello.pods.example.com/oauth2/callback`). For multi-pod, you need one OAuth App per pod, or migrate to a centralized oauth2-proxy with a single callback. Tracked as Phase 9.6+ polish.
+**Fix:** for the smoke test or single-pod workflows, register the OAuth App with the specific pod hostname (`https://hello.pods.example.com/oauth2/callback`). For multi-pod, you need one OAuth App per pod until the central auth host (one callback URL for every browser pod) ships; it's tracked in #144.
 
 ## `cdk bootstrap` missing
 
