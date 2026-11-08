@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ENTRA_GUID, ENTRA_ISSUER_HINT, parseEntraIssuer } from '../../lambda/pod-manager/entra-id';
 import { OIDC_ISSUER_HINT } from '../../lambda/pod-manager/oauth2-proxy';
+import { assertBrowserAuthRestricted } from '../../lambda/pod-manager/auth-guard';
 
 const stringList = z.array(z.string()).default([]);
 
@@ -17,6 +18,11 @@ export const AuthBrowserSchema = z
     // pod-manager (infra/lambda/pod-manager/owner-authz.ts).
     ownerOnly: z.boolean().default(false),
     adminUsers: stringList,
+    // Central auth host (#144, ADR 0009): one oauth2-proxy at
+    // auth.<baseDomain> completes every OAuth callback, so a single
+    // registered callback URL serves every browser pod. Opt-in; the
+    // preconditions are checked in resolveConfig (assertCentralAuthHostConfig).
+    centralAuthHost: z.boolean().default(false),
     // entra-id only: request User.Read so oauth2-proxy can read group
     // memberships from Microsoft Graph for users in more than 200 groups.
     entraGroupOverage: z.boolean().default(false),
@@ -275,7 +281,60 @@ export function resolveConfig(input: unknown): { config: Config; warnings: strin
   }
 
   const tunnel = raw.auth?.tunnel ?? AuthTunnelSchema.parse({});
-  return { config: { ...raw, auth: { browser, tunnel } }, warnings };
+  const config: Config = { ...raw, auth: { browser, tunnel } };
+  assertCentralAuthHostConfig(config);
+  return { config, warnings };
+}
+
+/**
+ * Synth guard for auth.browser.centralAuthHost (#144, ADR 0009 scope change
+ * 1). A no-op when it is off. Throws, listing every unmet precondition:
+ *
+ * - domain.strategy "byo": the shared cookie and the single callback need
+ *   https and a real domain.
+ * - auth.browser.ownerOnly true: the shared cookie secret is only safe with
+ *   a per-request owner check in every pod sidecar.
+ * - auth.browser.adminUsers empty: an admin's shared cookie, captured on any
+ *   pod, would open every other pod.
+ * - a deployment-wide sign-in restriction on the central host's effective
+ *   settings ({ ...browser, ownerOnly: false }). auth-guard counts ownerOnly
+ *   as a restriction, so on the raw config this check would always pass.
+ */
+// The restrictions auth-guard.ts counts for each provider, minus ownerOnly.
+const CENTRAL_HOST_RESTRICTIONS: Record<AuthBrowser['provider'], string> = {
+  github: 'auth.browser.allowedOrg or auth.browser.allowedUsers',
+  'entra-id': 'auth.browser.allowedTenants, auth.browser.allowedGroups or auth.browser.allowedEmailDomains',
+  oidc: 'auth.browser.allowedGroups or auth.browser.allowedEmailDomains',
+};
+
+export function assertCentralAuthHostConfig(config: Config): void {
+  const browser = config.auth.browser;
+  if (!browser.centralAuthHost) return;
+  const problems: string[] = [];
+  if (config.domain.strategy !== 'byo') {
+    problems.push(`domain.strategy must be "byo" (got "${config.domain.strategy}")`);
+  }
+  if (!browser.ownerOnly) {
+    problems.push('auth.browser.ownerOnly must be true: the shared session cookie is only safe with the per-request owner check');
+  }
+  if (browser.adminUsers.length > 0) {
+    problems.push(
+      'auth.browser.adminUsers must be empty: an admin\'s shared cookie captured on one pod would open every other pod (break-glass: recreate the pod with a new owner and a fresh workspace, or turn centralAuthHost off)',
+    );
+  }
+  if (!assertBrowserAuthRestricted({ ...browser, ownerOnly: false }).ok) {
+    problems.push(
+      `provider "${browser.provider}" has no deployment-wide sign-in restriction for the central auth host ` +
+        `(set ${CENTRAL_HOST_RESTRICTIONS[browser.provider]}; ownerOnly does not count, because auth.<baseDomain> ` +
+        'has no owner, and allowedEmailDomains: ["*"] or the personal Microsoft account tenant cancel a restriction)',
+    );
+  }
+  if (problems.length === 0) return;
+  throw new Error(
+    `auth.browser.centralAuthHost is true, but: ${problems.join('; ')}. ` +
+      'Also, domain.baseDomain must hold only cloud-dev-pods records (auth.<baseDomain> and the pod hosts): ' +
+      'the shared session cookie is sent to every host under it. See docs/adr/0009-central-auth-host.md (ADR 0009).',
+  );
 }
 
 function splitCsv(value: string | undefined): string[] {
