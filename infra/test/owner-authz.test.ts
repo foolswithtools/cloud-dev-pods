@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContainerDefinition } from '@aws-sdk/client-ecs';
 import {
+  CENTRAL_AUTH_COOKIE_NAME,
+  buildCentralAuthHostContainer,
   buildOauth2ProxyContainer,
   type Oauth2ProxyAuthConfig,
   type Oauth2ProxyOptions,
@@ -15,11 +18,13 @@ import {
   OWNER_AUTHZ_DIR,
   OWNER_AUTHZ_EMAILS_PATH,
   OWNER_AUTHZ_INIT_CONTAINER,
+  OWNER_AUTHZ_TEMPLATES_DIR,
   OWNER_AUTHZ_VOLUME,
   buildBrowserAuthTaskParts,
   buildOwnerAuthorization,
   validateOwnerAuthorization,
 } from '../lambda/pod-manager/owner-authz';
+import { SIGN_IN_RD_SCRIPT, SIGN_IN_STOCK_SHA256, SIGN_IN_TEMPLATE } from '../lambda/pod-manager/sign-in-template';
 
 const secretArns: Oauth2ProxySecretArns = {
   clientId: 'arn:aws:secretsmanager:us-west-2:123456789012:secret:/cloud-dev-pods/oauth/client-id-AbCdEf',
@@ -470,5 +475,362 @@ describe('registerTaskDef with owner authorization', () => {
     expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
     expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
     expect(input.volumes.map((v) => v.name)).toEqual(['workspace', OWNER_AUTHZ_VOLUME]);
+  });
+});
+
+// ---- Central auth host (#144, ADR 0009 scope changes 2, 3, 5 and 6) ----
+
+const BASE = 'pods.example.com';
+const ENTRA_ISSUER = 'https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0';
+const centralOpts = { ...opts, initImage, baseDomain: BASE };
+
+// One deployment per provider, as the synth guard would accept it.
+const CENTRAL_DEPLOYMENTS = {
+  github: { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice', 'bob'] },
+  'entra-id': {
+    provider: 'entra-id',
+    issuerUrl: ENTRA_ISSUER,
+    allowedUsers: [],
+    allowedGroups: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'],
+    allowedEmailDomains: ['example.com'],
+  },
+  oidc: { provider: 'oidc', issuerUrl: 'https://acme.okta.com', allowedUsers: [], allowedEmailDomains: ['example.com'] },
+} as const satisfies Record<string, Oauth2ProxyAuthConfig>;
+
+const OWNER = 'Carol@Example.com';
+const centralAuth = (provider: keyof typeof CENTRAL_DEPLOYMENTS) => ({
+  ...CENTRAL_DEPLOYMENTS[provider],
+  ownerOnly: true,
+  adminUsers: [] as string[],
+  centralAuthHost: true,
+});
+const centralParts = (provider: keyof typeof CENTRAL_DEPLOYMENTS) =>
+  buildBrowserAuthTaskParts(centralAuth(provider), OWNER, secretArns, centralOpts);
+const initOf = (parts: { containers: ContainerDefinition[] }) =>
+  parts.containers.find((c) => c.name === OWNER_AUTHZ_INIT_CONTAINER)!;
+
+// ADR 0009 item 5: settings that let a request past the per-request owner
+// check, forward a token to the owner's code, or bypass the sign-in template.
+const FORBIDDEN_SIDECAR_ENV = [
+  'OAUTH2_PROXY_PASS_ACCESS_TOKEN',
+  'OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS',
+  'OAUTH2_PROXY_HTPASSWD_FILE',
+  'OAUTH2_PROXY_SKIP_AUTH_ROUTES',
+  'OAUTH2_PROXY_SKIP_AUTH_REGEX',
+  'OAUTH2_PROXY_TRUSTED_IPS',
+  'OAUTH2_PROXY_SKIP_AUTH_PREFLIGHT',
+  'OAUTH2_PROXY_SKIP_PROVIDER_BUTTON',
+];
+
+describe.each(['github', 'entra-id', 'oidc'] as const)('centralAuthHost sidecar (%s)', (provider) => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('checks the owner per request through the emails file, with no EMAIL_DOMAINS', () => {
+    const sidecar = sidecarOf(centralParts(provider));
+    const env = envMap(sidecar.environment);
+    expect(env.OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE).toBe(OWNER_AUTHZ_EMAILS_PATH);
+    // Any EMAIL_DOMAINS (for github: "*", which admits every email) ORs with
+    // the emails file and would cancel the owner check.
+    expect((sidecar.environment ?? []).map((e) => e.name)).not.toContain('OAUTH2_PROXY_EMAIL_DOMAINS');
+    expect(sidecar.mountPoints).toEqual([{ sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: true }]);
+  });
+
+  it('writes the lowercased owner as the only emails-file entry', () => {
+    const dir = runInit(initOf(centralParts(provider)));
+    dirs.push(dir);
+    expect(readFileSync(join(dir, 'emails.txt'), 'utf8')).toBe('carol@example.com\n');
+  });
+
+  it('keeps the shared cookie secret: no per-task secret file is written or mounted', () => {
+    const parts = centralParts(provider);
+    const sidecar = sidecarOf(parts);
+    expect(sidecar.secrets).toContainEqual({ name: 'OAUTH2_PROXY_COOKIE_SECRET', valueFrom: secretArns.cookieSecret });
+    expect(envMap(sidecar.environment)).not.toHaveProperty('OAUTH2_PROXY_COOKIE_SECRET_FILE');
+    expect(initOf(parts).command![0]).not.toContain('cookie-secret');
+    const dir = runInit(initOf(parts));
+    dirs.push(dir);
+    expect(existsSync(join(dir, 'cookie-secret'))).toBe(false);
+  });
+
+  it('sets none of the forbidden settings', () => {
+    for (const c of centralParts(provider).containers) {
+      const names = (c.environment ?? []).map((e) => e.name);
+      for (const f of FORBIDDEN_SIDECAR_ENV) expect(names, `${c.name}: ${f}`).not.toContain(f);
+    }
+  });
+
+  it('points CUSTOM_TEMPLATES_DIR at the rd-rewriting sign_in.html the init container writes', () => {
+    const parts = centralParts(provider);
+    expect(envMap(sidecarOf(parts).environment).OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR).toBe(OWNER_AUTHZ_TEMPLATES_DIR);
+    const dir = runInit(initOf(parts));
+    dirs.push(dir);
+    const html = readFileSync(join(dir, OWNER_AUTHZ_TEMPLATES_DIR.slice(OWNER_AUTHZ_DIR.length), 'sign_in.html'), 'utf8');
+    expect(html).toBe(SIGN_IN_TEMPLATE);
+    expect(html).toContain('new URL(');
+  });
+
+  it('shares cookie name, cookie domains, CSRF-per-request and cookie-secret ARN with the central host', () => {
+    const sidecar = sidecarOf(centralParts(provider));
+    const host = buildCentralAuthHostContainer(CENTRAL_DEPLOYMENTS[provider], secretArns, {
+      baseDomain: BASE,
+      logGroupName: '/cloud-dev-pods/dev/cluster',
+      region: 'us-west-2',
+    });
+    const shared = (c: ContainerDefinition) => {
+      const env = envMap(c.environment);
+      return {
+        cookieName: env.OAUTH2_PROXY_COOKIE_NAME,
+        cookieDomains: env.OAUTH2_PROXY_COOKIE_DOMAINS,
+        csrfPerRequest: env.OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST,
+        redirectUrl: env.OAUTH2_PROXY_REDIRECT_URL,
+        whitelist: env.OAUTH2_PROXY_WHITELIST_DOMAINS,
+        cookieSecret: c.secrets?.find((x) => x.name === 'OAUTH2_PROXY_COOKIE_SECRET')?.valueFrom,
+        cookieSecretFile: env.OAUTH2_PROXY_COOKIE_SECRET_FILE,
+      };
+    };
+    expect(shared(sidecar)).toEqual(shared(host));
+    expect(shared(sidecar)).toEqual({
+      cookieName: CENTRAL_AUTH_COOKIE_NAME,
+      cookieDomains: `.${BASE}`,
+      csrfPerRequest: 'true',
+      redirectUrl: `https://auth.${BASE}/oauth2/callback`,
+      whitelist: `.${BASE}`,
+      cookieSecret: secretArns.cookieSecret,
+      cookieSecretFile: undefined,
+    });
+  });
+});
+
+describe('centralAuthHost github sidecar', () => {
+  it('keeps GITHUB_ORG / GITHUB_USERS at the deployment-wide values, never the owner, and the org as ALLOWED_GROUPS', () => {
+    const env = envMap(sidecarOf(centralParts('github')).environment);
+    expect(env.OAUTH2_PROXY_GITHUB_ORG).toBe('acme');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('alice,bob');
+    expect(env.OAUTH2_PROXY_ALLOWED_GROUPS).toBe('acme');
+    for (const v of [env.OAUTH2_PROXY_GITHUB_ORG, env.OAUTH2_PROXY_GITHUB_USERS]) {
+      expect(v!.toLowerCase()).not.toContain('carol');
+    }
+  });
+
+  it('fails if EMAIL_DOMAINS=* survives', () => {
+    const env = sidecarOf(centralParts('github')).environment ?? [];
+    expect(env.filter((e) => e.name === 'OAUTH2_PROXY_EMAIL_DOMAINS' && e.value === '*')).toEqual([]);
+  });
+
+  it('with only allowedUsers: no ALLOWED_GROUPS and GITHUB_USERS stays deployment-wide', () => {
+    const parts = buildBrowserAuthTaskParts(
+      { provider: 'github', allowedUsers: ['alice'], ownerOnly: true, adminUsers: [], centralAuthHost: true },
+      'carol@example.com',
+      secretArns,
+      centralOpts,
+    );
+    const env = envMap(sidecarOf(parts).environment);
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('alice');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_ALLOWED_GROUPS');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_GITHUB_ORG');
+  });
+});
+
+describe('centralAuthHost fails closed', () => {
+  it('refuses to build a sidecar with ownerOnly off', () => {
+    expect(() =>
+      buildBrowserAuthTaskParts({ ...centralAuth('github'), ownerOnly: false }, OWNER, secretArns, centralOpts),
+    ).toThrow(/ownerOnly/);
+  });
+
+  it('refuses to build a sidecar without a baseDomain', () => {
+    expect(() => buildBrowserAuthTaskParts(centralAuth('oidc'), OWNER, secretArns, { ...centralOpts, baseDomain: '' })).toThrow(
+      /baseDomain/,
+    );
+  });
+
+  it('ignores a centralAuthHost option passed without auth.centralAuthHost', () => {
+    const parts = buildBrowserAuthTaskParts(
+      { provider: 'github', allowedOrg: 'acme', allowedUsers: [], ownerOnly: false, adminUsers: [] },
+      'carol',
+      secretArns,
+      { ...centralOpts, centralAuthHost: { baseDomain: BASE } },
+    );
+    const env = envMap(sidecarOf(parts).environment);
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_COOKIE_DOMAINS');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_COOKIE_NAME');
+  });
+
+  it('refuses to build a sidecar with adminUsers', () => {
+    expect(() =>
+      buildBrowserAuthTaskParts({ ...centralAuth('oidc'), adminUsers: ['ops@example.com'] }, OWNER, secretArns, centralOpts),
+    ).toThrow(/adminUsers/);
+  });
+});
+
+describe('sign_in.html', () => {
+  it('is the stock v7.15.5 template plus exactly the #256 rd script', () => {
+    expect(SIGN_IN_TEMPLATE.split(SIGN_IN_RD_SCRIPT)).toHaveLength(2);
+    const stock = SIGN_IN_TEMPLATE.replace(SIGN_IN_RD_SCRIPT, '');
+    expect(createHash('sha256').update(stock).digest('hex')).toBe(SIGN_IN_STOCK_SHA256);
+    expect(SIGN_IN_RD_SCRIPT).toContain("new URL(inputs[i].value || '/', window.location.href).href");
+    // Inserted right after the stock hash-preserving script.
+    expect(SIGN_IN_TEMPLATE).toContain(`inputs[i].value += window.location.hash;\n        }\n      })();\n    }\n  </script>\n${SIGN_IN_RD_SCRIPT}`);
+  });
+});
+
+describe('validateOwnerAuthorization with centralAuthHost', () => {
+  const github = { ...centralAuth('github') };
+
+  it('github accepts an email owner', () => {
+    expect(validateOwnerAuthorization(github, 'carol@example.com')).toEqual({ ok: true });
+  });
+
+  it('github refuses a login, asking for an explicit verified primary GitHub email owner=', () => {
+    const r = validateOwnerAuthorization(github, 'carol');
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.message).toContain('verified primary GitHub email');
+    expect(r.message).toContain('owner=');
+  });
+
+  it('github refuses a missing owner with the same hint', () => {
+    const r = validateOwnerAuthorization(github, undefined);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain('verified primary GitHub email');
+  });
+
+  it('github skips the login-based allowedUsers check and ignores allowedEmailDomains', () => {
+    expect(validateOwnerAuthorization({ ...github, allowedUsers: ['alice'] }, 'carol@example.com')).toEqual({ ok: true });
+    expect(
+      validateOwnerAuthorization({ ...github, allowedEmailDomains: ['other.org'] }, 'carol@example.com'),
+    ).toEqual({ ok: true });
+  });
+
+  it('entra-id / oidc still check allowedEmailDomains', () => {
+    expect(validateOwnerAuthorization(centralAuth('oidc'), 'carol@other.org').ok).toBe(false);
+    expect(validateOwnerAuthorization(centralAuth('entra-id'), 'carol@example.com')).toEqual({ ok: true });
+  });
+
+  it('refuses any adminUsers', () => {
+    const r = validateOwnerAuthorization({ ...centralAuth('oidc'), adminUsers: ['ops@example.com'] }, 'carol@example.com');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain('adminUsers');
+  });
+
+  it('without centralAuthHost, github still wants a login', () => {
+    expect(validateOwnerAuthorization({ ...github, centralAuthHost: false }, 'carol@example.com').ok).toBe(false);
+    expect(validateOwnerAuthorization({ ...github, centralAuthHost: false, allowedUsers: [] }, 'carol')).toEqual({ ok: true });
+  });
+});
+
+describe('centralAuthHost off is unchanged', () => {
+  it.each(['github', 'entra-id', 'oidc'] as const)('%s: centralAuthHost false equals the field absent', (provider) => {
+    const { centralAuthHost: _c, ...withoutField } = centralAuth(provider);
+    const owner = provider === 'github' ? 'carol' : 'carol@example.com';
+    expect(buildBrowserAuthTaskParts({ ...withoutField, centralAuthHost: false }, owner, secretArns, centralOpts)).toEqual(
+      buildBrowserAuthTaskParts(withoutField, owner, secretArns, { ...opts, initImage }),
+    );
+  });
+});
+
+// The registered browser task definition (ADR 0009 item 5 and scope change 6).
+describe('registerTaskDef with centralAuthHost', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    for (const [k, v] of Object.entries({
+      AWS_REGION: 'us-west-2',
+      AWS_ACCOUNT_ID: '123456789012',
+      REGISTRY_TABLE_NAME: 't',
+      CLUSTER_NAME: 'c',
+      EFS_FILESYSTEM_ID: 'fs-x',
+      ALB_LISTENER_ARN: 'arn:aws:elbv2:us-west-2:123456789012:listener/x',
+      ALB_LISTENER_PROTOCOL: 'HTTPS',
+      ALB_DNS_NAME: 'alb.example.com',
+      BROWSER_TASK_DEF_FAMILY: 'cloud-dev-pods-browser',
+      TUNNEL_TASK_DEF_FAMILY: 'cloud-dev-pods-tunnel',
+      BROWSER_TASK_ROLE_ARN: 'arn:aws:iam::123456789012:role/B',
+      TUNNEL_TASK_ROLE_ARN: 'arn:aws:iam::123456789012:role/T',
+      SSH_TASK_DEF_FAMILY: 'cloud-dev-pods-ssh',
+      SSH_TASK_ROLE_ARN: 'arn:aws:iam::123456789012:role/S',
+      SSH_EXECUTION_ROLE_ARN: 'arn:aws:iam::123456789012:role/SE',
+      EXECUTION_ROLE_ARN: 'arn:aws:iam::123456789012:role/E',
+      PODS_LOG_GROUP_NAME: '/cloud-dev-pods/dev/pods',
+      VPC_ID: 'vpc-x',
+      PRIVATE_SUBNET_IDS: 'subnet-1',
+      TASKS_SECURITY_GROUP_ID: 'sg-x',
+      BROWSER_REPO_URI: 'r/b',
+      TUNNEL_REPO_URI: 'r/t',
+      BROWSER_REPO_NAME: 'b',
+      TUNNEL_REPO_NAME: 't',
+      BASE_DOMAIN: BASE,
+      DOMAIN_STRATEGY: 'byo',
+      AUTH_BROWSER_PROVIDER: 'github',
+      AUTH_BROWSER_ALLOWED_ORG: 'acme',
+      AUTH_BROWSER_OWNER_ONLY: 'true',
+    })) vi.stubEnv(k, v);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  type Def = ContainerDefinition & { name: string };
+  async function register(mode: 'browser' | 'tunnel' = 'browser', owner = 'carol@example.com') {
+    const { ECSClient } = await import('@aws-sdk/client-ecs');
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
+    const sent: { input: unknown }[] = [];
+    vi.spyOn(ECSClient.prototype, 'send').mockImplementation(async (cmd: unknown) => {
+      sent.push(cmd as { input: unknown });
+      return { taskDefinition: { taskDefinitionArn: 'arn:td:1' } } as never;
+    });
+    vi.spyOn(SecretsManagerClient.prototype, 'send').mockImplementation(async (cmd: unknown) => {
+      const key = (cmd as { input: { SecretId: string } }).input.SecretId.split('/').pop()!;
+      const arns: Record<string, string> = {
+        'client-id': secretArns.clientId,
+        'client-secret': secretArns.clientSecret,
+        'cookie-secret': secretArns.cookieSecret,
+      };
+      return { ARN: arns[key] } as never;
+    });
+    const { registerTaskDef } = await import('../lambda/pod-manager/aws');
+    await registerTaskDef({
+      family: `cloud-dev-pods-${mode}`,
+      imageUri: 'r/b:abc',
+      accessPointId: 'fsap-1',
+      podName: 'hello',
+      cpu: '1024',
+      memory: '2048',
+      mode,
+      owner,
+    });
+    return sent[0]!.input as { containerDefinitions: Def[]; pidMode?: string };
+  }
+
+  it('drops NET_RAW from the vscode container and sets no pidMode', async () => {
+    vi.stubEnv('AUTH_BROWSER_CENTRAL_AUTH_HOST', 'true');
+    const input = await register();
+    const vscode = input.containerDefinitions.find((c) => c.name === 'vscode')!;
+    const drop = vscode.linuxParameters?.capabilities?.drop ?? [];
+    expect(drop.includes('NET_RAW') || drop.includes('ALL')).toBe(true);
+    expect(input).not.toHaveProperty('pidMode');
+  });
+
+  it('wires the central-host sidecar: shared cookie, emails file, sign-in template', async () => {
+    vi.stubEnv('AUTH_BROWSER_CENTRAL_AUTH_HOST', 'true');
+    const input = await register();
+    expect(input.containerDefinitions.map((c) => c.name)).toEqual(['vscode', OWNER_AUTHZ_INIT_CONTAINER, 'oauth2-proxy']);
+    const sidecar = input.containerDefinitions[2]!;
+    const env = envMap(sidecar.environment);
+    expect(env.OAUTH2_PROXY_REDIRECT_URL).toBe(`https://auth.${BASE}/oauth2/callback`);
+    expect(env.OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE).toBe(OWNER_AUTHZ_EMAILS_PATH);
+    expect(env.OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR).toBe(OWNER_AUTHZ_TEMPLATES_DIR);
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_EMAIL_DOMAINS');
+    expect(sidecar.secrets?.map((x) => x.name)).toContain('OAUTH2_PROXY_COOKIE_SECRET');
+  });
+
+  it('leaves the vscode container alone when centralAuthHost is off', async () => {
+    const input = await register('browser', 'carol');
+    const vscode = input.containerDefinitions.find((c) => c.name === 'vscode')!;
+    expect(vscode).not.toHaveProperty('linuxParameters');
   });
 });

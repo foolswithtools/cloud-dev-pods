@@ -25,5 +25,8 @@ export function authLambdaEnvironment(config: Config): Record<string, string> {
     AUTH_BROWSER_INSECURE_ALLOW_UNVERIFIED_EMAIL:
       browser.insecureAllowUnverifiedEmail === undefined ? '' : String(browser.insecureAllowUnverifiedEmail),
     AUTH_TUNNEL_PROVIDER: tunnel.provider,
+    // Only when on (#144): read by env.ts as === 'true', and omitting it
+    // keeps the default PodManager template unchanged.
+    ...(browser.centralAuthHost ? { AUTH_BROWSER_CENTRAL_AUTH_HOST: 'true' } : {}),
   };
 }

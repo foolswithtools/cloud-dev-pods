@@ -114,11 +114,57 @@ export interface Oauth2ProxySecretArns {
   cookieSecret: string;
 }
 
+// Central auth host (#144, ADR 0009). These settings must be identical on
+// the central host and on every pod sidecar: the sidecar sets the CSRF cookie
+// when it starts a login and the central host reads it at the callback.
+export interface CentralAuthHostOptions {
+  baseDomain: string;
+  // Pod sidecars only: the directory holding the sign_in.html that sends an
+  // absolute rd (sign-in-template.ts). The central host never starts a login.
+  customTemplatesDir?: string;
+}
+
+// The pod name handler.ts reserves for it, and the cookie name both sides
+// use. Not the default _oauth2_proxy: browsers still hold host-only
+// _oauth2_proxy cookies from per-pod sign-in, and oauth2-proxy would read
+// one, fail to decode it and loop (ADR 0009 scope change 4).
+export const CENTRAL_AUTH_HOST_LABEL = 'auth';
+export const CENTRAL_AUTH_COOKIE_NAME = '_cdp_central';
+
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+
+export function centralAuthHostName(baseDomain: string): string {
+  return `${CENTRAL_AUTH_HOST_LABEL}.${baseDomain}`;
+}
+
+function centralAuthEnvironment(central: CentralAuthHostOptions): EnvVar[] {
+  // A malformed domain would widen the cookie domain or the redirect
+  // whitelist, so refuse it rather than emit it.
+  if (!HOSTNAME.test(central.baseDomain)) {
+    throw new Error(`oauth2-proxy central auth host: baseDomain must be a hostname such as pods.example.com; got "${central.baseDomain}".`);
+  }
+  const parent = `.${central.baseDomain}`;
+  return [
+    { name: 'OAUTH2_PROXY_REDIRECT_URL', value: `https://${centralAuthHostName(central.baseDomain)}/oauth2/callback` },
+    { name: 'OAUTH2_PROXY_COOKIE_NAME', value: CENTRAL_AUTH_COOKIE_NAME },
+    { name: 'OAUTH2_PROXY_COOKIE_DOMAINS', value: parent },
+    { name: 'OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST', value: 'true' },
+    // Load-bearing on the sidecar too: it is the first check on the rd the
+    // sign-in template sends (#256 Q4).
+    { name: 'OAUTH2_PROXY_WHITELIST_DOMAINS', value: parent },
+    ...(central.customTemplatesDir
+      ? [{ name: 'OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR', value: central.customTemplatesDir }]
+      : []),
+  ];
+}
+
 export interface Oauth2ProxyOptions {
   podName: string;
   listenerProtocol: 'HTTP' | 'HTTPS';
   logGroupName: string;
   region: string;
+  // Set on pod sidecars when auth.browser.centralAuthHost is on.
+  centralAuthHost?: CentralAuthHostOptions;
 }
 
 export function buildOauth2ProxyContainer(
@@ -127,6 +173,7 @@ export function buildOauth2ProxyContainer(
   opts: Oauth2ProxyOptions,
 ): ContainerDefinition {
   const providerEnv = providerEnvironment(auth);
+  const centralEnv = opts.centralAuthHost ? centralAuthEnvironment(opts.centralAuthHost) : [];
   return {
     name: 'oauth2-proxy',
     image: OAUTH2_PROXY_IMAGE,
@@ -148,6 +195,7 @@ export function buildOauth2ProxyContainer(
       { name: 'OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER', value: 'true' },
       { name: 'OAUTH2_PROXY_COOKIE_SECURE', value: opts.listenerProtocol === 'HTTPS' ? 'true' : 'false' },
       ...providerEnv,
+      ...centralEnv,
     ],
     secrets: [
       { name: 'OAUTH2_PROXY_CLIENT_ID', valueFrom: secretArns.clientId },
@@ -155,5 +203,46 @@ export function buildOauth2ProxyContainer(
       { name: 'OAUTH2_PROXY_COOKIE_SECRET', valueFrom: secretArns.cookieSecret },
     ],
     dependsOn: [{ containerName: 'vscode', condition: 'HEALTHY' }],
+  };
+}
+
+export interface CentralAuthHostContainerOptions {
+  baseDomain: string;
+  logGroupName: string;
+  region: string;
+}
+
+/**
+ * The oauth2-proxy container of the central auth host (#144, ADR 0009 item
+ * 4): the pod sidecar built with ownerOnly off, so it enforces the
+ * deployment-wide allowlist, plus the shared central-host settings. It
+ * proxies to nothing (static 202), waits for no vscode container and logs
+ * without a pod name. Always HTTPS: centralAuthHost requires strategy byo.
+ */
+export function buildCentralAuthHostContainer(
+  auth: Oauth2ProxyAuthConfig,
+  secretArns: Oauth2ProxySecretArns,
+  opts: CentralAuthHostContainerOptions,
+): ContainerDefinition {
+  const { dependsOn: _dependsOn, ...base } = buildOauth2ProxyContainer(auth, secretArns, {
+    podName: CENTRAL_AUTH_HOST_LABEL,
+    listenerProtocol: 'HTTPS',
+    logGroupName: opts.logGroupName,
+    region: opts.region,
+    centralAuthHost: { baseDomain: opts.baseDomain },
+  });
+  return {
+    ...base,
+    logConfiguration: {
+      logDriver: 'awslogs',
+      options: {
+        'awslogs-group': opts.logGroupName,
+        'awslogs-region': opts.region,
+        'awslogs-stream-prefix': 'central-auth-host/oauth2-proxy',
+      },
+    },
+    environment: (base.environment ?? []).map((e) =>
+      e.name === 'OAUTH2_PROXY_UPSTREAMS' ? { ...e, value: 'static://202' } : e,
+    ),
   };
 }

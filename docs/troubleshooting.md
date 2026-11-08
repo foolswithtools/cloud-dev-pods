@@ -116,7 +116,7 @@ The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys still 
 
 ## Entra sign-in fails with `AADSTS50011: The redirect URI ... does not match`
 
-**Cause:** the pod's callback URL is not registered on the Entra app registration. Each browser pod has its own redirect URI, `https://<pod>.<base-domain>/oauth2/callback`, and Entra compares it exactly (scheme, host, path, case).
+**Cause:** the pod's callback URL is not registered on the Entra app registration. Each browser pod has its own redirect URI, `https://<pod>.<base-domain>/oauth2/callback`, and Entra compares it exactly (scheme, host, path, case). With `auth.browser.centralAuthHost: true` there is one redirect URI for every pod, `https://auth.<base-domain>/oauth2/callback`; register that one instead.
 
 **Fix:** copy the **OAuth redirect URI** from the `pod-up` workflow summary and add it under the app registration's **Authentication > Platform configurations > Web > Redirect URIs**. It must be a **Web** platform URI (not SPA or public client) and use `https`. An app holds at most 256 redirect URIs (100 if it also signs in personal Microsoft accounts); remove URIs of pods you no longer use. See [The redirect URI ceiling](setup-entra.md#the-redirect-uri-ceiling).
 
@@ -346,7 +346,7 @@ If missing, redeploy `cluster-up.yml`. If you customized via extensions, ensure 
 
 **Cause:** GitHub OAuth Apps don't support wildcard subdomains in the callback URL field. (GitHub *Apps* do — it's a different product.)
 
-**Fix:** for the smoke test or single-pod workflows, register the OAuth App with the specific pod hostname (`https://hello.pods.example.com/oauth2/callback`). For multi-pod, you need one OAuth App per pod until the central auth host (one callback URL for every browser pod) ships; it's tracked in #144.
+**Fix:** for the smoke test or single-pod workflows, register the OAuth App with the specific pod hostname (`https://hello.pods.example.com/oauth2/callback`). For multi-pod, either register one OAuth App per pod, or turn on the central auth host (`auth.browser.centralAuthHost: true`) and register the single callback `https://auth.<base-domain>/oauth2/callback`; see [Central auth host](choosing-auth-and-access.md#central-auth-host).
 
 ## `cdk bootstrap` missing
 

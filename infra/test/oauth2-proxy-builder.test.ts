@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CENTRAL_AUTH_COOKIE_NAME,
   OAUTH2_PROXY_IMAGE,
   OAUTH2_PROXY_VERSION,
+  buildCentralAuthHostContainer,
   buildOauth2ProxyContainer,
   type Oauth2ProxyAuthConfig,
   type Oauth2ProxyOptions,
@@ -63,6 +65,9 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
         'authenticated_emails_file', 'client_id', 'client_secret', 'cookie_secret',
         'oidc_issuer_url', 'entra_id_allowed_tenants', 'scope', 'insecure_oidc_skip_issuer_verification',
         'oidc_groups_claim', 'insecure_oidc_allow_unverified_email',
+        // Central auth host (#144).
+        'redirect_url', 'cookie_domains', 'whitelist_domains', 'cookie_name', 'cookie_csrf_per_request',
+        'custom_templates_dir',
       ].map((n) => `OAUTH2_PROXY_${n.toUpperCase()}`),
     );
     const github = buildOauth2ProxyContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] }, secretArns, opts);
@@ -93,7 +98,18 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
       secretArns,
       opts,
     );
-    for (const c of [github, entra, oidc]) for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
+    const central = { baseDomain: 'pods.example.com', customTemplatesDir: '/authz/templates' };
+    const githubCentral = buildOauth2ProxyContainer(
+      { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] },
+      secretArns,
+      { ...opts, centralAuthHost: central },
+    );
+    const host = buildCentralAuthHostContainer({ provider: 'github', allowedOrg: 'acme', allowedUsers: [] }, secretArns, {
+      baseDomain: 'pods.example.com',
+      logGroupName: '/cloud-dev-pods/dev/cluster',
+      region: 'us-west-2',
+    });
+    for (const c of [github, entra, oidc, githubCentral, host]) for (const name of [...(c.environment ?? []), ...(c.secrets ?? [])].map((e) => e.name!)) {
       expect(known.has(name), name).toBe(true);
     }
   });
@@ -154,6 +170,91 @@ describe('buildOauth2ProxyContainer (github provider)', () => {
       ],
       dependsOn: [{ containerName: 'vscode', condition: 'HEALTHY' }],
     });
+  });
+});
+
+// Central auth host (#144, ADR 0009 items 4 and 5): settings the central host
+// and every pod sidecar must share, or the callback can't find the CSRF cookie.
+describe('buildOauth2ProxyContainer with centralAuthHost', () => {
+  const github: Oauth2ProxyAuthConfig = { provider: 'github', allowedOrg: 'acme', allowedUsers: [] };
+  const central = (customTemplatesDir?: string) => ({
+    ...opts,
+    centralAuthHost: { baseDomain: 'pods.example.com', ...(customTemplatesDir ? { customTemplatesDir } : {}) },
+  });
+
+  it('emits the redirect, cookie-domain, whitelist, cookie-name and CSRF-per-request flags', () => {
+    const env = envOf(github, central());
+    expect(env.OAUTH2_PROXY_REDIRECT_URL).toBe('https://auth.pods.example.com/oauth2/callback');
+    expect(env.OAUTH2_PROXY_COOKIE_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_WHITELIST_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_COOKIE_NAME).toBe(CENTRAL_AUTH_COOKIE_NAME);
+    expect(CENTRAL_AUTH_COOKIE_NAME).not.toBe('_oauth2_proxy');
+    expect(env.OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST).toBe('true');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR');
+  });
+
+  it('emits the custom-templates-dir flag when a directory is given', () => {
+    expect(envOf(github, central('/authz/templates')).OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR).toBe('/authz/templates');
+  });
+
+  it('emits none of them without centralAuthHost', () => {
+    const env = envOf(github);
+    for (const name of ['REDIRECT_URL', 'COOKIE_DOMAINS', 'WHITELIST_DOMAINS', 'COOKIE_NAME', 'COOKIE_CSRF_PER_REQUEST', 'CUSTOM_TEMPLATES_DIR']) {
+      expect(env, name).not.toHaveProperty(`OAUTH2_PROXY_${name}`);
+    }
+  });
+
+  it('refuses a baseDomain that is empty or not a hostname', () => {
+    for (const baseDomain of ['', '.pods.example.com', 'pods example.com', 'pods.example.com/x']) {
+      expect(() => buildOauth2ProxyContainer(github, secretArns, { ...opts, centralAuthHost: { baseDomain } }), baseDomain).toThrow(
+        /baseDomain/,
+      );
+    }
+  });
+});
+
+describe('buildCentralAuthHostContainer', () => {
+  const hostOpts = { baseDomain: 'pods.example.com', logGroupName: '/cloud-dev-pods/dev/cluster', region: 'us-west-2' };
+  const auth: Oauth2ProxyAuthConfig = { provider: 'github', allowedOrg: 'acme', allowedUsers: ['alice'] };
+  const host = () => buildCentralAuthHostContainer(auth, secretArns, hostOpts);
+  const hostEnv = () => Object.fromEntries((host().environment ?? []).map((e) => [e.name, e.value]));
+
+  it('serves a static 202 instead of proxying to a pod', () => {
+    expect(hostEnv().OAUTH2_PROXY_UPSTREAMS).toBe('static://202');
+    expect((host().environment ?? []).filter((e) => e.name === 'OAUTH2_PROXY_UPSTREAMS')).toHaveLength(1);
+  });
+
+  it('has no vscode dependency and no pod-name log prefix', () => {
+    const c = host();
+    expect(c).not.toHaveProperty('dependsOn');
+    expect(c.logConfiguration?.options?.['awslogs-stream-prefix']).toBe('central-auth-host/oauth2-proxy');
+    expect(c.logConfiguration?.options?.['awslogs-group']).toBe('/cloud-dev-pods/dev/cluster');
+  });
+
+  it('enforces the deployment-wide allowlist (the builder output with ownerOnly off)', () => {
+    const env = hostEnv();
+    expect(env.OAUTH2_PROXY_GITHUB_ORG).toBe('acme');
+    expect(env.OAUTH2_PROXY_GITHUB_USERS).toBe('alice');
+    expect(env.OAUTH2_PROXY_COOKIE_SECURE).toBe('true');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE');
+  });
+
+  it('uses the three shared oauth secrets', () => {
+    expect(host().secrets).toEqual([
+      { name: 'OAUTH2_PROXY_CLIENT_ID', valueFrom: secretArns.clientId },
+      { name: 'OAUTH2_PROXY_CLIENT_SECRET', valueFrom: secretArns.clientSecret },
+      { name: 'OAUTH2_PROXY_COOKIE_SECRET', valueFrom: secretArns.cookieSecret },
+    ]);
+  });
+
+  it('sets the shared cookie settings but no sign-in template', () => {
+    const env = hostEnv();
+    expect(env.OAUTH2_PROXY_REDIRECT_URL).toBe('https://auth.pods.example.com/oauth2/callback');
+    expect(env.OAUTH2_PROXY_COOKIE_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_WHITELIST_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_COOKIE_NAME).toBe(CENTRAL_AUTH_COOKIE_NAME);
+    expect(env.OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST).toBe('true');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR');
   });
 });
 

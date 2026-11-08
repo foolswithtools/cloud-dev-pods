@@ -58,6 +58,57 @@ describe('handler input validation', () => {
     expect(r.status).toBe('invalid-input');
   });
 
+  // #144 / ADR 0009 Q5: `auth` would claim the central auth host's name
+  // (auth.<base>). Reserved unconditionally, on `up` only.
+  describe('reserved pod name "auth"', () => {
+    const mockActions = () => {
+      const m = {
+        podUp: vi.fn(async () => ({ ok: true, status: 'ok' as const })),
+        podDown: vi.fn(async () => ({ ok: true, status: 'ok' as const })),
+        podStatus: vi.fn(async () => ({ ok: true, status: 'ok' as const })),
+        podList: vi.fn(async () => ({ ok: true, status: 'ok' as const })),
+      };
+      vi.doMock('../lambda/pod-manager/actions', () => m);
+      return m;
+    };
+    afterEach(() => vi.doUnmock('../lambda/pod-manager/actions'));
+
+    it.each(['browser', 'tunnel', 'ssh'])('refuses up with podName "auth" (%s) before any action runs', async (mode) => {
+      const m = mockActions();
+      const { handler } = await import('../lambda/pod-manager/handler');
+      const r = await handler({ action: 'up', podName: 'auth', mode });
+      expect(r.ok).toBe(false);
+      expect(r.status).toBe('invalid-input');
+      expect(r.message).toContain('reserved');
+      expect(m.podUp).not.toHaveBeenCalled();
+    });
+
+    it('reserves the same label the central auth host uses', async () => {
+      const { RESERVED_POD_NAME } = await import('../lambda/pod-manager/handler');
+      const { CENTRAL_AUTH_HOST_LABEL } = await import('../lambda/pod-manager/oauth2-proxy');
+      expect(RESERVED_POD_NAME).toBe(CENTRAL_AUTH_HOST_LABEL);
+    });
+
+    it('still accepts names that only contain "auth"', async () => {
+      const m = mockActions();
+      const { handler } = await import('../lambda/pod-manager/handler');
+      for (const podName of ['auth-1', 'oauth', 'author']) {
+        const r = await handler({ action: 'up', podName, mode: 'browser' });
+        expect(r.status, podName).toBe('ok');
+      }
+      expect(m.podUp).toHaveBeenCalledTimes(3);
+    });
+
+    it('lets down and status through validation for podName "auth"', async () => {
+      const m = mockActions();
+      const { handler } = await import('../lambda/pod-manager/handler');
+      expect((await handler({ action: 'down', podName: 'auth' })).status).toBe('ok');
+      expect((await handler({ action: 'status', podName: 'auth' })).status).toBe('ok');
+      expect(m.podDown).toHaveBeenCalledWith(expect.objectContaining({ podName: 'auth' }));
+      expect(m.podStatus).toHaveBeenCalledWith(expect.objectContaining({ podName: 'auth' }));
+    });
+  });
+
   it('rejects up with an invalid mode', async () => {
     const { handler } = await import('../lambda/pod-manager/handler');
     const r = await handler({ action: 'up', podName: 'ok', mode: 'spaceship' });

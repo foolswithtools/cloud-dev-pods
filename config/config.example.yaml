@@ -29,6 +29,10 @@ auth:
     # allowedUsers: []          # GitHub logins, e.g. [alice, bob]
     # ownerOnly: false          # true: each browser pod admits only its owner + adminUsers
     # adminUsers: []            # break-glass access to every pod when ownerOnly is true
+    # centralAuthHost: false    # true: one callback URL (https://auth.<baseDomain>/oauth2/callback)
+    #                           # for every browser pod. Needs strategy byo, ownerOnly true, no
+    #                           # adminUsers, a dedicated baseDomain and, for github, email owners.
+    #                           # See docs/choosing-auth-and-access.md#central-auth-host
     # # entra-id (requires domain.strategy: byo); allowedGroups and
     # # allowedEmailDomains also apply to oidc, below:
     # issuerUrl: https://login.microsoftonline.com/<tenant-id>/v2.0

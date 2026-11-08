@@ -4,6 +4,7 @@ import type { PodEvent, PodResult } from './handler';
 import { centralAuthHostEnabled, env } from './env';
 import { assertBrowserAuthRestricted } from './auth-guard';
 import { validateOwnerAuthorization } from './owner-authz';
+import { centralAuthHostName } from './oauth2-proxy';
 import {
   allocatePosixUid,
   createAccessPoint,
@@ -26,6 +27,13 @@ import {
   stopTask,
   waitForTaskRunning,
 } from './aws';
+
+// The callback URL the IdP must have registered for a browser pod. The
+// central host always serves HTTPS (its REDIRECT_URL, oauth2-proxy.ts).
+function oauthCallbackUrl(podUrl: string | undefined): string | undefined {
+  if (centralAuthHostEnabled) return `https://${centralAuthHostName(env.baseDomain)}/oauth2/callback`;
+  return podUrl ? `${podUrl}/oauth2/callback` : undefined;
+}
 
 export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<PodResult> {
   const { podName, mode, owner = 'unknown', cpu = 1024, memory = 2048, idleMinutes = 60 } = e;
@@ -65,7 +73,10 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     }
     // Owner-only pods need an owner the provider can match (spec F4). Check
     // the raw input: the 'unknown' fallback must never become a pod's owner.
-    const ownerCheck = validateOwnerAuthorization(env.auth.browser, e.owner);
+    const ownerCheck = validateOwnerAuthorization(
+      { ...env.auth.browser, centralAuthHost: centralAuthHostEnabled },
+      e.owner,
+    );
     if (!ownerCheck.ok) {
       return { ok: false, status: 'error', podName, message: ownerCheck.message };
     }
@@ -179,6 +190,8 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
       status: 'ok',
       podName,
       url,
+      oauthCallbackUrl: mode === 'browser' ? oauthCallbackUrl(url) : undefined,
+      centralAuthHost: mode === 'browser' && centralAuthHostEnabled ? true : undefined,
       owner,
       taskArn,
       tunnelName: mode === 'tunnel' ? podName : undefined,
