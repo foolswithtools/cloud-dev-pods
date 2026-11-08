@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.8...v0.4.9) (2026-11-08)
+
+
+### Bug Fixes
+
+* **smoke-test:** cleanup skips cdk destroy when cluster-up fails before PodManager exists ([#246](https://github.com/foolswithtools/cloud-dev-pods/issues/246)) ([549d2aa](https://github.com/foolswithtools/cloud-dev-pods/commit/549d2aa1a1281f49b4e1e6767dcf24cc38279cd5))
+
 ## [0.4.8](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.7...v0.4.8) (2026-11-04)
 
 
