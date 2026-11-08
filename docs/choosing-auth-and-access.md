@@ -53,7 +53,8 @@ What changes for users:
 - **A 403 on someone else's pod signs you out of every pod.** oauth2-proxy clears the session cookie when the owner check fails, and that cookie is the shared one. Sign in again from your own pod.
 - **A bookmarked `https://<pod>.<base-domain>/oauth2/start` ends on `https://auth.<base-domain>/`**, signed in, showing a bare "Authenticated" page. Go back to the pod URL. Opening the pod URL itself always returns you to the pod.
 - The redirect whitelist (`.<base-domain>`) checks host and port but not the scheme, so `http://<pod>.<base-domain>/` passes it. That is harmless with `byo` (the HTTP listener redirects to HTTPS and the cookie is `Secure`), but nothing should rely on the whitelist for the scheme.
-- Fill in the OAuth secrets (`client-id`, `client-secret`) before the `cluster-up` that turns it on: the central host starts with them, and if it cannot become healthy the deployment fails and rolls back instead of hanging.
+- Fill in the OAuth secrets (`client-id`, `client-secret`) and register the single callback before relying on it. With placeholders the central host still starts, but every sign-in fails. If the host can't become healthy at all, the deployment fails and rolls back instead of hanging.
+- Turning it on doesn't change browser pods that are already running: their sidecars still use per-pod callbacks. `pod-down` and `pod-up` them.
 - Turning it on refuses every retained workspace created before workspaces recorded their owner (#191): `pod-down -f keep_workspace=false` those pods first. The browser pod's VS Code container also loses `CAP_NET_RAW` (no `tcpdump` or raw sockets), so a pod's owner can't capture a visitor's cookie off the wire.
 
 ## Tunnel pods

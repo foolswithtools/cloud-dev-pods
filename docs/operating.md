@@ -59,6 +59,8 @@ How it is enforced, per provider:
 
 `allowedOrg` is passed as an allowed group, not `OAUTH2_PROXY_GITHUB_ORG`: oauth2-proxy lets anyone in the org through `GITHUB_ORG` even when `GITHUB_USERS` is set, which would defeat owner-only. Likewise, `EMAIL_DOMAINS` would admit every address alongside the emails file.
 
+With `auth.browser.centralAuthHost: true` the table changes: every provider, github included, uses the emails file (the github owner is the verified primary GitHub email), the sidecar keeps the shared cookie secret, and github's `GITHUB_ORG` / `GITHUB_USERS` stay at the deployment-wide values. `adminUsers` must be empty. See [Central auth host](choosing-auth-and-access.md#central-auth-host).
+
 GitHub logins are matched case-sensitively, so pass the owner exactly as GitHub spells it (`GITHUB_ACTOR` always does). `pod-up` refuses an owner-only browser pod when the owner is missing or isn't a valid identity for the provider; see [troubleshooting](troubleshooting.md).
 
 With every provider, owner-only pods also get their own cookie secret. An init container writes a random secret to the task-scoped volume when the task starts, and the sidecar reads it via `OAUTH2_PROXY_COOKIE_SECRET_FILE` instead of the shared `/cloud-dev-pods/oauth/cookie-secret`. A session cookie copied from one pod is not valid on another, so it can't skip the sign-in owner check (oauth2-proxy checks `GITHUB_USERS` only at sign-in). The secret lives only as long as the task: when a pod's task is replaced (pod recreated, Spot interruption), its users sign in again.

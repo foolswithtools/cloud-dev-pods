@@ -141,7 +141,8 @@ describe('pod-manager Lambda environment', () => {
     );
     expect(fns).toHaveLength(1);
     expect(fns[0]!.Properties.Environment.Variables.AUTH_BROWSER_CENTRAL_AUTH_HOST).toBe('true');
-  });
+    // Synthesizes four stacks; slow when the whole suite runs in parallel.
+  }, 30_000);
 });
 
 function clusterTemplate(config: Config): Template {
@@ -157,7 +158,7 @@ describe('ClusterStack with centralAuthHost', () => {
   let t: Template;
   beforeAll(() => {
     t = clusterTemplate(resolve());
-  });
+  }, 30_000);
 
   it('synthesizes one ECS service, one target group and one listener rule for auth.<base> below 1000', () => {
     expect(count(t, 'AWS::ECS::Service')).toBe(1);

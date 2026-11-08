@@ -83,6 +83,12 @@ describe('handler input validation', () => {
       expect(m.podUp).not.toHaveBeenCalled();
     });
 
+    it('reserves the same label the central auth host uses', async () => {
+      const { RESERVED_POD_NAME } = await import('../lambda/pod-manager/handler');
+      const { CENTRAL_AUTH_HOST_LABEL } = await import('../lambda/pod-manager/oauth2-proxy');
+      expect(RESERVED_POD_NAME).toBe(CENTRAL_AUTH_HOST_LABEL);
+    });
+
     it('still accepts names that only contain "auth"', async () => {
       const m = mockActions();
       const { handler } = await import('../lambda/pod-manager/handler');
