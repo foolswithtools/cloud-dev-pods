@@ -11,7 +11,8 @@ import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { acknowledgeNag } from '../util/nag';
 import type { Construct } from 'constructs';
-import type { Config } from '../config/schema';
+import { assertCentralAuthHostConfig, type Config } from '../config/schema';
+import { CentralAuthHost } from '../constructs/central-auth-host';
 import { ssmParamPath } from '../util/naming';
 import type { NetworkStack } from './network-stack';
 
@@ -36,6 +37,8 @@ export class ClusterStack extends Stack {
   public readonly clusterLogGroup: logs.LogGroup;
   public readonly podsLogGroup: logs.LogGroup;
   public readonly hostedZone?: route53.IHostedZone;
+  /** Only when auth.browser.centralAuthHost is on (#144). */
+  public readonly centralAuthHost?: CentralAuthHost;
 
   constructor(scope: Construct, id: string, props: ClusterStackProps) {
     super(scope, id, props);
@@ -177,6 +180,24 @@ export class ClusterStack extends Stack {
       retention: logs.RetentionDays.TWO_WEEKS,
       removalPolicy: RemovalPolicy.DESTROY,
     });
+
+    // Central auth host (#144, ADR 0009). resolveConfig already enforces the
+    // preconditions; re-checked for configs built without it.
+    if (config.auth.browser.centralAuthHost) {
+      assertCentralAuthHostConfig(config);
+      this.centralAuthHost = new CentralAuthHost(this, 'CentralAuthHost', {
+        browser: config.auth.browser,
+        baseDomain: config.domain.baseDomain!,
+        region: config.aws.region,
+        vpc: network.vpc,
+        cluster: this.cluster,
+        securityGroup: network.tasksSg,
+        listener: this.listener,
+        alb: this.alb,
+        hostedZone: this.hostedZone!,
+        logGroup: this.clusterLogGroup,
+      });
+    }
 
     // SSM outputs for downstream stacks + workflows to consume.
     new ssm.StringParameter(this, 'ClusterArnParam', {

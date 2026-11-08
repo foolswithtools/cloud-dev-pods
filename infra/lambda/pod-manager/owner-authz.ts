@@ -293,7 +293,9 @@ export function buildBrowserAuthTaskParts(
   secretArns: Oauth2ProxySecretArns,
   opts: OwnerAuthzOptions,
 ): { containers: ContainerDefinition[]; volumes: Volume[] } {
-  const { initImage: _initImage, baseDomain, ...sidecarOpts } = opts;
+  // centralAuthHost on the sidecar comes from auth.centralAuthHost only, so a
+  // caller can never give a sidecar the shared cookie without the checks below.
+  const { initImage: _initImage, baseDomain, centralAuthHost: _central, ...sidecarOpts } = opts;
   if (auth.centralAuthHost) {
     // The synth guard enforces all three; re-checked so a bad Lambda env can
     // never produce a sidecar that accepts the shared cookie without the

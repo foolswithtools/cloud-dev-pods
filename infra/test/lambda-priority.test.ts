@@ -31,3 +31,17 @@ describe('priorityForPod', () => {
     expect(priorityForPod('chris-api')).toBe(priorityForPod('chris-api'));
   });
 });
+
+// #144: the central auth host's listener rule must sort before, and never
+// collide with, any pod rule (1000-49999, including the PriorityInUse retry).
+describe('CENTRAL_AUTH_HOST_RULE_PRIORITY', () => {
+  it('is a valid ALB priority below the per-pod range', async () => {
+    const { CENTRAL_AUTH_HOST_RULE_PRIORITY, priorityForPod } = await import('../lambda/pod-manager/priority');
+    expect(Number.isInteger(CENTRAL_AUTH_HOST_RULE_PRIORITY)).toBe(true);
+    expect(CENTRAL_AUTH_HOST_RULE_PRIORITY).toBeGreaterThanOrEqual(1);
+    expect(CENTRAL_AUTH_HOST_RULE_PRIORITY).toBeLessThan(1000);
+    for (const name of ['a', 'hello', 'auth', 'x'.repeat(30)]) {
+      expect(priorityForPod(name)).toBeGreaterThanOrEqual(1000);
+    }
+  });
+});

@@ -647,6 +647,18 @@ describe('centralAuthHost fails closed', () => {
     );
   });
 
+  it('ignores a centralAuthHost option passed without auth.centralAuthHost', () => {
+    const parts = buildBrowserAuthTaskParts(
+      { provider: 'github', allowedOrg: 'acme', allowedUsers: [], ownerOnly: false, adminUsers: [] },
+      'carol',
+      secretArns,
+      { ...centralOpts, centralAuthHost: { baseDomain: BASE } },
+    );
+    const env = envMap(sidecarOf(parts).environment);
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_COOKIE_DOMAINS');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_COOKIE_NAME');
+  });
+
   it('refuses to build a sidecar with adminUsers', () => {
     expect(() =>
       buildBrowserAuthTaskParts({ ...centralAuth('oidc'), adminUsers: ['ops@example.com'] }, OWNER, secretArns, centralOpts),

@@ -6,10 +6,15 @@
 //      restriction on the central host's effective settings (ownerOnly off).
 //   2. The pod-manager Lambda gets AUTH_BROWSER_CENTRAL_AUTH_HOST=true, and
 //      nothing at all when the setting is off.
+//   3. ClusterStack adds one Fargate Spot service, a target group, a listener
+//      rule for auth.<baseDomain> below every pod rule, and a Route53 record;
+//      the oauth secrets reach its execution role only.
 
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import type { Config } from '../lib/config/schema';
+import { CENTRAL_AUTH_HOST_RULE_PRIORITY } from '../lambda/pod-manager/priority';
 import { authLambdaEnvironment } from '../lib/config/auth-env';
 import { resolveConfig } from '../lib/config/schema';
 import { ClusterStack } from '../lib/stacks/cluster-stack';
@@ -136,5 +141,136 @@ describe('pod-manager Lambda environment', () => {
     );
     expect(fns).toHaveLength(1);
     expect(fns[0]!.Properties.Environment.Variables.AUTH_BROWSER_CENTRAL_AUTH_HOST).toBe('true');
+  });
+});
+
+function clusterTemplate(config: Config): Template {
+  const app = new App();
+  const env = { account: '123456789012', region: config.aws.region };
+  const network = new NetworkStack(app, 'Network', { env, config });
+  return Template.fromStack(new ClusterStack(app, 'Cluster', { env, config, network }));
+}
+
+const count = (t: Template, type: string) => Object.keys(t.findResources(type)).length;
+
+describe('ClusterStack with centralAuthHost', () => {
+  let t: Template;
+  beforeAll(() => {
+    t = clusterTemplate(resolve());
+  });
+
+  it('synthesizes one ECS service, one target group and one listener rule for auth.<base> below 1000', () => {
+    expect(count(t, 'AWS::ECS::Service')).toBe(1);
+    expect(count(t, 'AWS::ElasticLoadBalancingV2::TargetGroup')).toBe(1);
+    const rules = Object.values(t.findResources('AWS::ElasticLoadBalancingV2::ListenerRule'));
+    expect(rules).toHaveLength(1);
+    const props = rules[0]!.Properties;
+    expect(props.Priority).toBe(CENTRAL_AUTH_HOST_RULE_PRIORITY);
+    expect(props.Priority).toBeLessThan(1000);
+    expect(props.Conditions).toEqual([{ Field: 'host-header', HostHeaderConfig: { Values: ['auth.pods.example.com'] } }]);
+  });
+
+  it('attaches the rule to the HTTPS listener', () => {
+    const rule = Object.values(t.findResources('AWS::ElasticLoadBalancingV2::ListenerRule'))[0]!;
+    const https = Object.entries(t.findResources('AWS::ElasticLoadBalancingV2::Listener')).find(
+      ([, l]) => l.Properties.Port === 443,
+    )!;
+    expect(rule.Properties.ListenerArn).toEqual({ Ref: https[0] });
+  });
+
+  it('runs a 0.25 vCPU task on Fargate Spot, one copy, in private subnets', () => {
+    const svc = Object.values(t.findResources('AWS::ECS::Service'))[0]!.Properties;
+    expect(svc.CapacityProviderStrategy).toEqual([{ CapacityProvider: 'FARGATE_SPOT', Weight: 1 }]);
+    expect(svc.DesiredCount).toBe(1);
+    expect(svc.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp).toBe('DISABLED');
+    const td = Object.values(t.findResources('AWS::ECS::TaskDefinition'))[0]!.Properties;
+    expect(td.Cpu).toBe('256');
+  });
+
+  it('health-checks oauth2-proxy on port 4180 at /ping', () => {
+    const tg = Object.values(t.findResources('AWS::ElasticLoadBalancingV2::TargetGroup'))[0]!.Properties;
+    expect(tg.Port).toBe(4180);
+    expect(tg.TargetType).toBe('ip');
+    expect(tg.HealthCheckPath).toBe('/ping');
+  });
+
+  it('adds a Route53 alias record for auth.<base>', () => {
+    const names = Object.values(t.findResources('AWS::Route53::RecordSet')).map((r) => r.Properties.Name);
+    expect(names).toContain('auth.pods.example.com.');
+  });
+
+  it('runs the central host container: static 202, shared cookie settings, the three oauth secrets', () => {
+    const td = Object.values(t.findResources('AWS::ECS::TaskDefinition'))[0]!.Properties;
+    expect(td.ContainerDefinitions).toHaveLength(1);
+    const c = td.ContainerDefinitions[0];
+    const env = Object.fromEntries((c.Environment as { Name: string; Value: string }[]).map((e) => [e.Name, e.Value]));
+    expect(env.OAUTH2_PROXY_UPSTREAMS).toBe('static://202');
+    expect(env.OAUTH2_PROXY_REDIRECT_URL).toBe('https://auth.pods.example.com/oauth2/callback');
+    expect(env.OAUTH2_PROXY_COOKIE_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_WHITELIST_DOMAINS).toBe('.pods.example.com');
+    expect(env.OAUTH2_PROXY_GITHUB_ORG).toBe('acme');
+    expect(env).not.toHaveProperty('OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE');
+    expect(c.DependsOn).toBeUndefined();
+    const secrets = (c.Secrets as { Name: string; ValueFrom: unknown }[]).map((x) => [x.Name, JSON.stringify(x.ValueFrom)]);
+    expect(secrets.map(([n]) => n)).toEqual(['OAUTH2_PROXY_CLIENT_ID', 'OAUTH2_PROXY_CLIENT_SECRET', 'OAUTH2_PROXY_COOKIE_SECRET']);
+    // Each ValueFrom is the full ARN that the lookup of that secret returned.
+    const lookups = t.findResources('Custom::AWS');
+    const lookedUp = (x: { ValueFrom: { 'Fn::GetAtt': [string, string] } }) =>
+      JSON.stringify(lookups[x.ValueFrom['Fn::GetAtt'][0]]!.Properties.Create);
+    const [id, sec, cookie] = c.Secrets as Parameters<typeof lookedUp>[0][];
+    expect(lookedUp(id!)).toContain('/cloud-dev-pods/oauth/client-id');
+    expect(lookedUp(sec!)).toContain('/cloud-dev-pods/oauth/client-secret');
+    expect(lookedUp(cookie!)).toContain('/cloud-dev-pods/oauth/cookie-secret');
+  });
+
+  // Partial ARNs fail in ECS for names ending in "-secret" (docs/troubleshooting.md),
+  // so the full ARNs are looked up at deploy time, like the Lambda's resolveSecretArn.
+  it('references each secret by its full ARN, looked up with DescribeSecret at deploy time', () => {
+    const td = Object.values(t.findResources('AWS::ECS::TaskDefinition'))[0]!.Properties;
+    const lookups = t.findResources('Custom::AWS');
+    for (const s of td.ContainerDefinitions[0].Secrets as { ValueFrom: { 'Fn::GetAtt'?: [string, string] } }[]) {
+      const [id, attr] = s.ValueFrom['Fn::GetAtt']!;
+      expect(attr).toBe('ARN');
+      const create = JSON.stringify(lookups[id]!.Properties.Create);
+      expect(create).toContain('describeSecret');
+    }
+  });
+
+  it('grants the oauth secrets to its execution role and to no task role', () => {
+    const td = Object.values(t.findResources('AWS::ECS::TaskDefinition'))[0]!.Properties;
+    const execRoleId = (td.ExecutionRoleArn as { 'Fn::GetAtt': [string, string] })['Fn::GetAtt'][0];
+    const taskRoleId = (td.TaskRoleArn as { 'Fn::GetAtt': [string, string] } | undefined)?.['Fn::GetAtt'][0];
+    type Stmt = { Action: string | string[] };
+    const policies = Object.values(t.findResources('AWS::IAM::Policy')).map((p) => ({
+      roles: (p.Properties.Roles as { Ref: string }[]).map((r) => r.Ref),
+      actions: (p.Properties.PolicyDocument.Statement as Stmt[]).flatMap((x) => [x.Action].flat()),
+    }));
+    const readers = policies.filter((p) => p.actions.includes('secretsmanager:GetSecretValue'));
+    expect(readers.length).toBeGreaterThan(0);
+    for (const p of readers) expect(p.roles).toEqual([execRoleId]);
+    if (taskRoleId) {
+      for (const p of policies) expect(p.roles).not.toContain(taskRoleId);
+    }
+    // The deploy-time lookup can describe the secrets but never read them.
+    const others = policies.filter((p) => !p.roles.includes(execRoleId));
+    for (const p of others) {
+      for (const a of p.actions) expect(a).toBe('secretsmanager:DescribeSecret');
+    }
+  });
+});
+
+describe('ClusterStack without centralAuthHost', () => {
+  it.each([
+    ['byo', { strategy: 'byo' }],
+    ['alb-default', { strategy: 'alb-default' }],
+  ])('%s: no central host service, target group, listener rule or auth record', (_label, domain) => {
+    const { config } = resolveConfig({ ...centralConfigInput({}, domain), auth: { browser: { allowedOrg: 'acme' } } });
+    const t = clusterTemplate(config);
+    expect(count(t, 'AWS::ECS::Service')).toBe(0);
+    expect(count(t, 'AWS::ECS::TaskDefinition')).toBe(0);
+    expect(count(t, 'AWS::ElasticLoadBalancingV2::TargetGroup')).toBe(0);
+    expect(count(t, 'AWS::ElasticLoadBalancingV2::ListenerRule')).toBe(0);
+    const names = Object.values(t.findResources('AWS::Route53::RecordSet')).map((r) => r.Properties.Name);
+    expect(names).not.toContain('auth.pods.example.com.');
   });
 });

@@ -86,3 +86,34 @@ describe('ClusterStack EFS file-system policy', () => {
     expect(fsProps.LifecyclePolicies).toEqual([{ TransitionToIA: 'AFTER_30_DAYS' }]);
   });
 });
+
+// #144: the central auth host is optional; the default config adds none of
+// its resources (the full enabled/disabled matrix is in central-auth-host.test.ts).
+describe('ClusterStack optional central auth host', () => {
+  it('synthesizes no ECS service, target group, listener rule or lookup by default', () => {
+    const { config } = resolveConfig({
+      project: {},
+      aws: { accountId: '123456789012' },
+      github: { org: 'acme', repo: 'cloud-dev-pods' },
+      domain: {},
+      network: {},
+      pods: {},
+      naming: {},
+      auth: { browser: { allowedOrg: 'acme' } },
+    });
+    const app = new App();
+    const env = { account: '123456789012', region: config.aws.region };
+    const network = new NetworkStack(app, 'Network', { env, config });
+    const t = Template.fromStack(new ClusterStack(app, 'Cluster', { env, config, network }));
+    for (const type of [
+      'AWS::ECS::Service',
+      'AWS::ECS::TaskDefinition',
+      'AWS::ElasticLoadBalancingV2::TargetGroup',
+      'AWS::ElasticLoadBalancingV2::ListenerRule',
+      'Custom::AWS',
+      'AWS::Lambda::Function',
+    ]) {
+      expect(Object.keys(t.findResources(type)), type).toEqual([]);
+    }
+  });
+});

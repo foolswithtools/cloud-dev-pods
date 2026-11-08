@@ -13,3 +13,9 @@ export function fnv1a(s: string): number {
 export function priorityForPod(podName: string): number {
   return (fnv1a(podName) % 49000) + 1000;
 }
+
+// The central auth host's listener rule (#144, ClusterStack). Below 1000, so
+// it is evaluated before every pod rule and can never collide with one: pod
+// rules use 1000-49999, and the PriorityInUse retry in aws.ts wraps within
+// that same range.
+export const CENTRAL_AUTH_HOST_RULE_PRIORITY = 10;
