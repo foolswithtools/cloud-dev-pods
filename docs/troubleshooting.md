@@ -226,8 +226,8 @@ gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=
 **Smoke test (upstream maintainers only).** The same pre-flight gates the `cluster-down` job of `smoke-test.yml`, and its `Require pre-flight proof` error links here. The remedies above are written for `cluster-down.yml`. For the smoke job:
 
 - It always runs `scripts/cluster-drain.ts --force`, so there is no `force=true` to add. A refusal there means a forced drain or a `list` call failed; read the reason in the table.
-- Re-run it through `smoke-test` with `cleanup=true`, or run `cluster-down.yml` against the sandbox, not `cluster-down` with `force=true`.
-- After a failed `cluster-up`, it checks whether the PodManager stack exists first. If the stack was never created, it skips the pre-flight and `cdk destroy` removes the stacks that did deploy, so nothing is left running. If the stack exists but its Lambda doesn't (for example PodManager's own create rolled back), the pre-flight fails as in "PodManager stack already gone" above. Fix the cause, then re-run `smoke-test` with `cleanup=true`. See "Smoke-test cleanup" in [maintainer-runbook.md](maintainer-runbook.md#smoke-test-cleanup).
+- Re-run it through `smoke-test` with `cleanup=true`, or run `cluster-down.yml` against the sandbox from the smoke fork (upstream's `cluster-down.yml` doesn't run), not `cluster-down` with `force=true`.
+- Before the pre-flight, it checks whether the PodManager stack exists. If a failed `cluster-up` never created it, the job skips the pre-flight and `cdk destroy` removes the stacks that did deploy. If the stack exists but its Lambda doesn't (for example PodManager's own create rolled back), the pre-flight fails as in "PodManager stack already gone" above. Fix the cause, then re-run `smoke-test` with `cleanup=true`. See "Smoke-test cleanup" in [maintainer-runbook.md](maintainer-runbook.md#smoke-test-cleanup).
 
 ## cluster-down refuses: workspaces would be deleted
 

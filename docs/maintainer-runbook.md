@@ -168,7 +168,7 @@ The day-to-day maintainer loop. This is the routine you'll run dozens of times f
 
 Cleanup still stops short when PodManager's own create failed and rolled back (`ROLLBACK_COMPLETE`). The stack exists, so the drain runs, can't reach the Lambda and fails closed, leaving the other stacks up. Fix the cause and re-run `smoke-test` with `cleanup=true`: `cdk deploy` replaces a `ROLLBACK_COMPLETE` stack, and once PodManager is up, cleanup drains and destroys as usual. "PodManager stack already gone" in [troubleshooting.md](troubleshooting.md#cluster-down-refuses-pod-pre-flight-failed) covers the same recovery for `cluster-down.yml`.
 
-The absent path also covers a sandbox where an earlier teardown destroyed PodManager and then failed. That is safe for the same reason: the earlier teardown destroyed PodManager only after its drain confirmed no pods remained, and nothing can register a pod once the Lambda is gone.
+The absent path also runs when an earlier teardown destroyed PodManager and then failed on another stack. That is safe only if the earlier teardown was gated by the drain (any `smoke-test` or `cluster-down.yml` run since #212), because then no pods remained when PodManager went away. After a manual `cdk destroy` or a pre-#212 smoke run, check for orphaned ALB rules and EFS access points before re-running cleanup.
 
 To check the absent path in the sandbox, force a `cluster-up` failure before PodManager is created (for example, a bad value in `config/config.smoke.yaml` that breaks the Network or Cluster stack), run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed.
 
