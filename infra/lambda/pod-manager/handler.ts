@@ -57,6 +57,12 @@ export interface PodResult {
   status: 'ok' | 'invalid-input' | 'not-implemented' | 'conflict' | 'not-found' | 'error';
   message?: string;
   url?: string;
+  // pod-up, browser pods: the OAuth callback URL the IdP must have
+  // registered. With the central auth host it is the single
+  // https://auth.<baseDomain>/oauth2/callback; otherwise the pod's own.
+  oauthCallbackUrl?: string;
+  // pod-up, browser pods: true when auth.browser.centralAuthHost is on.
+  centralAuthHost?: boolean;
   tunnelName?: string;
   tunnelProvider?: 'github' | 'microsoft';
   // ssh pods: the config remote.backend the pod was launched with.

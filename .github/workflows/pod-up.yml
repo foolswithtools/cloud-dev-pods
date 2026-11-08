@@ -142,6 +142,8 @@ jobs:
           OWNER=$(echo "$RESULT" | jq -r '.owner // empty')
           BACKEND=$(echo "$RESULT" | jq -r '.remoteBackend // empty')
           TASK_ARN=$(echo "$RESULT" | jq -r '.taskArn // empty')
+          CALLBACK=$(echo "$RESULT" | jq -r '.oauthCallbackUrl // empty')
+          CENTRAL=$(echo "$RESULT" | jq -r 'if .centralAuthHost == true then "true" else "false" end')
           WARNING=$(echo "$RESULT" | jq -r '.warning // empty' | tr -d '\r\n')
           if [ -n "$WARNING" ]; then
             echo "::warning title=Tunnel cap::$WARNING"
@@ -158,6 +160,8 @@ jobs:
             echo "warning=$WARNING"
             echo "backend=$BACKEND"
             echo "task_arn=$TASK_ARN"
+            echo "callback=$CALLBACK"
+            echo "central=$CENTRAL"
           } >> "$GITHUB_OUTPUT"
 
       - name: Poll CW Logs for tunnel device code (tunnel mode only)
@@ -204,11 +208,19 @@ jobs:
             echo "- Idle auto-stop: ${{ inputs.idle_minutes }} min"
             if [ "${{ inputs.mode }}" = "browser" ]; then
               echo "- URL: ${{ steps.up.outputs.url }}"
-              echo "- OAuth redirect URI: \`${{ steps.up.outputs.url }}/oauth2/callback\`"
+              echo "- OAuth redirect URI: \`${{ steps.up.outputs.callback }}\`"
               echo ""
-              echo "Register the redirect URI on your identity provider before signing in: the GitHub OAuth App's callback URL, or a Web redirect URI on the Entra ID app registration (up to 256 per app; see [docs/setup-entra.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/docs/setup-entra.md))."
-              echo ""
-              echo "Open the URL and sign in (allowlist enforced by oauth2-proxy; with \`auth.browser.ownerOnly: true\`, only the owner and \`auth.browser.adminUsers\` get in)."
+              if [ "${{ steps.up.outputs.central }}" = "true" ]; then
+                # auth.browser.centralAuthHost: one callback for every pod,
+                # and adminUsers is refused (ADR 0009).
+                echo "This deployment uses the central auth host: the redirect URI above is the single callback every browser pod shares. Register it once on your identity provider; nothing new is needed for this pod."
+                echo ""
+                echo "Open the URL and sign in. Only the pod's owner gets in (and must also pass the deployment-wide allowlist); \`auth.browser.adminUsers\` is not allowed in this mode."
+              else
+                echo "Register the redirect URI on your identity provider before signing in: the GitHub OAuth App's callback URL, or a Web redirect URI on the Entra ID app registration (up to 256 per app; see [docs/setup-entra.md](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/docs/setup-entra.md))."
+                echo ""
+                echo "Open the URL and sign in (allowlist enforced by oauth2-proxy; with \`auth.browser.ownerOnly: true\`, only the owner and \`auth.browser.adminUsers\` get in)."
+              fi
             elif [ "${{ inputs.mode }}" = "ssh" ]; then
               # Unreachable while "ssh" is hidden from the mode options (#228).
               echo "- Remote backend: \`${POD_BACKEND:-unknown}\`"
