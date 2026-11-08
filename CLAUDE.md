@@ -44,7 +44,7 @@ This file is **the contract**. Follow it. The order of sections matters.
 3. **Never** modify the OIDC trust policy on `CloudDevPodsDeployerRole` without explaining the security model to the user first.
 4. **Never** commit secrets, raw AWS keys, or anything in `.gitignore` (`.env*`, `cdk.context.json`). `infra/extensions.local.ts` is the exception: forks commit it so `cluster-up` applies it (see `docs/extending.md`).
 5. **Never** edit files classified as `[tracked]` in `.upstream-sync.toml` and expect changes to persist; the next `sync-upstream` overwrites them. Use `infra/extensions.local.ts` (see `docs/extending.md`) for customizations.
-6. **Browser-mode pods require a real DNS domain** the user controls. GitHub OAuth Apps don't accept wildcard callback URLs, so each pod's URL has to resolve. Tunnel mode has no such requirement.
+6. **Browser-mode pods require a real DNS domain** the user controls. GitHub OAuth Apps don't accept wildcard callback URLs, so each pod's URL has to resolve, and without a central auth host each pod needs its own registered callback. With `auth.browser.centralAuthHost: true` one callback, `https://auth.<base-domain>/oauth2/callback`, serves every pod (see `docs/choosing-auth-and-access.md#central-auth-host` for its preconditions). Tunnel mode has no such requirement.
 
 ## 1. Verify prerequisites
 
@@ -157,7 +157,7 @@ Navigate the user to `https://github.com/settings/applications/new`. Fill in:
 - Homepage URL: their fork URL
 - Authorization callback URL: `https://<pod-name>.<base-domain>/oauth2/callback` (e.g., `https://hello.pods.example.com/oauth2/callback`)
 
-GitHub OAuth Apps accept exactly one callback URL — pick the pod name now or use a service like a single fixed callback URL with a more elaborate oauth2-proxy setup (Phase 9.6+ polish).
+GitHub OAuth Apps accept exactly one callback URL, so without a central auth host you pick the pod name now. With `auth.browser.centralAuthHost: true` register `https://auth.<base-domain>/oauth2/callback` instead: it serves every pod. That mode needs `domain.strategy: byo`, `ownerOnly: true`, no `adminUsers`, a `baseDomain` that holds only cloud-dev-pods records, and (for github) every `pod-up` passes `-f owner=<verified primary GitHub email>`. See `docs/choosing-auth-and-access.md#central-auth-host`.
 
 After registering, generate a Client Secret. Keep both values out of CLAUDE's chat history; the user will set them in step 3f.
 

@@ -35,6 +35,26 @@ Every provider refuses a browser `pod-up` until at least one sign-in restriction
 
 With `provider: oidc`, synth refuses `allowedOrg`, `allowedUsers` and `allowedTenants`, because they do nothing for a generic IdP. `scope`, `groupsClaim` and `insecureAllowUnverifiedEmail` are oidc-only: synth refuses them with `github` or `entra-id`.
 
+### Central auth host
+
+Without it, every browser pod's oauth2-proxy completes its own sign-in, so each pod needs its own registered callback URL (the "Callback URLs" column above). With `auth.browser.centralAuthHost: true`, `cluster-up` runs one more oauth2-proxy at `https://auth.<base-domain>`. It completes every sign-in and sets one session cookie on `.<base-domain>`, and you register a single callback for every pod: `https://auth.<base-domain>/oauth2/callback`. It works with all three providers. The design and its threat model are in [ADR 0009](adr/0009-central-auth-host.md). The service costs about $3-9 a month (see [cost controls](cost-controls.md)).
+
+Every pod accepts that shared cookie, so each pod's oauth2-proxy checks the owner on every request. Synth refuses `centralAuthHost: true` unless all of these hold:
+
+- `domain.strategy: byo` and `auth.browser.ownerOnly: true`.
+- **`domain.baseDomain` holds only cloud-dev-pods records** (`auth.<base-domain>` and the pod hosts). The browser sends the shared cookie to every host under it, so any other server there (a company website, another app, a third-party CNAME, a dangling record someone took over) could read a signed-in user's cookie and replay it on that user's pods. Use a dedicated subdomain such as `pods.example.com`. Synth can't check this one; its error text reminds you.
+- **`auth.browser.adminUsers` is empty.** An admin is admitted by every pod, so an admin's shared cookie captured on one pod (the pod's owner controls the code that receives it) would open every other pod. For break-glass access, recreate the pod with a new `owner` and a fresh workspace (`pod-down -f keep_workspace=false` first: code the old owner left in `/workspace` would run as the new owner), or turn `centralAuthHost` off.
+- **A deployment-wide sign-in restriction**, which `auth.<base-domain>` enforces: `allowedOrg` or `allowedUsers` for github, `allowedTenants`, `allowedGroups` or `allowedEmailDomains` for entra-id, `allowedGroups` or `allowedEmailDomains` for oidc. `ownerOnly` doesn't count here, because the central host has no owner.
+
+What changes for users:
+
+- **github owners are email addresses**: the GitHub account's verified primary email, which is what the per-request check can compare. The workflow's default owner (the actor) is a login, so every `pod-up` passes `-f owner=<email>`. If an owner changes their primary email on GitHub, they lose access until the pod is recreated with the new owner.
+- **Owners must also pass the deployment-wide allowlist** at sign-in; ownership only narrows who gets in on top of it. For github that means being in `allowedUsers` or `allowedOrg`, and an org member whenever `allowedOrg` is set (checked on every request). For entra-id and oidc it means matching the configured restrictions.
+- **A 403 on someone else's pod signs you out of every pod.** oauth2-proxy clears the session cookie when the owner check fails, and that cookie is the shared one. Sign in again from your own pod.
+- **A bookmarked `https://<pod>.<base-domain>/oauth2/start` ends on `https://auth.<base-domain>/`**, signed in, showing a bare "Authenticated" page. Go back to the pod URL. Opening the pod URL itself always returns you to the pod.
+- The redirect whitelist (`.<base-domain>`) checks host and port but not the scheme, so `http://<pod>.<base-domain>/` passes it. That is harmless with `byo` (the HTTP listener redirects to HTTPS and the cookie is `Secure`), but nothing should rely on the whitelist for the scheme.
+- Turning it on refuses every retained workspace created before workspaces recorded their owner (#191): `pod-down -f keep_workspace=false` those pods first. The browser pod's VS Code container also loses `CAP_NET_RAW` (no `tcpdump` or raw sockets), so a pod's owner can't capture a visitor's cookie off the wire.
+
 ## Tunnel pods
 
 | Account | Status | Data path | Limits | Conditional Access |
@@ -48,6 +68,5 @@ With either account, the pod signs in with a device code on every `pod-up`, and 
 
 - **WorkOS** (via the `oidc` browser provider): [#138](https://github.com/foolswithtools/cloud-dev-pods/issues/138).
 - **Per-IdP setup recipes** for the `oidc` provider (Okta, Auth0, Google Workspace, Keycloak): [#139](https://github.com/foolswithtools/cloud-dev-pods/issues/139). The provider itself ships; see [Browser pods](#browser-pods).
-- **Central auth host** (one callback URL for every browser pod): [#144](https://github.com/foolswithtools/cloud-dev-pods/issues/144).
 - **SSH pods with VS Code Remote-SSH** (planned). `pod-up.yml` doesn't offer `mode: ssh` yet, and every `remote.backend` is refused until its backend ships: AWS Session Manager [#146](https://github.com/foolswithtools/cloud-dev-pods/issues/146), Cloudflare Tunnel and Access [#147](https://github.com/foolswithtools/cloud-dev-pods/issues/147), Tailscale [#148](https://github.com/foolswithtools/cloud-dev-pods/issues/148).
 - **Deferred options** are collected in the parking lot, [#151](https://github.com/foolswithtools/cloud-dev-pods/issues/151).

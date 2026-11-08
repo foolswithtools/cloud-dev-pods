@@ -45,7 +45,7 @@ on:
         default: ""
         type: string
       owner:
-        description: "Pod owner: GitHub login, or email for entra-id/oidc (defaults to the actor). Enforced when auth.browser.ownerOnly is true."
+        description: "Pod owner: GitHub login, or email for entra-id/oidc (defaults to the actor). With auth.browser.centralAuthHost, github owners are the verified primary GitHub email and must be given explicitly. Enforced when auth.browser.ownerOnly is true."
         required: false
         default: ""
         type: string
