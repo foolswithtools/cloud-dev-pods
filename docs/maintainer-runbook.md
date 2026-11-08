@@ -170,7 +170,13 @@ Cleanup still stops short when PodManager's own create failed and rolled back (`
 
 The absent path also runs when an earlier teardown destroyed PodManager and then failed on another stack. That is safe only if the earlier teardown was gated by the drain (any `smoke-test` or `cluster-down.yml` run since #212), because then no pods remained when PodManager went away. After a manual `cdk destroy` or a pre-#212 smoke run, check for orphaned ALB rules and EFS access points before re-running cleanup.
 
-To check the absent path in the sandbox, force a `cluster-up` failure before PodManager is created (for example, a bad value in `config/config.smoke.yaml` that breaks the Network or Cluster stack), run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed.
+To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from the smoke fork with its "Validating an upstream PR end-to-end" procedure (`docs/smoke-fork.md`, which exists only in the fork). On a throwaway branch there:
+
+- point the workflow at the fork: the `guard` repo, `vars.AWS_*` in place of `vars.SANDBOX_AWS_*`, `config/config.yaml`, and no `environment:` line, so the OIDC subject is the branch ref;
+- make the `cluster-up` deploy step deploy only the Network and Cluster stacks and then `exit 1`;
+- widen `CloudDevPodsDeployerRole`'s trust to that branch ref for the run only, then restore it.
+
+Issue #215 was verified this way.
 
 ## Known CI quirks
 
