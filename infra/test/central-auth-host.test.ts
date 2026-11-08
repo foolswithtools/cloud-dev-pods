@@ -188,6 +188,18 @@ describe('ClusterStack with centralAuthHost', () => {
     expect(td.Cpu).toBe('256');
   });
 
+  // CloudFormation deletes in reverse dependency order. Without this edge it
+  // deleted the cluster's capacity-provider association in parallel with
+  // the FARGATE_SPOT service and failed with "The specified capacity
+  // provider is in use" (ResourceInUseException), leaving the Cluster stack
+  // DELETE_FAILED on every cluster-down (#262 smoke validation).
+  it('makes the service depend on the cluster capacity-provider association', () => {
+    const assocs = Object.keys(t.findResources('AWS::ECS::ClusterCapacityProviderAssociations'));
+    expect(assocs).toHaveLength(1);
+    const svc = Object.values(t.findResources('AWS::ECS::Service'))[0]!;
+    expect(svc.DependsOn).toEqual(expect.arrayContaining([assocs[0]]));
+  });
+
   it('health-checks oauth2-proxy on port 4180 at /ping', () => {
     const tg = Object.values(t.findResources('AWS::ElasticLoadBalancingV2::TargetGroup'))[0]!.Properties;
     expect(tg.Port).toBe(4180);

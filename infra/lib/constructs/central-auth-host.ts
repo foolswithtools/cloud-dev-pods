@@ -148,6 +148,13 @@ export class CentralAuthHost extends Construct {
       // secrets) fails cluster-up instead of hanging it.
       circuitBreaker: { enable: true, rollback: true },
     });
+    // The cluster's capacity-provider association (which makes FARGATE_SPOT
+    // available) is a child of the Cluster construct, added by an aspect at
+    // synth. CDK doesn't make a service depend on it, so CloudFormation
+    // deleted both in parallel and cluster-down failed with "The specified
+    // capacity provider is in use". Depending on the whole cluster puts the
+    // service after the association on create and before it on delete.
+    this.service.node.addDependency(props.cluster);
 
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc: props.vpc,
