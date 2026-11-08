@@ -12,6 +12,7 @@
 //   tsx scripts/stack-names.ts --cluster     # every stack except Bootstrap, space-separated
 //   tsx scripts/stack-names.ts --bootstrap   # the Bootstrap stack
 //   tsx scripts/stack-names.ts --cluster-stack  # the Cluster stack (EFS lives here)
+//   tsx scripts/stack-names.ts --pod-manager # the PodManager stack (pod-manager Lambda)
 //   tsx scripts/stack-names.ts --all         # Bootstrap + cluster stacks
 //   tsx scripts/stack-names.ts --prefix      # naming.prefix itself
 //
@@ -22,10 +23,10 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isInvokedAsCli } from './lib/cli-entry.js';
 
-export type StackNamesMode = 'cluster' | 'bootstrap' | 'cluster-stack' | 'all' | 'prefix';
+export type StackNamesMode = 'cluster' | 'bootstrap' | 'cluster-stack' | 'pod-manager' | 'all' | 'prefix';
 
 interface StackNamesModule {
-  stackNames: (prefix: string) => { bootstrap: string; cluster: string };
+  stackNames: (prefix: string) => { bootstrap: string; cluster: string; podManager: string };
   clusterStackNames: (prefix: string) => string[];
   allStackNames: (prefix: string) => string[];
 }
@@ -50,11 +51,12 @@ export function parseStackNamesArgs(argv: string[]): { mode: StackNamesMode } | 
     '--cluster': 'cluster',
     '--bootstrap': 'bootstrap',
     '--cluster-stack': 'cluster-stack',
+    '--pod-manager': 'pod-manager',
     '--all': 'all',
     '--prefix': 'prefix',
   };
   if (argv.length !== 1 || !(argv[0]! in modes)) {
-    return { error: 'Usage: stack-names.ts --cluster | --bootstrap | --cluster-stack | --all | --prefix' };
+    return { error: 'Usage: stack-names.ts --cluster | --bootstrap | --cluster-stack | --pod-manager | --all | --prefix' };
   }
   return { mode: modes[argv[0]!]! };
 }
@@ -87,6 +89,8 @@ export async function resolveStackNames(
       return { names: [names.stackNames(prefix).bootstrap] };
     case 'cluster-stack':
       return { names: [names.stackNames(prefix).cluster] };
+    case 'pod-manager':
+      return { names: [names.stackNames(prefix).podManager] };
     case 'all':
       return { names: all };
     case 'prefix':

@@ -156,6 +156,28 @@ The day-to-day maintainer loop. This is the routine you'll run dozens of times f
 7. release-please reacts to the new commit on `main`. It opens (or updates) a release PR if the merged commit includes `feat:` or `fix:` (or any `!`-flagged breaking change). `chore:`, `docs:`, `refactor:`, `test:`, and `ci:` do not bump the version on their own.
 8. To cut a release, merge the open release-please PR. See "Cutting a release" above.
 
+## Smoke-test cleanup
+
+`smoke-test.yml` runs its `cluster-down` job whenever `cleanup=true`, including after a failed `cluster-up`. Before `cdk destroy`, the job runs `aws cloudformation describe-stacks` on the PodManager stack (`${naming.prefix}-PodManager`, from `scripts/stack-names.ts --pod-manager`) and branches on the answer:
+
+- **Stack present.** The pod pre-flight (`scripts/cluster-drain.ts --force`) has to write `proceed=true` before `cdk destroy` runs, the same gate `cluster-down.yml` uses (#209, #211, #212). It stops any leftover smoke pod through the pod-manager Lambda.
+- **Stack absent.** `describe-stacks` reported "does not exist", so `cdk deploy` failed before PodManager was created and no pod can be registered through it. The step writes `state=absent`, logs a warning, skips the drain, and `cdk destroy` removes the stacks that did deploy, such as Network and Cluster, so the sandbox doesn't keep paying for the NAT gateway (#215).
+- **Any other error** (for example `AccessDenied` or throttling). The job fails and destroys nothing.
+
+`cdk destroy` runs only on one of the two positive outputs (`proceed=true` or `state=absent`), never because a step was skipped.
+
+Cleanup still stops short when PodManager's own create failed and rolled back (`ROLLBACK_COMPLETE`). The stack exists, so the drain runs, can't reach the Lambda and fails closed, leaving the other stacks up. Fix the cause and re-run `smoke-test` with `cleanup=true`: `cdk deploy` replaces a `ROLLBACK_COMPLETE` stack, and once PodManager is up, cleanup drains and destroys as usual. "PodManager stack already gone" in [troubleshooting.md](troubleshooting.md#cluster-down-refuses-pod-pre-flight-failed) covers the same recovery for `cluster-down.yml`.
+
+The absent path also runs when an earlier teardown destroyed PodManager and then failed on another stack. That is safe only if the earlier teardown was gated by the drain (any `smoke-test` or `cluster-down.yml` run since #212), because then no pods remained when PodManager went away. After a manual `cdk destroy` or a pre-#212 smoke run, check for orphaned ALB rules and EFS access points before re-running cleanup.
+
+To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from the smoke fork with its "Validating an upstream PR end-to-end" procedure (`docs/smoke-fork.md`, which exists only in the fork). On a throwaway branch there:
+
+- point the workflow at the fork: the `guard` repo, `vars.AWS_*` in place of `vars.SANDBOX_AWS_*`, `config/config.yaml`, and no `environment:` line, so the OIDC subject is the branch ref;
+- make the `cluster-up` deploy step deploy only the Network and Cluster stacks and then `exit 1`;
+- widen `CloudDevPodsDeployerRole`'s trust to that branch ref for the run only, then restore it.
+
+Issue #215 was verified this way.
+
 ## Known CI quirks
 
 These are operate-around-not-fix items. If you "fix" them you'll likely break the workaround.

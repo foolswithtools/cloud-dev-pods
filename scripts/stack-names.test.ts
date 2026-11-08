@@ -32,6 +32,7 @@ describe('parseStackNamesArgs', () => {
     ['--cluster-stack', 'cluster-stack'],
     ['--all', 'all'],
     ['--prefix', 'prefix'],
+    ['--pod-manager', 'pod-manager'],
   ])('%s selects %s', (flag, mode) => {
     expect(parseStackNamesArgs([flag])).toEqual({ mode });
   });
@@ -56,6 +57,10 @@ describe('resolveStackNames', () => {
     expect(await resolveStackNames('Acme', 'cluster-stack')).toEqual({ names: ['Acme-Cluster'] });
   });
 
+  it('returns the PodManager stack alone', async () => {
+    expect(await resolveStackNames('Acme', 'pod-manager')).toEqual({ names: ['Acme-PodManager'] });
+  });
+
   it.each(['', 'has space', 'under_score', '9starts-with-digit'])(
     'refuses prefix %j, which CloudFormation would reject',
     async (prefix) => {
@@ -77,6 +82,12 @@ describe('stack-names CLI', () => {
     const r = runCli(['--bootstrap'], 'AcmePods');
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe('AcmePods-Bootstrap');
+  });
+
+  it('prints the PodManager stack for a custom prefix', () => {
+    const r = runCli(['--pod-manager'], 'AcmePods');
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe('AcmePods-PodManager');
   });
 
   it('fails with nothing on stdout for an invalid prefix', () => {
