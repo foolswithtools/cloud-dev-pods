@@ -147,6 +147,7 @@ For `entra-id` and `oidc`, the session email is the IdP's `email` claim. This AD
   4. the bare request path (`:60-72`)
 
   Per AWS documentation, the ALB does not send `X-Forwarded-Host` (not verified against a live ALB). Without it, the state carries a **relative** path, and the central host's callback redirects to `https://auth.<base>/...` (`oauthproxy.go:994`), not to the pod. So #144 must make the sidecar send an absolute `rd`. The candidate mechanism is a custom sign-in template (`custom_templates_dir`) that sets the form's `rd` field from `window.location.href`. This mechanism is unproven. #144 verifies it on the smoke fork **before** building the rest of the slice. If the sidecar cannot send an absolute `rd`, every login lands on `auth.<base>/` instead of the pod, the feature is unusable as designed, and this ADR must be revisited before #144 continues.
+  Result: verified locally in [#256](https://github.com/foolswithtools/cloud-dev-pods/issues/256#issuecomment-6722960101) (go), with the template and settings recorded there.
 - **Who can read the shared secret.** It is granted to execution roles only, never task roles: today the pod task execution role (repo `infra/lib/stacks/pod-task-family-stack.ts:80-82`). The browser task role has only log permissions (repo `pod-task-family-stack.ts:86-96`). The central host's own Fargate service will need its own execution-role grant. That rule must stay true: anyone holding the cookie secret can mint a session with any email.
 
 ### Q5. Reserved pod name `auth`
