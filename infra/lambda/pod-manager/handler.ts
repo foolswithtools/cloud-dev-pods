@@ -9,10 +9,22 @@ import { podDown, podList, podStatus, podUp } from './actions';
 export const SSH_PUBLIC_KEY_RE =
   /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|ssh-rsa) [A-Za-z0-9+/]+={0,3}( [\x21-\x7e]{1,100})?$/;
 
+// Reserved for the central auth host (ADR 0009 Q5, #144): a pod with this
+// name would claim auth.<baseDomain>. Refused on `up` whether or not
+// auth.browser.centralAuthHost is on, so turning it on later can never
+// collide with a pod; `down` and `status` still accept it, so a pod created
+// before the reservation can be inspected and torn down.
+export const RESERVED_POD_NAME = 'auth';
+
 const PodEventSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('up'),
-    podName: z.string().regex(/^[a-z0-9-]{1,30}$/),
+    podName: z
+      .string()
+      .regex(/^[a-z0-9-]{1,30}$/)
+      .refine((n) => n !== RESERVED_POD_NAME, {
+        message: `pod name "${RESERVED_POD_NAME}" is reserved for the central auth host (auth.<baseDomain>); pick another name.`,
+      }),
     mode: z.enum(['browser', 'tunnel', 'ssh']),
     cpu: z.number().int().optional(),
     memory: z.number().int().optional(),
