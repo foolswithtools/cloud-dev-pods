@@ -223,6 +223,12 @@ gh workflow run pod-up.yml -f pod_name=long-job -f mode=browser -f idle_minutes=
 
 **PodManager stack already gone (partial teardown).** If an earlier `cluster-down` got as far as destroying `CloudDevPods-PodManager` and then failed, the pre-flight can't list or drain pods any more: the drain only stops pods through the pod-manager Lambda (it never stops ECS tasks directly, per CLAUDE.md hard rule 2). Re-run `cluster-up` to restore the stacks, including the Lambda, then run `cluster-down` again (with `force=true` if pods are still registered).
 
+**Smoke test (upstream maintainers only).** The same pre-flight gates the `cluster-down` job of `smoke-test.yml`, and its `Require pre-flight proof` error links here. The remedies above are written for `cluster-down.yml`. For the smoke job:
+
+- It always runs `scripts/cluster-drain.ts --force`, so there is no `force=true` to add. A refusal there means a forced drain or a `list` call failed; read the reason in the table.
+- Re-run it through `smoke-test` with `cleanup=true`, or run `cluster-down.yml` against the sandbox, not `cluster-down` with `force=true`.
+- After a failed `cluster-up`, it checks whether the PodManager stack exists first. If the stack was never created, it skips the pre-flight and `cdk destroy` removes the stacks that did deploy, so nothing is left running. If the stack exists but its Lambda doesn't (for example PodManager's own create rolled back), the pre-flight fails as in "PodManager stack already gone" above. Fix the cause, then re-run `smoke-test` with `cleanup=true`. See "Smoke-test cleanup" in [maintainer-runbook.md](maintainer-runbook.md#smoke-test-cleanup).
+
 ## cluster-down refuses: workspaces would be deleted
 
 **Symptom:** the `Pre-flight — check EFS workspaces` step of `cluster-down.yml` fails before any pod is stopped, and the step summary reads "Workspace pre-flight refused cluster-down".

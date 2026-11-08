@@ -16,6 +16,20 @@ name: smoke-test
 #   4. Trust policy on the sandbox roles allows this workflow's OIDC sub
 #      claim (`repo:foolswithtools/cloud-dev-pods:ref:refs/heads/main`
 #      and `:environment:smoke-sandbox`).
+#
+# Cleanup after a failed cluster-up (#215). The cluster-down job runs even
+# when cluster-up failed. It first asks CloudFormation whether the PodManager
+# stack exists:
+#   - present: the pod pre-flight (scripts/cluster-drain.ts --force) must
+#     write proceed=true before cdk destroy runs, exactly as before (#212).
+#   - absent ("does not exist"): cdk deploy failed before PodManager was
+#     created, so no pod can be registered through it. cdk destroy removes
+#     whatever stacks did deploy (Network, Cluster, ...) without the drain.
+#   - any other describe-stacks error: the job fails and destroys nothing.
+# cdk destroy runs only on proceed=true or state=absent, never because a
+# step was skipped. A PodManager stack whose own create rolled back
+# (ROLLBACK_COMPLETE) counts as present, so the drain fails and the stacks
+# stay up; see "Smoke-test cleanup" in docs/maintainer-runbook.md.
 
 on:
   workflow_dispatch:
@@ -178,13 +192,43 @@ jobs:
             echo "::error::scripts/stack-names.ts returned no stack names. Not destroying."
             exit 1
           fi
+          POD_MANAGER_STACK=$(npx tsx scripts/stack-names.ts --pod-manager)
+          if [ -z "$POD_MANAGER_STACK" ]; then
+            echo "::error::scripts/stack-names.ts returned no PodManager stack name. Not destroying."
+            exit 1
+          fi
           echo "cluster=$CLUSTER_STACKS" >> "$GITHUB_OUTPUT"
+          echo "pod-manager=$POD_MANAGER_STACK" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS via OIDC (sandbox deployer)
         uses: ./.github/actions/aws-oidc
         with:
           role-to-assume: ${{ vars.SANDBOX_AWS_DEPLOYER_ROLE_ARN }}
           aws-region: ${{ vars.SANDBOX_AWS_REGION }}
+
+      # Positive proof either way (#215): writes state=present when the
+      # PodManager stack exists and state=absent only when describe-stacks
+      # says it does not exist. Any other error (AccessDenied, throttling)
+      # fails the job, which skips everything below.
+      - name: Check whether the PodManager stack exists
+        id: podmanager
+        env:
+          AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
+          POD_MANAGER_STACK: ${{ steps.stacks.outputs.pod-manager }}
+        run: |
+          set -euo pipefail
+          if out=$(aws cloudformation describe-stacks --stack-name "$POD_MANAGER_STACK" \
+              --query 'Stacks[0].StackStatus' --output text 2>&1); then
+            echo "$POD_MANAGER_STACK exists ($out). The pod pre-flight gates cdk destroy."
+            echo "state=present" >> "$GITHUB_OUTPUT"
+          elif grep -q "ValidationError.*Stack with id $POD_MANAGER_STACK does not exist" <<< "$out"; then
+            echo "::warning::$POD_MANAGER_STACK does not exist, so cluster-up failed before creating it and no pod can be registered. Skipping the pod pre-flight; cdk destroy removes the stacks that did deploy."
+            echo "state=absent" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            echo "::error::Could not tell whether $POD_MANAGER_STACK exists. Not destroying."
+            exit 1
+          fi
 
       # Same gate as cluster-down.yml (#209, #211). The pod-cycle job's
       # pod-down is best-effort, so a failed `down` could leave the smoke pod
@@ -195,6 +239,7 @@ jobs:
       # proceed=true to $GITHUB_OUTPUT only when it is safe to destroy.
       - name: Pre-flight — check and drain pods
         id: drain
+        if: steps.podmanager.outputs.state == 'present'
         env:
           AWS_REGION: ${{ vars.SANDBOX_AWS_REGION }}
         run: npx tsx scripts/cluster-drain.ts --force
@@ -202,8 +247,9 @@ jobs:
       # Runs only when the drain step exited 0. Without the proceed=true marker
       # the drain never decided anything (e.g. main() did not run, #194), so
       # fail the job rather than let a skipped destroy read as a green run.
+      # Not needed on the state=absent path, where the drain is skipped.
       - name: Require pre-flight proof
-        if: steps.drain.outputs.proceed != 'true'
+        if: steps.podmanager.outputs.state != 'absent' && steps.drain.outputs.proceed != 'true'
         run: |
           echo "::error::The pod pre-flight exited 0 but did not write proceed=true, so it never confirmed the cluster is safe to destroy. Not destroying. See \"cluster-down refuses: pod pre-flight failed\" in docs/troubleshooting.md."
           exit 1
@@ -211,8 +257,10 @@ jobs:
       # No workspace pre-flight here (cluster-down.yml's
       # cluster-workspace-guard.ts, #227): smoke cleanup deletes the sandbox
       # EFS and its workspaces on purpose, as delete_workspaces=true would.
+      # Two positive outputs, nothing else: the drain's proceed=true, or the
+      # explicit state=absent. cdk destroy skips stacks that don't exist.
       - name: cdk destroy (everything except Bootstrap)
-        if: steps.drain.outputs.proceed == 'true'
+        if: steps.drain.outputs.proceed == 'true' || steps.podmanager.outputs.state == 'absent'
         working-directory: infra
         env:
           CDPODS_CONFIG: ${{ github.workspace }}/config/config.smoke.yaml
