@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.10](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.9...v0.4.10) (2026-11-08)
+
+
+### Features
+
+* **auth:** central auth host with a single callback URL for all browser pods ([#262](https://github.com/foolswithtools/cloud-dev-pods/issues/262)) ([a04ea34](https://github.com/foolswithtools/cloud-dev-pods/commit/a04ea344945dedfefb3c19bde1b4a2cda8abe711))
+
 ## [0.4.9](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.8...v0.4.9) (2026-11-08)
 
 
