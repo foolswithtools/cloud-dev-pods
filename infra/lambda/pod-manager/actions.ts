@@ -65,7 +65,10 @@ export async function podUp(e: Extract<PodEvent, { action: 'up' }>): Promise<Pod
     }
     // Owner-only pods need an owner the provider can match (spec F4). Check
     // the raw input: the 'unknown' fallback must never become a pod's owner.
-    const ownerCheck = validateOwnerAuthorization(env.auth.browser, e.owner);
+    const ownerCheck = validateOwnerAuthorization(
+      { ...env.auth.browser, centralAuthHost: centralAuthHostEnabled },
+      e.owner,
+    );
     if (!ownerCheck.ok) {
       return { ok: false, status: 'error', podName, message: ownerCheck.message };
     }

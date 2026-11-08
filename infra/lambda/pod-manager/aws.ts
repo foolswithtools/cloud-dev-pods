@@ -46,7 +46,7 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 
-import { env } from './env';
+import { centralAuthHostEnabled, env } from './env';
 import { buildBrowserAuthTaskParts } from './owner-authz';
 import { priorityForPod } from './priority';
 
@@ -322,13 +322,17 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
       portMappings: [{ containerPort: 3000, protocol: 'tcp' }],
       mountPoints: [{ sourceVolume: 'workspace', containerPath: '/workspace', readOnly: false }],
       logConfiguration: logConfig(`browser/${args.podName}/vscode`),
+      // Central auth host (ADR 0009): the owner is root in this container and
+      // shares the sidecar's network namespace, so without CAP_NET_RAW they
+      // cannot capture a visitor's shared cookie on port 4180.
+      ...(centralAuthHostEnabled ? { linuxParameters: { capabilities: { drop: ['NET_RAW'] } } } : {}),
       healthCheck: {
         command: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:3000/ >/dev/null || exit 1'],
         interval: 30, timeout: 5, retries: 3, startPeriod: 20,
       },
     });
     const authParts = buildBrowserAuthTaskParts(
-      env.auth.browser,
+      { ...env.auth.browser, centralAuthHost: centralAuthHostEnabled },
       args.owner,
       {
         clientId: await resolveSecretArn('/cloud-dev-pods/oauth/client-id'),
@@ -341,6 +345,7 @@ export async function registerTaskDef(args: TaskDefArgs): Promise<string> {
         logGroupName: env.podsLogGroupName,
         region: env.region,
         initImage: args.imageUri,
+        baseDomain: env.baseDomain,
       },
     );
     containerDefs.push(...authParts.containers);

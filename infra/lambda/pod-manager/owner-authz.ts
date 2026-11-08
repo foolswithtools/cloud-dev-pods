@@ -17,6 +17,13 @@
 //   task its own random cookie secret (COOKIE_SECRET_FILE), so a cookie
 //   replayed from another pod is not a session here. COOKIE_SECRET wins over
 //   COOKIE_SECRET_FILE when both are set, so the shared secret is dropped.
+// - Central auth host (#144, ADR 0009): every sidecar must accept the cookie
+//   auth.<baseDomain> mints, so the shared secret stays and the per-task
+//   secret file is skipped. The owner check then has to run on every
+//   request, for every provider: the emails file with EMAIL_DOMAINS removed
+//   (for github the owner is the account's verified primary email; "*"
+//   would admit everyone). GITHUB_ORG / GITHUB_USERS stay at the
+//   deployment-wide values as the gate on the sidecar's own callback.
 
 import type { ContainerDefinition, KeyValuePair, MountPoint, Volume } from '@aws-sdk/client-ecs';
 import {
@@ -25,12 +32,15 @@ import {
   type Oauth2ProxyOptions,
   type Oauth2ProxySecretArns,
 } from './oauth2-proxy';
+import { SIGN_IN_TEMPLATE } from './sign-in-template';
 
 export const OWNER_AUTHZ_VOLUME = 'owner-authz';
 export const OWNER_AUTHZ_INIT_CONTAINER = 'owner-authz-init';
 export const OWNER_AUTHZ_DIR = '/authz';
 export const OWNER_AUTHZ_EMAILS_PATH = `${OWNER_AUTHZ_DIR}/emails.txt`;
 export const OWNER_AUTHZ_COOKIE_SECRET_PATH = `${OWNER_AUTHZ_DIR}/cookie-secret`;
+// Central auth host only: holds sign_in.html (OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR).
+export const OWNER_AUTHZ_TEMPLATES_DIR = `${OWNER_AUTHZ_DIR}/templates`;
 
 // 16 random bytes as 32 hex characters, with no trailing newline:
 // oauth2-proxy reads the file verbatim (no trimming), and 32 characters is a
@@ -40,10 +50,17 @@ export const OWNER_AUTHZ_COOKIE_SECRET_PATH = `${OWNER_AUTHZ_DIR}/cookie-secret`
 const WRITE_COOKIE_SECRET =
   `s=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \\n') && [ \${#s} -eq 32 ] && printf '%s' "$s" > ${OWNER_AUTHZ_COOKIE_SECRET_PATH}`;
 const WRITE_EMAILS = `printf '%s\\n' "$OWNER_AUTHZ_EMAILS" | tr ',' '\\n' > ${OWNER_AUTHZ_EMAILS_PATH}`;
+// The template arrives through an env var, like the emails: printf '%s'
+// copies it verbatim (no %, backslash or {{ }} interpretation).
+const WRITE_SIGN_IN_TEMPLATE =
+  `mkdir -p ${OWNER_AUTHZ_TEMPLATES_DIR} && printf '%s' "$OWNER_AUTHZ_SIGN_IN_TEMPLATE" > ${OWNER_AUTHZ_TEMPLATES_DIR}/sign_in.html`;
 
 export interface OwnerAuthzConfig extends Oauth2ProxyAuthConfig {
   ownerOnly: boolean;
   adminUsers: readonly string[];
+  // auth.browser.centralAuthHost (#144). Requires ownerOnly, no adminUsers
+  // and baseDomain; buildBrowserAuthTaskParts throws otherwise.
+  centralAuthHost?: boolean;
 }
 
 export interface OwnerAuthzOptions extends Oauth2ProxyOptions {
@@ -51,6 +68,8 @@ export interface OwnerAuthzOptions extends Oauth2ProxyOptions {
   // oauth2-proxy image is distroless (no shell), so registerTaskDef passes the
   // pod's own runtime image, which is already pulled for the task.
   initImage: string;
+  // domain.baseDomain; read only when centralAuthHost is on.
+  baseDomain?: string;
 }
 
 export type OwnerAuthzResult = { ok: true } | { ok: false; message: string };
@@ -62,10 +81,16 @@ const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 // would split an entry in the CSV emails file).
 const EMAIL = /^[^\s@,"]+@[^\s@,"]+\.[^\s@,"]+$/;
 
-function identityKind(provider: OwnerAuthzConfig['provider']): { re: RegExp; label: string } {
-  return provider === 'github'
-    ? { re: GITHUB_LOGIN, label: 'a GitHub login' }
-    : { re: EMAIL, label: 'an email address' };
+// With a central auth host the github owner is the account's verified
+// primary email (ADR 0009 Option 1), checked by the emails file.
+function identityKind(
+  provider: OwnerAuthzConfig['provider'],
+  centralAuthHost: boolean,
+): { re: RegExp; label: string } {
+  if (provider !== 'github') return { re: EMAIL, label: 'an email address' };
+  return centralAuthHost
+    ? { re: EMAIL, label: 'the verified primary GitHub email of the owner' }
+    : { re: GITHUB_LOGIN, label: 'a GitHub login' };
 }
 
 /**
@@ -75,17 +100,32 @@ function identityKind(provider: OwnerAuthzConfig['provider']): { re: RegExp; lab
  */
 export function validateOwnerAuthorization(auth: OwnerAuthzConfig, owner: string | undefined): OwnerAuthzResult {
   if (!auth.ownerOnly) return { ok: true };
-  const { re, label } = identityKind(auth.provider);
-  const prefix = `Refusing browser-mode pod-up: auth.browser.ownerOnly is true with provider "${auth.provider}"`;
+  const central = auth.centralAuthHost === true;
+  const { re, label } = identityKind(auth.provider, central);
+  const prefix =
+    `Refusing browser-mode pod-up: auth.browser.ownerOnly is true with provider "${auth.provider}"` +
+    (central ? ' and auth.browser.centralAuthHost' : '');
+  // pod-cli falls back to GITHUB_ACTOR, a login, so this mode needs an
+  // explicit email owner on every pod-up.
+  const githubCentralHint =
+    central && auth.provider === 'github'
+      ? ' With centralAuthHost the github owner is a verified primary GitHub email, and the default owner (the workflow actor) is a login, so pass an explicit email: pod-up -f owner=<email>.'
+      : '';
 
+  if (central && auth.adminUsers.length > 0) {
+    return {
+      ok: false,
+      message: `${prefix} but auth.browser.adminUsers is not empty; centralAuthHost refuses admins (ADR 0009). Fix config/config.yaml and re-deploy.`,
+    };
+  }
   if (!owner?.trim()) {
     return {
       ok: false,
-      message: `${prefix} but no owner was given. Pass the owner input (${label}) to pod-up.`,
+      message: `${prefix} but no owner was given. Pass the owner input (${label}) to pod-up.${githubCentralHint}`,
     };
   }
   if (!re.test(owner)) {
-    return { ok: false, message: `${prefix} but owner "${owner}" is not ${label}.` };
+    return { ok: false, message: `${prefix} but owner "${owner}" is not ${label}.${githubCentralHint}` };
   }
   const badAdmin = auth.adminUsers.find((a) => !re.test(a));
   if (badAdmin !== undefined) {
@@ -95,7 +135,12 @@ export function validateOwnerAuthorization(auth: OwnerAuthzConfig, owner: string
     };
   }
 
-  if (auth.provider === 'github') {
+  if (auth.provider === 'github' && central) {
+    // allowedUsers holds logins and cannot be compared with an email; both
+    // login paths (auth.<baseDomain> and the sidecar's own callback) enforce
+    // it. allowedEmailDomains is not enforced for github anywhere, so
+    // checking it here would make the config look stricter than it is.
+  } else if (auth.provider === 'github') {
     const allowed = auth.allowedUsers.map((u) => u.trim()).filter(Boolean);
     if (allowed.length > 0 && !allowed.includes(owner) && !auth.adminUsers.includes(owner)) {
       return {
@@ -148,14 +193,34 @@ export function buildOwnerAuthorization(
     volumes: [],
   };
   if (!auth.ownerOnly) return none;
+  const central = auth.centralAuthHost === true;
 
   let provider: Pick<OwnerAuthorization, 'sidecarEnvironment' | 'removeSidecarEnvironment'>;
   let initEnvironment: KeyValuePair[] = [];
   // chmod: the sidecar runs as a non-root user and must be able to enter the
-  // volume directory, whatever mode ECS creates it with.
-  const script = ['set -eu', 'umask 022', `chmod 755 ${OWNER_AUTHZ_DIR}`, WRITE_COOKIE_SECRET];
+  // volume directory, whatever mode ECS creates it with. With a central auth
+  // host the cookie secret is the shared one, so no per-task secret file.
+  const script = ['set -eu', 'umask 022', `chmod 755 ${OWNER_AUTHZ_DIR}`, ...(central ? [] : [WRITE_COOKIE_SECRET])];
 
-  if (auth.provider === 'github') {
+  if (central) {
+    // Every provider: the per-request emails file, EMAIL_DOMAINS removed.
+    // The builder's GITHUB_ORG / GITHUB_USERS (deployment-wide) stay.
+    // adminUsers is empty in this mode (validated), so the owner is the only
+    // entry. The emails arrive through an env var, never the script.
+    const org = auth.provider === 'github' ? auth.allowedOrg?.trim() : undefined;
+    provider = {
+      sidecarEnvironment: [
+        { name: 'OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE', value: OWNER_AUTHZ_EMAILS_PATH },
+        ...(org ? [{ name: 'OAUTH2_PROXY_ALLOWED_GROUPS', value: org }] : []),
+      ],
+      removeSidecarEnvironment: ['OAUTH2_PROXY_EMAIL_DOMAINS'],
+    };
+    initEnvironment = [
+      { name: 'OWNER_AUTHZ_EMAILS', value: owner.toLowerCase() },
+      { name: 'OWNER_AUTHZ_SIGN_IN_TEMPLATE', value: SIGN_IN_TEMPLATE },
+    ];
+    script.push(WRITE_EMAILS, WRITE_SIGN_IN_TEMPLATE);
+  } else if (auth.provider === 'github') {
     const org = auth.allowedOrg?.trim();
     provider = {
       removeSidecarEnvironment: ['OAUTH2_PROXY_GITHUB_ORG', 'OAUTH2_PROXY_GITHUB_USERS'],
@@ -182,10 +247,10 @@ export function buildOwnerAuthorization(
   return {
     sidecarEnvironment: [
       ...provider.sidecarEnvironment,
-      { name: 'OAUTH2_PROXY_COOKIE_SECRET_FILE', value: OWNER_AUTHZ_COOKIE_SECRET_PATH },
+      ...(central ? [] : [{ name: 'OAUTH2_PROXY_COOKIE_SECRET_FILE', value: OWNER_AUTHZ_COOKIE_SECRET_PATH }]),
     ],
     removeSidecarEnvironment: provider.removeSidecarEnvironment,
-    removeSidecarSecrets: ['OAUTH2_PROXY_COOKIE_SECRET'],
+    removeSidecarSecrets: central ? [] : ['OAUTH2_PROXY_COOKIE_SECRET'],
     sidecarMountPoints: [{ sourceVolume: OWNER_AUTHZ_VOLUME, containerPath: OWNER_AUTHZ_DIR, readOnly: true }],
     // oauth2-proxy exits if a file is missing, so wait for them.
     sidecarDependsOn: [{ containerName: OWNER_AUTHZ_INIT_CONTAINER, condition: 'SUCCESS' }],
@@ -228,11 +293,21 @@ export function buildBrowserAuthTaskParts(
   secretArns: Oauth2ProxySecretArns,
   opts: OwnerAuthzOptions,
 ): { containers: ContainerDefinition[]; volumes: Volume[] } {
-  const { initImage: _initImage, ...sidecarOpts } = opts;
+  const { initImage: _initImage, baseDomain, ...sidecarOpts } = opts;
+  if (auth.centralAuthHost) {
+    // The synth guard enforces all three; re-checked so a bad Lambda env can
+    // never produce a sidecar that accepts the shared cookie without the
+    // per-request owner check, or that admits admins.
+    if (!auth.ownerOnly) throw new Error('centralAuthHost requires auth.browser.ownerOnly: true (ADR 0009).');
+    if (auth.adminUsers.length > 0) throw new Error('centralAuthHost requires an empty auth.browser.adminUsers (ADR 0009).');
+    if (!baseDomain) throw new Error('centralAuthHost requires domain.baseDomain (BASE_DOMAIN is empty).');
+  }
   const sidecar = buildOauth2ProxyContainer(
     auth,
     secretArns,
-    sidecarOpts,
+    auth.centralAuthHost
+      ? { ...sidecarOpts, centralAuthHost: { baseDomain: baseDomain!, customTemplatesDir: OWNER_AUTHZ_TEMPLATES_DIR } }
+      : sidecarOpts,
   );
   if (!auth.ownerOnly) return { containers: [sidecar], volumes: [] };
 
