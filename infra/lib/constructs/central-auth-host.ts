@@ -139,6 +139,9 @@ export class CentralAuthHost extends Construct {
       assignPublicIp: false,
       vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [props.securityGroup],
+      // OIDC discovery runs before oauth2-proxy listens; don't let early
+      // failed health checks stop the task (and trip the circuit breaker).
+      healthCheckGracePeriod: Duration.seconds(120),
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
       // A container that never gets healthy (bad issuer, placeholder
@@ -152,7 +155,7 @@ export class CentralAuthHost extends Construct {
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
       deregistrationDelay: Duration.seconds(30),
-      healthCheck: { path: '/ping', healthyHttpCodes: '200', interval: Duration.seconds(15) },
+      healthCheck: { path: '/ping', healthyHttpCodes: '200', interval: Duration.seconds(15), healthyThresholdCount: 2 },
     });
     targetGroup.addTarget(
       this.service.loadBalancerTarget({ containerName: def.name!, containerPort: 4180 }),

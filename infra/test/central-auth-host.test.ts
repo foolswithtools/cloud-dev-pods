@@ -192,6 +192,9 @@ describe('ClusterStack with centralAuthHost', () => {
     expect(tg.Port).toBe(4180);
     expect(tg.TargetType).toBe('ip');
     expect(tg.HealthCheckPath).toBe('/ping');
+    expect(tg.HealthyThresholdCount).toBe(2);
+    const svc = Object.values(t.findResources('AWS::ECS::Service'))[0]!.Properties;
+    expect(svc.HealthCheckGracePeriodSeconds).toBe(120);
   });
 
   it('adds a Route53 alias record for auth.<base>', () => {
@@ -251,11 +254,29 @@ describe('ClusterStack with centralAuthHost', () => {
     if (taskRoleId) {
       for (const p of policies) expect(p.roles).not.toContain(taskRoleId);
     }
-    // The deploy-time lookup can describe the secrets but never read them.
-    const others = policies.filter((p) => !p.roles.includes(execRoleId));
+    // The deploy-time lookup can describe the three secrets but never read them.
+    const others = Object.values(t.findResources('AWS::IAM::Policy')).filter(
+      (p) => !(p.Properties.Roles as { Ref: string }[]).some((r) => r.Ref === execRoleId),
+    );
+    expect(others.length).toBeGreaterThan(0);
     for (const p of others) {
-      for (const a of p.actions) expect(a).toBe('secretsmanager:DescribeSecret');
+      for (const st of p.Properties.PolicyDocument.Statement as { Action: unknown; Resource: unknown }[]) {
+        expect(st.Action).toBe('secretsmanager:DescribeSecret');
+        const resources = JSON.stringify(st.Resource);
+        for (const name of ['client-id', 'client-secret', 'cookie-secret']) {
+          expect(resources).toContain(`:secret:/cloud-dev-pods/oauth/${name}-??????`);
+        }
+        expect((st.Resource as unknown[]).length).toBe(3);
+        expect(resources).not.toContain('"*"');
+      }
     }
+    // GetSecretValue is granted on exactly the ARNs the lookups returned.
+    const lookupIds = Object.keys(t.findResources('Custom::AWS')).sort();
+    const readerResources = Object.values(t.findResources('AWS::IAM::Policy'))
+      .flatMap((p) => p.Properties.PolicyDocument.Statement as { Action: unknown; Resource: unknown }[])
+      .filter((st) => [st.Action].flat().includes('secretsmanager:GetSecretValue'))
+      .flatMap((st) => [st.Resource].flat() as { 'Fn::GetAtt'?: [string, string] }[]);
+    expect(readerResources.map((r) => r['Fn::GetAtt']?.[0]).sort()).toEqual(lookupIds);
   });
 });
 
