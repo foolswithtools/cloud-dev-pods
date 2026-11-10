@@ -112,7 +112,7 @@ for k in client-id client-secret; do
 done
 ```
 
-Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month.
+Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month. Keep the backups outside `/cloud-dev-pods/oauth/`: the pod-manager Lambda's IAM policy covers everything under that prefix.
 
 Then store the Entra values:
 
