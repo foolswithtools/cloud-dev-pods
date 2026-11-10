@@ -380,6 +380,33 @@ If the CVE is in a JS package bundled inside the upstream image (and shows in th
 
 If your customization should *never* be overwritten, consider refactoring it to use `infra/extensions.local.ts` (which is `[user]`) rather than editing `[tracked]` or `[merged]` files. See [`extending.md`](extending.md).
 
+## sync-upstream fails to push when upstream changed a workflow file
+
+**Symptom:** `sync-upstream` fails at "Open / update PR". The push is rejected with an error like `refusing to allow a GitHub App to create or update workflow .github/workflows/<file>.yml without workflows permission`.
+
+**Cause:** the sync includes an upstream change to a file under `.github/workflows/`. The default `GITHUB_TOKEN` can't push a branch that changes workflow files; only a personal access token (PAT) or GitHub App token with the Workflows permission can. Every sync fails this way until a sync without workflow changes comes along, and most upstream releases touch a workflow.
+
+**Fix:** give `sync-upstream` a PAT.
+
+1. Create a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) with access to your fork only. Grant **Contents**, **Pull requests** and **Workflows** read and write. Pick an expiry and put a reminder in your calendar.
+2. Store it as a repo secret (`gh` reads it from stdin, so it isn't written to your shell history):
+
+   ```bash
+   gh secret set SYNC_UPSTREAM_PAT
+   ```
+
+3. Re-run `gh workflow run sync-upstream.yml`.
+
+`sync-upstream.yml` passes `secrets.SYNC_UPSTREAM_PAT` to the step that pushes and opens the PR, and falls back to `GITHUB_TOKEN` when the secret isn't set. Only that step gets the PAT; checkout and `npm ci` don't.
+
+**Forks created before this support existed:** your `sync-upstream.yml` doesn't read the secret, and the sync that would bring the new version in is itself a workflow change, so it fails the same way. Add the line once by hand, in the `peter-evans/create-pull-request` step's `with:` block, then commit and re-run the sync:
+
+```yaml
+          token: ${{ secrets.SYNC_UPSTREAM_PAT || github.token }}
+```
+
+The file is `[merged]`, so the next sync's three-way merge keeps your edit.
+
 ## release-please isn't opening a release PR
 
 **Cause:** no `feat:` or `fix:` commits since the last release. release-please only triggers on those Conventional Commit prefixes.
