@@ -170,13 +170,62 @@ Cleanup still stops short when PodManager's own create failed and rolled back (`
 
 The absent path also runs when an earlier teardown destroyed PodManager and then failed on another stack. That is safe only if the earlier teardown was gated by the drain (any `smoke-test` or `cluster-down.yml` run since #212), because then no pods remained when PodManager went away. After a manual `cdk destroy` or a pre-#212 smoke run, check for orphaned ALB rules and EFS access points before re-running cleanup.
 
-To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from the smoke fork with its "Validating an upstream PR end-to-end" procedure (`docs/smoke-fork.md`, which exists only in the fork). On a throwaway branch there:
+To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from a fork with [Validating an unmerged PR from a fork](#validating-an-unmerged-pr-from-a-fork). On the throwaway branch there:
 
 - point the workflow at the fork: the `guard` repo, `vars.AWS_*` in place of `vars.SANDBOX_AWS_*`, `config/config.yaml`, and no `environment:` line, so the OIDC subject is the branch ref;
 - make the `cluster-up` deploy step deploy only the Network and Cluster stacks and then `exit 1`;
-- widen `CloudDevPodsDeployerRole`'s trust to that branch ref for the run only, then restore it.
+- widen `CloudDevPodsDeployerRole`'s trust to that branch ref for the run only, then restore it (step 2 of that procedure).
 
 Issue #215 was verified this way.
+
+## Validating an unmerged PR from a fork
+
+Until #254 gives upstream its own sandbox, a change that needs real AWS is checked from a fork you control, under your own AWS account, before it merges (or after, for a checklist item a PR left open). The maintainers use `clostaunau/cloud-dev-pods-smoke`; any fork that has run `bootstrap-aws.yml` works. Below, `<owner>/<fork>` is that fork and `<branch>` is a throwaway branch for one PR, for example `test/<pr>-validation`.
+
+1. **Make the branch.** Branch from the PR's head, or from the fork's `main` when the change has already merged and synced. Carry over the fork's committed `config/config.yaml` and change nothing else, apart from config the check needs. Push it. Never fast-forward the fork's `main` to it: a later `sync-upstream` would then see unmerged upstream code as the fork's own edits.
+2. **Widen the role trust to that branch, for this run only.** The provisioning workflows have no `environment:`, so their OIDC subject is `repo:<owner>/<fork>:ref:refs/heads/<branch>`, and both roles trust only `main` and `environment:prod`. `bootstrap-stack.ts` puts the `sub` list under `StringLike`; `StringEquals` holds only `aud`. Widen `CloudDevPodsDeployerRole` for `cluster-up` and `cluster-down`, and `CloudDevPodsPodOpsRole` for `pod-up`, `pod-down` and `pod-list`. Save the originals somewhere other than a shared `/tmp`:
+
+   ```bash
+   ref="repo:<owner>/<fork>:ref:refs/heads/<branch>"
+   for r in CloudDevPodsDeployerRole CloudDevPodsPodOpsRole; do
+     aws iam get-role --role-name "$r" --query Role.AssumeRolePolicyDocument --output json > "$r.orig.json"
+     jq --arg ref "$ref" '.Statement[0].Condition.StringLike["token.actions.githubusercontent.com:sub"] += [$ref]' \
+       "$r.orig.json" > "$r.test.json"
+     aws iam update-assume-role-policy --role-name "$r" --policy-document "file://$r.test.json"
+   done
+   ```
+
+   Until you revert it, any workflow run on that branch can assume both roles. This is a hand edit outside CloudFormation, so don't count on a later `bootstrap-aws.yml` run to undo it: CloudFormation only updates resources whose template changed.
+3. **Run the check.** Dispatch every workflow with `--ref <branch>` (and `-R <owner>/<fork>` if your checkout has an `upstream` remote). If the check needs a different identity provider's credentials in `/cloud-dev-pods/oauth/*`, back up and verify the current values first; see [Entra ID setup](setup-entra.md#6-store-the-client-id-and-secret). Restore them before anything else in cleanup.
+4. **Tear down and revert.** Run `pod-down` for each pod and `cluster-down` from the branch. Then restore both trust policies and check they match what you saved:
+
+   ```bash
+   for r in CloudDevPodsDeployerRole CloudDevPodsPodOpsRole; do
+     aws iam update-assume-role-policy --role-name "$r" --policy-document "file://$r.orig.json"
+     diff <(jq -S . "$r.orig.json") \
+       <(aws iam get-role --role-name "$r" --query Role.AssumeRolePolicyDocument --output json | jq -S .) \
+       && echo "$r: restored" || echo "$r: DIFFERS"
+   done
+   ```
+
+   Delete the branch when you're done. Record the result on the PR or issue, and update the [release validation matrix](#release-validation-matrix) if the check covered one of its cells.
+
+## Release validation matrix
+
+Some identity paths need a real identity provider, a second account or a person signing in, so CI can't check them. This table records the last time each one was checked live. Update a cell whenever a smoke run covers it, and treat a cell with no result as not yet known to work. The per-feature plan is #175.
+
+| Provider | Per-pod callback sign-in | `ownerOnly` (non-owner gets 403) | Central auth host: sign-in through one callback | Central auth host: 403 on another owner's pod signs you out |
+| --- | --- | --- | --- | --- |
+| `github` | v0.4.2, 2026-11-02 (#169) | Not run (#175 Phase A) | Pre-v0.4.10 branch, 2026-11-08 (#262 items 1 and 2) | Not run (#262 item 3) |
+| `entra-id` | Not run (#175 Phase C) | v0.4.10, 2026-11-09, with the central auth host only (#262 item 3) | v0.4.10, 2026-11-09 (#262 item 2) | v0.4.10, 2026-11-09 (#262 item 3) |
+| `oidc` | Not run (#175 Phase D) | Not run | Not run | Not run |
+
+| Tunnel account | Device-code sign-in and VS Code Desktop connect |
+| --- | --- |
+| GitHub | v0.4.2, 2026-11-02 (#169) |
+| Microsoft | Not run (#175 Phase B) |
+
+Browser notes from these runs: Safari worked on every central-host pod. On 2026-11-08, Firefox showed VS Code "WebSocket close with status code 1006" on every central-host pod. That hasn't been compared with a per-pod-auth baseline yet (#175).
 
 ## Known CI quirks
 
