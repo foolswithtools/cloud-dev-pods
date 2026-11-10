@@ -141,6 +141,14 @@ If the user should be allowed in:
 - Users in more than 200 groups get no `groups` claim; set `auth.browser.entraGroupOverage: true` so `oauth2-proxy` reads groups from Microsoft Graph. See [Entra ID setup](setup-entra.md#3-add-a-groups-claim-only-if-you-use-allowedgroups).
 - Changes to `config/config.yaml` need `cluster-up`, then `pod-down` / `pod-up` for running pods.
 
+## Sign-in ends in a 403 with `CSRF cookie ... is not the expected one`
+
+**Signature:** right after a successful sign-in at the identity provider, the browser shows an `oauth2-proxy` 403 page. The log for the host that handles the callback (`auth.<base-domain>` with `auth.browser.centralAuthHost: true`, otherwise the pod's `oauth2-proxy` stream) shows `[AuthFailure] CSRF cookie <name>_csrf was found in OAuth callback, but it is not the expected one (<other-name>_csrf)`.
+
+**Cause:** two sign-ins were started in the same browser, for example a double click on **Sign in**, or a second tab, and the callback that came back belongs to the other one. Each sign-in gets its own CSRF cookie, and the callback must match it.
+
+**Fix:** none needed. Open the pod URL again and sign in once. It usually works straight away, because you're still signed in at the identity provider.
+
 ## Pod URL returns 502 Bad Gateway
 
 **Cause (transient):** the ALB target group is still registering. Health checks need ~30s after `pod-up` before traffic flows.

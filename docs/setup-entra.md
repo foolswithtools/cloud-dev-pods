@@ -86,13 +86,35 @@ The restrictions combine: a user must pass every one that is set (tenant **and**
 
 `allowedEmailDomains` and `ownerOnly` match the token's `email` claim, which Entra only fills in for users with a mailbox (the `mail` attribute). Users without one cannot sign in at all; see [troubleshooting](troubleshooting.md#entra-id-sign-in-fails-with-neither-the-id_token-nor-the-profileurl-set-an-email).
 
+With `ownerOnly`, a pod's `owner` must be that `mail` value exactly, so pass it to `pod-up` (`-f owner=<mail>`) rather than guessing from the sign-in name. For most users `mail` equals the user principal name, but an administrator can set it to anything. Check it with `az ad user show --id <user-principal-name> --query mail --output tsv`, or under **Users > (the user) > Properties > Email**.
+
 `auth.browser.allowedOrg` and `auth.browser.allowedUsers` are GitHub-only and fail validation with `entra-id`. The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys are ignored once `auth.browser` is set; remove them.
 
 Commit and push the config.
 
 ## 6. Store the client ID and secret
 
-The client ID and secret use the same Secrets Manager paths as GitHub (`bootstrap-aws.yml` creates them):
+The client ID and secret use the same Secrets Manager paths as GitHub (`bootstrap-aws.yml` creates them).
+
+**Switching from GitHub? Back up its values first.** GitHub shows an OAuth App's client secret once, when you create it, so after the overwrite below the only copy left is the secret's previous version, which the next update discards. If you might switch back, copy both values to backup secrets and check the copies before you change anything. The loop writes each value to a file only you can read, uses `jq -j` so no newline is added (`--output text` adds one, and the copy would no longer match), and prints hashes as `OK` or `MISMATCH` only:
+
+```bash
+umask 077
+h() { aws secretsmanager get-secret-value --secret-id "$1" --output json | jq -j .SecretString | shasum -a 256 | cut -d' ' -f1; }
+for k in client-id client-secret; do
+  aws secretsmanager get-secret-value --secret-id "/cloud-dev-pods/oauth/$k" \
+    --output json | jq -j .SecretString > "github-$k"
+  aws secretsmanager create-secret --name "/cloud-dev-pods/oauth-backup/github/$k" \
+    --secret-string "file://github-$k" > /dev/null
+  rm -f "github-$k"
+  [ "$(h "/cloud-dev-pods/oauth/$k")" = "$(h "/cloud-dev-pods/oauth-backup/github/$k")" ] \
+    && echo "$k: OK" || echo "$k: MISMATCH, stop here"
+done
+```
+
+Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month.
+
+Then store the Entra values:
 
 ```bash
 aws secretsmanager update-secret --secret-id /cloud-dev-pods/oauth/client-id \
@@ -115,6 +137,18 @@ gh workflow run pod-up.yml -f pod_name=hello -f mode=browser && gh run watch
 The `pod-up` summary prints the pod URL and the exact **OAuth redirect URI** for that pod. If it is not registered yet, add it under **Authentication > Platform configurations > Web > Redirect URIs** before you open the pod. Then open the URL, sign in with your Entra account, and you land in VS Code. A user who signs in but fails a restriction (for example, is in the tenant but not in an allowed group) gets an `oauth2-proxy` 403 page.
 
 Switching an existing deployment from GitHub: running pods keep their old sidecar settings. Stop and start them (`pod-down`, then `pod-up`) after `cluster-up`, and register each pod's redirect URI.
+
+### First sign-in
+
+The first time each user signs in through the app, Entra asks them to consent to it reading their basic profile and email (the scopes `openid email profile`). They accept once.
+
+If the tenant doesn't let users consent to apps, they see **Need admin approval** instead. An administrator (for example a Cloud Application Administrator) can grant consent once for the whole tenant: under **API permissions**, add the Microsoft Graph delegated permissions `openid`, `email` and `profile` if they aren't listed, then select **Grant admin consent**. Or, with the Azure CLI:
+
+```bash
+az ad app permission admin-consent --id <Application (client) ID>
+```
+
+Don't loosen the tenant's user-consent settings just for this.
 
 ## The redirect URI ceiling
 
