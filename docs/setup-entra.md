@@ -96,21 +96,34 @@ Commit and push the config.
 
 The client ID and secret use the same Secrets Manager paths as GitHub (`bootstrap-aws.yml` creates them).
 
-**Switching from GitHub? Back up its values first.** GitHub shows an OAuth App's client secret once, when you create it, so after the overwrite below the only copy left is the secret's previous version, which the next update discards. If you might switch back, copy both values to backup secrets and check the copies before you change anything. The loop writes each value to a file only you can read, uses `jq -j` so no newline is added (`--output text` adds one, and the copy would no longer match), and prints hashes as `OK` or `MISMATCH` only:
+**Switching from GitHub? Back up its values first.** GitHub shows an OAuth App's client secret once, when you create it, so after the overwrite below the only copy left is the secret's previous version, which the next update discards. If you might switch back, copy both values to backup secrets and check the copies before you change anything. The loop keeps each value in a temporary directory outside your checkout that only you can read, and removes it on exit, even when a step fails. It uses `jq -j` so no newline is added (`--output text` adds one, and the copy would no longer match). It stops at the first command that fails, and checks both the live value and the backup against the hash of the value it read, so a failed or empty read can't pass as a match. It prints only `OK` or a reason to stop:
 
 ```bash
-umask 077
-h() { aws secretsmanager get-secret-value --secret-id "$1" --output json | jq -j .SecretString | shasum -a 256 | cut -d' ' -f1; }
-for k in client-id client-secret; do
-  aws secretsmanager get-secret-value --secret-id "/cloud-dev-pods/oauth/$k" \
-    --output json | jq -j .SecretString > "github-$k"
-  aws secretsmanager create-secret --name "/cloud-dev-pods/oauth-backup/github/$k" \
-    --secret-string "file://github-$k" > /dev/null
-  rm -f "github-$k"
-  [ "$(h "/cloud-dev-pods/oauth/$k")" = "$(h "/cloud-dev-pods/oauth-backup/github/$k")" ] \
-    && echo "$k: OK" || echo "$k: MISMATCH, stop here"
-done
+(
+  set -euo pipefail
+  umask 077
+  d=$(mktemp -d)
+  trap 'rm -rf "$d"' EXIT
+  h() { aws secretsmanager get-secret-value --secret-id "$1" --output json | jq -ej .SecretString | shasum -a 256 | cut -d' ' -f1; }
+  for k in client-id client-secret; do
+    aws secretsmanager get-secret-value --secret-id "/cloud-dev-pods/oauth/$k" \
+      --output json | jq -ej .SecretString > "$d/$k"
+    [ -s "$d/$k" ] || { echo "$k: the read came back empty, stop here"; exit 1; }
+    aws secretsmanager create-secret --name "/cloud-dev-pods/oauth-backup/github/$k" \
+      --secret-string "file://$d/$k" > /dev/null
+    want=$(shasum -a 256 < "$d/$k" | cut -d' ' -f1)
+    if [ "$(h "/cloud-dev-pods/oauth/$k")" = "$want" ] &&
+      [ "$(h "/cloud-dev-pods/oauth-backup/github/$k")" = "$want" ]; then
+      echo "$k: OK"
+    else
+      echo "$k: MISMATCH, stop here"
+      exit 1
+    fi
+  done
+)
 ```
+
+The parentheses run it in a subshell, so `umask` and `set -e` don't carry over into your terminal. If it stops with `ResourceExistsException`, a backup from an earlier run already exists: compare it by hand before trusting it or replacing it.
 
 Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month. Keep the backups outside `/cloud-dev-pods/oauth/`: the pod-manager Lambda's IAM policy covers everything under that prefix.
 
