@@ -86,13 +86,48 @@ The restrictions combine: a user must pass every one that is set (tenant **and**
 
 `allowedEmailDomains` and `ownerOnly` match the token's `email` claim, which Entra only fills in for users with a mailbox (the `mail` attribute). Users without one cannot sign in at all; see [troubleshooting](troubleshooting.md#entra-id-sign-in-fails-with-neither-the-id_token-nor-the-profileurl-set-an-email).
 
+With `ownerOnly`, a pod's `owner` must be that `mail` address (upper or lower case doesn't matter), so pass it to `pod-up` (`-f owner=<mail>`) rather than guessing from the sign-in name. Without the `owner` input, `pod-up` falls back to your GitHub login, which isn't an email address, and refuses to start the pod. For most users `mail` equals the user principal name, but an administrator can set it to anything. Check it with `az ad user show --id <user-principal-name> --query mail --output tsv`, or under **Users > (the user) > Properties > Email**.
+
 `auth.browser.allowedOrg` and `auth.browser.allowedUsers` are GitHub-only and fail validation with `entra-id`. The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys are ignored once `auth.browser` is set; remove them.
 
 Commit and push the config.
 
 ## 6. Store the client ID and secret
 
-The client ID and secret use the same Secrets Manager paths as GitHub (`bootstrap-aws.yml` creates them):
+The client ID and secret use the same Secrets Manager paths as GitHub (`bootstrap-aws.yml` creates them).
+
+**Switching from GitHub? Back up its values first.** GitHub shows an OAuth App's client secret once, when you create it, so after the overwrite below the only copy left is the secret's previous version, which the next update discards. If you might switch back, copy both values to backup secrets and check the copies before you change anything. The loop keeps each value in a temporary directory outside your checkout that only you can read, and removes it on exit, even when a step fails. It uses `jq -j` so no newline is added (`--output text` adds one, and the copy would no longer match). It stops at the first command that fails, and checks both the live value and the backup against the hash of the value it read, so a failed or empty read can't pass as a match. It prints only `OK` or a reason to stop:
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  d=$(mktemp -d)
+  trap 'rm -rf "$d"' EXIT
+  h() { aws secretsmanager get-secret-value --secret-id "$1" --output json | jq -ej .SecretString | shasum -a 256 | cut -d' ' -f1; }
+  for k in client-id client-secret; do
+    aws secretsmanager get-secret-value --secret-id "/cloud-dev-pods/oauth/$k" \
+      --output json | jq -ej .SecretString > "$d/$k"
+    [ -s "$d/$k" ] || { echo "$k: the read came back empty, stop here"; exit 1; }
+    aws secretsmanager create-secret --name "/cloud-dev-pods/oauth-backup/github/$k" \
+      --secret-string "file://$d/$k" > /dev/null
+    want=$(shasum -a 256 < "$d/$k" | cut -d' ' -f1)
+    if [ "$(h "/cloud-dev-pods/oauth/$k")" = "$want" ] &&
+      [ "$(h "/cloud-dev-pods/oauth-backup/github/$k")" = "$want" ]; then
+      echo "$k: OK"
+    else
+      echo "$k: MISMATCH, stop here"
+      exit 1
+    fi
+  done
+)
+```
+
+The parentheses run it in a subshell, so `umask` and `set -e` don't carry over into your terminal. If it stops with `ResourceExistsException`, a backup from an earlier run already exists: compare it by hand before trusting it or replacing it.
+
+Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Entra also shows a client secret only once, so if you may return to Entra, back up its values the same way first, under `/cloud-dev-pods/oauth-backup/entra-id/`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month, and `cluster-down` doesn't remove it: the backups aren't part of any stack. Once the switch is permanent, delete them with `aws secretsmanager delete-secret --secret-id /cloud-dev-pods/oauth-backup/github/<client-id|client-secret>` (Secrets Manager keeps a deleted secret recoverable for 30 days by default). Keep the backups outside `/cloud-dev-pods/oauth/`: the pod-manager Lambda's IAM policy covers everything under that prefix.
+
+Then store the Entra values:
 
 ```bash
 aws secretsmanager update-secret --secret-id /cloud-dev-pods/oauth/client-id \
@@ -115,6 +150,18 @@ gh workflow run pod-up.yml -f pod_name=hello -f mode=browser && gh run watch
 The `pod-up` summary prints the pod URL and the exact **OAuth redirect URI** for that pod. If it is not registered yet, add it under **Authentication > Platform configurations > Web > Redirect URIs** before you open the pod. Then open the URL, sign in with your Entra account, and you land in VS Code. A user who signs in but fails a restriction (for example, is in the tenant but not in an allowed group) gets an `oauth2-proxy` 403 page.
 
 Switching an existing deployment from GitHub: running pods keep their old sidecar settings. Stop and start them (`pod-down`, then `pod-up`) after `cluster-up`, and register each pod's redirect URI.
+
+### First sign-in
+
+The first time each user signs in through the app, Entra asks them to consent to it reading their basic profile and email (the scopes `openid email profile`). They accept once.
+
+If the tenant doesn't let users consent to apps, they see **Need admin approval** instead. An administrator (for example a Cloud Application Administrator) can grant consent once for the whole tenant: under **API permissions**, add the Microsoft Graph delegated permissions `openid`, `email` and `profile` if they aren't listed, plus `User.Read` when `auth.browser.entraGroupOverage` is `true`, then select **Grant admin consent**. The Azure CLI can do the last step in place of the button. It grants consent only for permissions already listed on the app, so add them first:
+
+```bash
+az ad app permission admin-consent --id <Application (client) ID>
+```
+
+Don't loosen the tenant's user-consent settings just for this.
 
 ## The redirect URI ceiling
 
