@@ -170,13 +170,83 @@ Cleanup still stops short when PodManager's own create failed and rolled back (`
 
 The absent path also runs when an earlier teardown destroyed PodManager and then failed on another stack. That is safe only if the earlier teardown was gated by the drain (any `smoke-test` or `cluster-down.yml` run since #212), because then no pods remained when PodManager went away. After a manual `cdk destroy` or a pre-#212 smoke run, check for orphaned ALB rules and EFS access points before re-running cleanup.
 
-To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from the smoke fork with its "Validating an upstream PR end-to-end" procedure (`docs/smoke-fork.md`, which exists only in the fork). On a throwaway branch there:
+To check the absent path against real AWS, force a `cluster-up` failure before PodManager is created, run `smoke-test` with `cleanup=true`, and confirm the `cluster-down` job logs "does not exist" and `cdk destroy` removes the stacks that deployed. Upstream has no sandbox configured yet (no `smoke-sandbox` environment, `SANDBOX_*` variables or `config/config.smoke.yaml`; #254), so `smoke-test` skips at its `guard` job here. Until that lands, run the check from a fork with [Validating an unmerged PR from a fork](#validating-an-unmerged-pr-from-a-fork). On the throwaway branch there:
 
 - point the workflow at the fork: the `guard` repo, `vars.AWS_*` in place of `vars.SANDBOX_AWS_*`, `config/config.yaml`, and no `environment:` line, so the OIDC subject is the branch ref;
 - make the `cluster-up` deploy step deploy only the Network and Cluster stacks and then `exit 1`;
-- widen `CloudDevPodsDeployerRole`'s trust to that branch ref for the run only, then restore it.
+- widen both roles' trust to that branch ref for the run only, then restore it (steps 2 and 4 of that procedure).
 
 Issue #215 was verified this way.
+
+## Validating an unmerged PR from a fork
+
+Until #254 gives upstream its own sandbox, a change that needs real AWS is checked from a fork you control, under your own AWS account, before it merges (or after, for a checklist item a PR left open). The maintainers use `clostaunau/cloud-dev-pods-smoke`; any fork that has run `bootstrap-aws.yml` works. Below, `<owner>/<fork>` is that fork and `<branch>` is a throwaway branch for one PR, for example `test/<pr>-validation`.
+
+1. **Review, then make the branch.** Step 2 lets whatever is on this branch run with both roles, so read the diff first. For a contributor's PR, apply items 2 and 5 of [PR-from-fork triage](#pr-from-fork-triage): look for workflow edits, install hooks and anything that fetches from the network at build time, and don't validate code you haven't reviewed. Then branch from the PR's head, or from the fork's `main` when the change has already merged and synced. Carry over the fork's committed `config/config.yaml`. Beyond that, change only what the check itself calls for: config, and throwaway workflow edits when a procedure asks for them (as [Smoke-test cleanup](#smoke-test-cleanup) does). Push it. Never fast-forward the fork's `main` to it: a later `sync-upstream` would then see unmerged upstream code as the fork's own edits.
+2. **Widen the role trust to that branch, for this run only.** The provisioning workflows have no `environment:`, so their OIDC subject is `repo:<owner>/<fork>:ref:refs/heads/<branch>`, and both roles trust only `main` and `environment:prod`. `bootstrap-stack.ts` puts the `sub` list under `StringLike`; `StringEquals` holds only `aud`. Widen `CloudDevPodsDeployerRole` for `cluster-up` and `cluster-down`, and `CloudDevPodsPodOpsRole` for `build-runtime`, `pod-up`, `pod-down` and `pod-list`. Run this from a private directory, not a shared `/tmp`; it saves each original policy next to where you run it:
+
+   ```bash
+   (
+     set -euo pipefail
+     ref="repo:<owner>/<fork>:ref:refs/heads/<branch>"
+     sub='token.actions.githubusercontent.com:sub'
+     for r in CloudDevPodsDeployerRole CloudDevPodsPodOpsRole; do
+       [ ! -e "$r.orig.json" ] || { echo "$r.orig.json already exists: restore from it (step 4) before widening again"; exit 1; }
+       aws iam get-role --role-name "$r" --query Role.AssumeRolePolicyDocument --output json > "$r.orig.json" \
+         || { rm -f "$r.orig.json"; exit 1; }
+       jq -e --arg ref "$ref" --arg sub "$sub" '.Statement[0].Condition.StringLike[$sub] | index($ref) | not' \
+         "$r.orig.json" > /dev/null \
+         || { rm -f "$r.orig.json"; echo "$r already trusts $ref: this isn't a clean original, fix the role first"; exit 1; }
+       jq --arg ref "$ref" --arg sub "$sub" '.Statement[0].Condition.StringLike[$sub] += [$ref]' \
+         "$r.orig.json" > "$r.test.json"
+       aws iam update-assume-role-policy --role-name "$r" --policy-document "file://$r.test.json"
+       echo "$r: widened"
+     done
+   )
+   ```
+
+   It refuses to overwrite a saved original. A second run would otherwise save the widened policy as the "original", and step 4 would restore that and report success. If it stops part-way, run step 4 for the roles that printed `widened` before you start again.
+
+   Until you revert it, any workflow run on that branch can assume both roles. This is a hand edit outside CloudFormation, so don't count on a later `bootstrap-aws.yml` run to undo it: CloudFormation only updates resources whose template changed.
+3. **Run the check.** Dispatch every workflow with `--ref <branch> -R <owner>/<fork>`, and pass the same `-R` to `gh run watch`. Without `-R`, `gh` uses your checkout's default repo, and a run dispatched to upstream does nothing: the provisioning workflows skip there. If the check needs a different identity provider's credentials in `/cloud-dev-pods/oauth/*`, back up and verify the current values first; see [Entra ID setup](setup-entra.md#6-store-the-client-id-and-secret). Restore them before anything else in cleanup.
+4. **Tear down and revert.** Run `pod-down` for each pod and `cluster-down` from the branch. Then restore both trust policies. The check passes only when the live policy matches what you saved and no longer names the branch; it retries because IAM can take a few seconds to return the new policy:
+
+   ```bash
+   ref="repo:<owner>/<fork>:ref:refs/heads/<branch>"
+   for r in CloudDevPodsDeployerRole CloudDevPodsPodOpsRole; do
+     aws iam update-assume-role-policy --role-name "$r" --policy-document "file://$r.orig.json" || continue
+     want=$(jq -S . "$r.orig.json")
+     ok=no
+     for _ in 1 2 3 4 5 6; do
+       now=$(aws iam get-role --role-name "$r" --query Role.AssumeRolePolicyDocument --output json | jq -S .)
+       if [ -n "$now" ] && [ "$now" = "$want" ] && ! printf '%s' "$now" | grep -qF "$ref"; then ok=yes; break; fi
+       sleep 5
+     done
+     if [ "$ok" = yes ]; then echo "$r: restored"; rm -f "$r.orig.json" "$r.test.json"
+     else echo "$r: NOT restored, or still trusts $ref"; fi
+   done
+   ```
+
+   A restored role's saved files are removed, so they can't be reused as a stale original later. If a role prints `NOT restored`, its files stay: look at the live policy before you retry.
+
+   Delete the branch when you're done. Record the result on the PR or issue, and update the [release validation matrix](#release-validation-matrix) if the check covered one of its cells.
+
+## Release validation matrix
+
+Some identity paths need a real identity provider, a second account or a person signing in, so CI can't check them. This table records the last time each one was checked live. Update a cell whenever a smoke run covers it, and treat a cell with no result as not yet known to work. The per-feature plan is #175.
+
+| Provider | Per-pod callback sign-in | `ownerOnly` (non-owner gets 403) | Central auth host: sign-in through one callback | Central auth host: 403 on another owner's pod signs you out |
+| --- | --- | --- | --- | --- |
+| `github` | v0.4.2, 2026-11-02 (#169) | Not run (#175 Phase A) | Pre-v0.4.10 branch, 2026-11-08 (#262 items 1 and 2) | Not run (#262 item 3) |
+| `entra-id` | Not run (#175 Phase C) | v0.4.10, 2026-11-09, with the central auth host only (#262 item 3) | v0.4.10, 2026-11-09 (#262 item 2) | v0.4.10, 2026-11-09 (#262 item 3) |
+| `oidc` | Not run (#175 Phase D) | Not run | Not run | Not run |
+
+| Tunnel account | Device-code sign-in and VS Code Desktop connect |
+| --- | --- |
+| GitHub | v0.4.2, 2026-11-02 (#169) |
+| Microsoft | Not run (#175 Phase B) |
+
+Browser notes from these runs: Safari worked on every central-host pod. On 2026-11-08, Firefox showed VS Code "WebSocket close with status code 1006" on every central-host pod. That hasn't been compared with a per-pod-auth baseline yet (#175).
 
 ## Known CI quirks
 
@@ -198,7 +268,7 @@ Operating procedure for a first-time contributor PR:
 1. The org-level "approve workflows for first-time contributors" gate (`approve_pull_request_reviews_from_first_time_contributors: true`) holds the workflow at "Waiting for approval." A maintainer must click "Approve and run" the first time.
 2. Before approving, skim the PR diff for anything that touches workflows, CI scripts, `package.json` postinstall hooks, or anything network-fetching at build time. If you see those, scrutinize harder or ask the contributor to split the change.
 3. Approve the run. Re-review subsequent runs only if the diff materially changes (new dependencies, new workflow edits).
-4. AWS-touching workflows can't be triggered by a contributor PR. The provisioning workflows (`bootstrap-aws.yml`, `build-runtime.yml`, `cluster-up.yml`, `cluster-down.yml`, `pod-up.yml`, `pod-down.yml`, and `pod-list.yml`, plus the non-AWS `sync-upstream.yml`) are gated by `if: github.repository != 'foolswithtools/cloud-dev-pods'`: they run only in forks, never upstream, and none of them runs on `pull_request` events. Only `smoke-test.yml` and `release.yml` are gated the other way, by `== 'foolswithtools/cloud-dev-pods'`, so they run only upstream; `smoke-test.yml` is also `workflow_dispatch`-only and requires `vars.SANDBOX_ENABLED == 'true'`. If you ever need to validate a fork's CDK changes against real AWS, do it on the smoke fork (`clostaunau/cloud-dev-pods-smoke`) under your own credentials, not by relaxing the gate.
+4. AWS-touching workflows can't be triggered by a contributor PR. The provisioning workflows (`bootstrap-aws.yml`, `build-runtime.yml`, `cluster-up.yml`, `cluster-down.yml`, `pod-up.yml`, `pod-down.yml`, and `pod-list.yml`, plus the non-AWS `sync-upstream.yml`) are gated by `if: github.repository != 'foolswithtools/cloud-dev-pods'`: they run only in forks, never upstream, and none of them runs on `pull_request` events. Only `smoke-test.yml` and `release.yml` are gated the other way, by `== 'foolswithtools/cloud-dev-pods'`, so they run only upstream; `smoke-test.yml` is also `workflow_dispatch`-only and requires `vars.SANDBOX_ENABLED == 'true'`. If you ever need to validate a fork's CDK changes against real AWS, do it on the smoke fork (`clostaunau/cloud-dev-pods-smoke`) under your own credentials, not by relaxing the gate; follow [Validating an unmerged PR from a fork](#validating-an-unmerged-pr-from-a-fork).
 5. Never check out fork code to your laptop and run scripts against it without sandboxing — `npm install` alone runs arbitrary postinstall hooks. Use a throwaway container or codespace.
 
 ## Stale release-please PR recovery
