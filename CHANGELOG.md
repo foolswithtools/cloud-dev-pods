@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.11](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.10...v0.4.11) (2026-11-16)
+
+
+### Bug Fixes
+
+* **sync-upstream:** use an optional SYNC_UPSTREAM_PAT so syncs can push workflow changes ([#276](https://github.com/foolswithtools/cloud-dev-pods/issues/276)) ([b1c9a0e](https://github.com/foolswithtools/cloud-dev-pods/commit/b1c9a0e1d99f2b0a3e34ba9bd0f3bf472d2576a8))
+
 ## [0.4.10](https://github.com/foolswithtools/cloud-dev-pods/compare/v0.4.9...v0.4.10) (2026-11-08)
 
 
