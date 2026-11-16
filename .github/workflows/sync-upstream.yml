@@ -117,6 +117,13 @@ jobs:
         if: steps.sync.outputs.files_changed != '0'
         uses: peter-evans/create-pull-request@v8
         with:
+          # GITHUB_TOKEN can't push a branch that changes .github/workflows/*,
+          # so syncs that carry upstream workflow edits need a PAT with the
+          # Workflows permission. Optional: without the secret this falls
+          # back to GITHUB_TOKEN. Only this step gets the PAT: the action
+          # replaces checkout's stored credentials with it, so checkout and
+          # `npm ci` never see it. See docs/troubleshooting.md.
+          token: ${{ secrets.SYNC_UPSTREAM_PAT || github.token }}
           branch: chore/sync-upstream-${{ steps.sync.outputs.to_sha }}
           delete-branch: true
           commit-message: "chore(sync): upstream ${{ steps.sync.outputs.from_sha }} -> ${{ steps.sync.outputs.to_sha }}"

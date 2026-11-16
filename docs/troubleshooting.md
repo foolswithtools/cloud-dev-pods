@@ -141,6 +141,14 @@ If the user should be allowed in:
 - Users in more than 200 groups get no `groups` claim; set `auth.browser.entraGroupOverage: true` so `oauth2-proxy` reads groups from Microsoft Graph. See [Entra ID setup](setup-entra.md#3-add-a-groups-claim-only-if-you-use-allowedgroups).
 - Changes to `config/config.yaml` need `cluster-up`, then `pod-down` / `pod-up` for running pods.
 
+## Sign-in ends in a 403 with `CSRF cookie ... is not the expected one`
+
+**Signature:** right after a successful sign-in at the identity provider, the browser shows an `oauth2-proxy` 403 page. The log stream for the host that handles the callback (`central-auth-host/oauth2-proxy/<task id>` with `auth.browser.centralAuthHost: true`, otherwise the pod's `browser/<pod>/oauth2-proxy`) shows `[AuthFailure] CSRF cookie <name>_csrf was found in OAuth callback, but it is not the expected one (<other-name>_csrf)`.
+
+**Cause:** two sign-ins were started in the same browser, for example a double click on **Sign in**, or a second tab, and the callback that came back belongs to the other one. Each sign-in gets its own CSRF cookie, and the callback must match it.
+
+**Fix:** none needed. Open the pod URL again and sign in once. It usually works straight away, because you're still signed in at the identity provider. If the same 403 comes back on every attempt, including a single sign-in in a fresh private window, a double sign-in isn't the cause: file an issue with the log line.
+
 ## Pod URL returns 502 Bad Gateway
 
 **Cause (transient):** the ALB target group is still registering. Health checks need ~30s after `pod-up` before traffic flows.
@@ -379,6 +387,46 @@ If the CVE is in a JS package bundled inside the upstream image (and shows in th
 **Fix:** the PR body lists conflicted files. Open each, find the `<<<<<<<` / `|||||||` / `>>>>>>>` markers, resolve manually, push to the PR branch. Then `npm run lint && npm run test && npm run synth` before merging.
 
 If your customization should *never* be overwritten, consider refactoring it to use `infra/extensions.local.ts` (which is `[user]`) rather than editing `[tracked]` or `[merged]` files. See [`extending.md`](extending.md).
+
+## sync-upstream fails to push when upstream changed a workflow file
+
+**Symptom:** `sync-upstream` fails at "Open / update PR". The push is rejected with an error like `refusing to allow a GitHub App to create or update workflow .github/workflows/<file>.yml without workflows permission`.
+
+**Cause:** the sync includes an upstream change to a file under `.github/workflows/`. The default `GITHUB_TOKEN` can't push a branch that changes workflow files; only a personal access token (PAT) or GitHub App token with the Workflows permission can. It doesn't clear up on its own: a failed sync leaves `.upstream-sync.state` where it was, so every later run carries the same workflow change and fails the same way. Most upstream releases touch a workflow.
+
+**Fix:** give `sync-upstream` a PAT.
+
+1. Create a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) with access to your fork only. Grant **Contents**, **Pull requests** and **Workflows** read and write. Pick an expiry and put a reminder in your calendar.
+2. Store it as a repo secret (`gh` reads it from stdin, so it isn't written to your shell history):
+
+   ```bash
+   gh secret set SYNC_UPSTREAM_PAT
+   ```
+
+3. Re-run `gh workflow run sync-upstream.yml`.
+
+`sync-upstream.yml` passes `secrets.SYNC_UPSTREAM_PAT` to the step that pushes and opens the PR, and falls back to `GITHUB_TOKEN` when the secret isn't set. Only that step gets the PAT; checkout and `npm ci` don't.
+
+**What changes once the PAT is set.** The sync PR is opened by the PAT's owner, not by `github-actions[bot]`:
+
+- CI runs on sync PRs. GitHub doesn't start workflows for PRs opened with `GITHUB_TOKEN`, so before the PAT they had no checks.
+- If your fork requires an approving review, you can't approve a PR you opened yourself. Someone else approves the sync PR, or you allow yourself to bypass that rule.
+
+**When the PAT expires or is revoked,** every sync fails at "Open / update PR" with an authentication error, including syncs that carry no workflow change: the secret is still set, so there's no fallback to `GITHUB_TOKEN`. Store a new token with `gh secret set SYNC_UPSTREAM_PAT`, or run `gh secret delete SYNC_UPSTREAM_PAT` to go back to `GITHUB_TOKEN`.
+
+**Forks created before this support existed:** your `sync-upstream.yml` doesn't read the secret, and the sync that would bring the new version in is itself a workflow change, so it fails the same way. Add this block once by hand, as the first lines of the `peter-evans/create-pull-request` step's `with:` block (directly above `branch:`), then commit and re-run the sync:
+
+```yaml
+          # GITHUB_TOKEN can't push a branch that changes .github/workflows/*,
+          # so syncs that carry upstream workflow edits need a PAT with the
+          # Workflows permission. Optional: without the secret this falls
+          # back to GITHUB_TOKEN. Only this step gets the PAT: the action
+          # replaces checkout's stored credentials with it, so checkout and
+          # `npm ci` never see it. See docs/troubleshooting.md.
+          token: ${{ secrets.SYNC_UPSTREAM_PAT || github.token }}
+```
+
+Copy it exactly, comments included. The file is `[merged]`, and the next sync's three-way merge is clean only when your edit matches upstream's line for line. With just the `token:` line, that sync reports `sync-upstream.yml` as conflicted; resolve it by taking upstream's version.
 
 ## release-please isn't opening a release PR
 

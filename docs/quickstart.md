@@ -254,5 +254,5 @@ If a step fails (e.g., `DeleteConflict: must delete access keys first`), back up
 - **Day-2 operations**: see [`operating.md`](operating.md).
 - **Multiple pods, idle behavior, EFS performance**: see [`operating.md`](operating.md).
 - **Customizing `infra/lib/`**: see [`extending.md`](extending.md) — use `infra/extensions.local.ts`, never edit `[tracked]` files directly.
-- **Pulling upstream improvements**: `gh workflow run sync-upstream.yml` opens a PR.
+- **Pulling upstream improvements**: `gh workflow run sync-upstream.yml` opens a PR. Syncs that carry upstream workflow changes need a `SYNC_UPSTREAM_PAT` secret; see [troubleshooting](troubleshooting.md#sync-upstream-fails-to-push-when-upstream-changed-a-workflow-file).
 - **Tear it all down**: see [`teardown.md`](teardown.md).
