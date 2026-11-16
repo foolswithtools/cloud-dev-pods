@@ -392,7 +392,7 @@ If your customization should *never* be overwritten, consider refactoring it to 
 
 **Symptom:** `sync-upstream` fails at "Open / update PR". The push is rejected with an error like `refusing to allow a GitHub App to create or update workflow .github/workflows/<file>.yml without workflows permission`.
 
-**Cause:** the sync includes an upstream change to a file under `.github/workflows/`. The default `GITHUB_TOKEN` can't push a branch that changes workflow files; only a personal access token (PAT) or GitHub App token with the Workflows permission can. Every sync fails this way until a sync without workflow changes comes along, and most upstream releases touch a workflow.
+**Cause:** the sync includes an upstream change to a file under `.github/workflows/`. The default `GITHUB_TOKEN` can't push a branch that changes workflow files; only a personal access token (PAT) or GitHub App token with the Workflows permission can. It doesn't clear up on its own: a failed sync leaves `.upstream-sync.state` where it was, so every later run carries the same workflow change and fails the same way. Most upstream releases touch a workflow.
 
 **Fix:** give `sync-upstream` a PAT.
 
@@ -407,13 +407,26 @@ If your customization should *never* be overwritten, consider refactoring it to 
 
 `sync-upstream.yml` passes `secrets.SYNC_UPSTREAM_PAT` to the step that pushes and opens the PR, and falls back to `GITHUB_TOKEN` when the secret isn't set. Only that step gets the PAT; checkout and `npm ci` don't.
 
-**Forks created before this support existed:** your `sync-upstream.yml` doesn't read the secret, and the sync that would bring the new version in is itself a workflow change, so it fails the same way. Add the line once by hand, in the `peter-evans/create-pull-request` step's `with:` block, then commit and re-run the sync:
+**What changes once the PAT is set.** The sync PR is opened by the PAT's owner, not by `github-actions[bot]`:
+
+- CI runs on sync PRs. GitHub doesn't start workflows for PRs opened with `GITHUB_TOKEN`, so before the PAT they had no checks.
+- If your fork requires an approving review, you can't approve a PR you opened yourself. Someone else approves the sync PR, or you allow yourself to bypass that rule.
+
+**When the PAT expires or is revoked,** every sync fails at "Open / update PR" with an authentication error, including syncs that carry no workflow change: the secret is still set, so there's no fallback to `GITHUB_TOKEN`. Store a new token with `gh secret set SYNC_UPSTREAM_PAT`, or run `gh secret delete SYNC_UPSTREAM_PAT` to go back to `GITHUB_TOKEN`.
+
+**Forks created before this support existed:** your `sync-upstream.yml` doesn't read the secret, and the sync that would bring the new version in is itself a workflow change, so it fails the same way. Add this block once by hand, as the first lines of the `peter-evans/create-pull-request` step's `with:` block (directly above `branch:`), then commit and re-run the sync:
 
 ```yaml
+          # GITHUB_TOKEN can't push a branch that changes .github/workflows/*,
+          # so syncs that carry upstream workflow edits need a PAT with the
+          # Workflows permission. Optional: without the secret this falls
+          # back to GITHUB_TOKEN. Only this step gets the PAT: the action
+          # replaces checkout's stored credentials with it, so checkout and
+          # `npm ci` never see it. See docs/troubleshooting.md.
           token: ${{ secrets.SYNC_UPSTREAM_PAT || github.token }}
 ```
 
-The file is `[merged]`, so the next sync's three-way merge keeps your edit.
+Copy it exactly, comments included. The file is `[merged]`, and the next sync's three-way merge is clean only when your edit matches upstream's line for line. With just the `token:` line, that sync reports `sync-upstream.yml` as conflicted; resolve it by taking upstream's version.
 
 ## release-please isn't opening a release PR
 
