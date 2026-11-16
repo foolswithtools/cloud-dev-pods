@@ -86,7 +86,7 @@ The restrictions combine: a user must pass every one that is set (tenant **and**
 
 `allowedEmailDomains` and `ownerOnly` match the token's `email` claim, which Entra only fills in for users with a mailbox (the `mail` attribute). Users without one cannot sign in at all; see [troubleshooting](troubleshooting.md#entra-id-sign-in-fails-with-neither-the-id_token-nor-the-profileurl-set-an-email).
 
-With `ownerOnly`, a pod's `owner` must be that `mail` value exactly, so pass it to `pod-up` (`-f owner=<mail>`) rather than guessing from the sign-in name. For most users `mail` equals the user principal name, but an administrator can set it to anything. Check it with `az ad user show --id <user-principal-name> --query mail --output tsv`, or under **Users > (the user) > Properties > Email**.
+With `ownerOnly`, a pod's `owner` must be that `mail` address (upper or lower case doesn't matter), so pass it to `pod-up` (`-f owner=<mail>`) rather than guessing from the sign-in name. Without the `owner` input, `pod-up` falls back to your GitHub login, which isn't an email address, and refuses to start the pod. For most users `mail` equals the user principal name, but an administrator can set it to anything. Check it with `az ad user show --id <user-principal-name> --query mail --output tsv`, or under **Users > (the user) > Properties > Email**.
 
 `auth.browser.allowedOrg` and `auth.browser.allowedUsers` are GitHub-only and fail validation with `entra-id`. The deprecated `github.oauthAllowedOrg` / `github.oauthAllowedUsers` keys are ignored once `auth.browser` is set; remove them.
 
@@ -125,7 +125,7 @@ The client ID and secret use the same Secrets Manager paths as GitHub (`bootstra
 
 The parentheses run it in a subshell, so `umask` and `set -e` don't carry over into your terminal. If it stops with `ResourceExistsException`, a backup from an earlier run already exists: compare it by hand before trusting it or replacing it.
 
-Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month. Keep the backups outside `/cloud-dev-pods/oauth/`: the pod-manager Lambda's IAM policy covers everything under that prefix.
+Go on only when both lines say `OK`. To switch back later, run the same loop with the two paths swapped and `update-secret --secret-id` in place of `create-secret --name`. Entra also shows a client secret only once, so if you may return to Entra, back up its values the same way first, under `/cloud-dev-pods/oauth-backup/entra-id/`. Always use `update-secret` on `/cloud-dev-pods/oauth/*`; don't delete and recreate it. Pods that are already running read these values when they started, so restoring doesn't disturb them. Each backup secret costs about $0.40 a month, and `cluster-down` doesn't remove it: the backups aren't part of any stack. Once the switch is permanent, delete them with `aws secretsmanager delete-secret --secret-id /cloud-dev-pods/oauth-backup/github/<client-id|client-secret>` (Secrets Manager keeps a deleted secret recoverable for 30 days by default). Keep the backups outside `/cloud-dev-pods/oauth/`: the pod-manager Lambda's IAM policy covers everything under that prefix.
 
 Then store the Entra values:
 
@@ -155,7 +155,7 @@ Switching an existing deployment from GitHub: running pods keep their old sideca
 
 The first time each user signs in through the app, Entra asks them to consent to it reading their basic profile and email (the scopes `openid email profile`). They accept once.
 
-If the tenant doesn't let users consent to apps, they see **Need admin approval** instead. An administrator (for example a Cloud Application Administrator) can grant consent once for the whole tenant: under **API permissions**, add the Microsoft Graph delegated permissions `openid`, `email` and `profile` if they aren't listed, then select **Grant admin consent**. Or, with the Azure CLI:
+If the tenant doesn't let users consent to apps, they see **Need admin approval** instead. An administrator (for example a Cloud Application Administrator) can grant consent once for the whole tenant: under **API permissions**, add the Microsoft Graph delegated permissions `openid`, `email` and `profile` if they aren't listed, plus `User.Read` when `auth.browser.entraGroupOverage` is `true`, then select **Grant admin consent**. The Azure CLI can do the last step in place of the button. It grants consent only for permissions already listed on the app, so add them first:
 
 ```bash
 az ad app permission admin-consent --id <Application (client) ID>

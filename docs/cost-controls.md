@@ -176,7 +176,7 @@ Intentional retentions (by `RemovalPolicy.RETAIN` in the CDK stacks):
 
 Everything else — VPC, NAT, ALB, EFS (unless retained), ECS cluster, Lambdas, CloudWatch log groups (after Phase 15.5 fix), DynamoDB registry — is destroyed.
 
-If you want true zero-AWS-spend (no Secrets Manager $0.40 × 3 either), tear down the bootstrap stack manually:
+If you want true zero-AWS-spend (no Secrets Manager $0.40 × 3 either), tear down the bootstrap stack manually. Backup secrets you made under `/cloud-dev-pods/oauth-backup/` when [switching identity provider](setup-entra.md#6-store-the-client-id-and-secret) aren't in that stack; delete them yourself.
 
 ```bash
 aws cloudformation delete-stack --stack-name cloud-dev-pods-bootstrap-dev
