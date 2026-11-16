@@ -262,5 +262,5 @@ Ongoing AWS spend after this drops to ~$0.40/month (the three Secrets Manager se
 
 - **Customize the IaC** without losing upstream sync: [`extending.md`](extending.md).
 - **Operate the platform** (idle behavior, costs, logs, multi-pod): [`operating.md`](operating.md).
-- **Pull upstream improvements**: `gh workflow run sync-upstream.yml`.
+- **Pull upstream improvements**: `gh workflow run sync-upstream.yml`. Syncs that carry upstream workflow changes need a `SYNC_UPSTREAM_PAT` secret; see [troubleshooting](troubleshooting.md#sync-upstream-fails-to-push-when-upstream-changed-a-workflow-file).
 - **Hit a bug?** [`troubleshooting.md`](troubleshooting.md) lists every signature surfaced during smoke testing.
